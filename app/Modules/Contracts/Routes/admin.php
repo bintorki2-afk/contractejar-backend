@@ -75,6 +75,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{id}/contract-status', 'updateContractStatus')->whereNumber('id')->middleware('permission:all_requests.edit')->name('update-contract-status');
         Route::post('/{id}/draft-contract-status', 'updateDraftContractStatus')->whereNumber('id')->middleware('permission:all_requests.edit')->name('update-draft-contract-status');
         Route::post('/{id}/return-contract-status', 'updateReturnContractAcceptance')->whereNumber('id')->middleware('permission:returned_request.retrieve')->name('return-contract-status');
+        // Delete a single order (contract) and its related rows. Used to clean up test/unwanted orders.
+        Route::post('/{id}/delete', 'destroy')->whereNumber('id')->middleware('permission:all_requests.edit')->name('destroy');
     });
 
     // Contract comments (employee-authenticated)

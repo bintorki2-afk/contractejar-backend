@@ -8,6 +8,7 @@ use App\Http\Requests\Admin\UpdateReturnContractAcceptanceRequest;
 use App\Http\Resources\Admin\V2\Api\OrderResource;
 use App\Http\Traits\Responser;
 use App\Models\Contract;
+use App\Models\Payment;
 use App\Modules\Contracts\Actions\SetReturnContractAcceptanceAction;
 use App\Modules\Contracts\Actions\UpdateAdminContractAction;
 use App\Modules\Contracts\Actions\UpdateAdminContractStatusAction;
@@ -15,6 +16,7 @@ use App\Modules\Contracts\Services\AdminOrderDetailService;
 use App\Modules\Contracts\Services\AdminOrderQueryService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 
@@ -266,6 +268,42 @@ class OrderController extends Controller
             return $this->errorMessage($e->getMessage(), 422);
         } catch (\Throwable $e) {
             return $this->errorMessage(trans('api.error_occurred').': '.$e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Delete a single order (contract) and its related rows.
+     *
+     * Related tables that reference contracts.id are removed automatically by
+     * the database ON DELETE CASCADE / SET NULL foreign keys. Payment rows are
+     * linked by contract_uuid (no FK), so we remove them explicitly. Everything
+     * runs inside a transaction: if any step fails, nothing is deleted.
+     *
+     * POST /api/admin/orders/{id}/delete
+     */
+    public function destroy(Request $request, $id)
+    {
+        try {
+            $contract = $this->orders->findAdminContract((int) $id);
+
+            DB::transaction(function () use ($contract) {
+                if (! empty($contract->uuid)) {
+                    Payment::where('contract_uuid', $contract->uuid)->delete();
+                }
+
+                $contract->delete();
+            });
+
+            return $this->apiResponse(null, trans('api.success'), true, 200);
+        } catch (ModelNotFoundException $e) {
+            return $this->apiResponse(null, trans('api.contract_not_found'), false, 404);
+        } catch (\Throwable $e) {
+            return $this->apiResponse(
+                null,
+                trans('api.error_occurred').': '.$e->getMessage(),
+                false,
+                500
+            );
         }
     }
 
