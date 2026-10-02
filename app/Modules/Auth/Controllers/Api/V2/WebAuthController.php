@@ -10,8 +10,10 @@ use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 use Illuminate\Validation\ValidationException;
+use Laravel\Socialite\Facades\Socialite;
 
 /**
  * Website (SPA) authentication using email + password only — no SMS, no OTP.
@@ -175,6 +177,101 @@ class WebAuthController extends Controller
         }
 
         return redirect()->away($frontend . '/verify-email?status=success');
+    }
+
+    /** Current authenticated customer (used by the SPA after social login). */
+    public function me(Request $request)
+    {
+        return $this->apiResponse(
+            ['user' => new UserResource($request->user())],
+            trans('api.success'),
+        );
+    }
+
+    /** Begin a social sign-in (Google / Apple) — redirects to the provider. */
+    public function socialRedirect(string $provider)
+    {
+        return Socialite::driver($provider)
+            ->stateless()
+            ->redirectUrl($this->socialCallbackUrl($provider))
+            ->redirect();
+    }
+
+    /**
+     * Social provider callback: find or create the customer, sign them in, and
+     * hand the SPA a token via the URL fragment (never sent to servers).
+     */
+    public function socialCallback(string $provider)
+    {
+        $frontend = rtrim((string) config('app.frontend_url'), '/');
+
+        try {
+            $socialUser = Socialite::driver($provider)
+                ->stateless()
+                ->redirectUrl($this->socialCallbackUrl($provider))
+                ->user();
+        } catch (\Throwable) {
+            return redirect()->away($frontend . '/login?error=social');
+        }
+
+        $email = $socialUser->getEmail();
+        if (! $email) {
+            return redirect()->away($frontend . '/login?error=social_no_email');
+        }
+
+        $user = User::where('email', $email)->first();
+
+        if (! $user) {
+            [$fname, $lname] = $this->splitName($socialUser->getName());
+            $user = new User();
+            $user->email = $email;
+            $user->fname = $fname ?: ($socialUser->getNickname() ?: 'مستخدم');
+            $user->lname = $lname;
+            $user->password = Hash::make(Str::random(40)); // unusable; social-only
+            $user->platform = User::PLATFORM_WEBSITE;
+            $user->is_active = true;
+        }
+
+        // Social providers return a verified email; trust it.
+        if (! $user->hasVerifiedEmail()) {
+            $user->email_verified_at = now();
+        }
+        if ($provider === 'google') {
+            $user->google_id = $socialUser->getId();
+        }
+        if (! $user->photo && $socialUser->getAvatar()) {
+            $user->photo = $socialUser->getAvatar();
+        }
+        $user->save();
+
+        if (! $user->is_active) {
+            return redirect()->away($frontend . '/login?error=blocked');
+        }
+
+        $token = $user->createToken('website')->plainTextToken;
+
+        return redirect()->away($frontend . '/auth/social-callback#token=' . $token);
+    }
+
+    private function socialCallbackUrl(string $provider): string
+    {
+        return rtrim((string) config('app.url'), '/') . '/api/v2/auth/web/' . $provider . '/callback';
+    }
+
+    /** @return array{0: string, 1: ?string} */
+    private function splitName(?string $name): array
+    {
+        $name = trim((string) $name);
+        if ($name === '') {
+            return ['', null];
+        }
+
+        $space = strpos($name, ' ');
+        if ($space === false) {
+            return [$name, null];
+        }
+
+        return [substr($name, 0, $space), trim(substr($name, $space + 1)) ?: null];
     }
 
     /** Shared auth payload: a fresh Sanctum token + the user resource. */
