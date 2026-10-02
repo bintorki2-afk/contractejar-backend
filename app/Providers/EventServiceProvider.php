@@ -18,6 +18,11 @@ class EventServiceProvider extends ServiceProvider
         Registered::class => [
             SendEmailVerificationNotification::class,
         ],
+        // Registers the "Sign in with Apple" Socialite driver
+        // (socialiteproviders/apple). Google uses core Socialite, no listener.
+        \SocialiteProviders\Manager\SocialiteWasCalled::class => [
+            \SocialiteProviders\Apple\AppleExtendSocialite::class . '@handle',
+        ],
     ];
 
     /**

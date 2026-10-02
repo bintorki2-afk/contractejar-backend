@@ -54,6 +54,15 @@ return [
         'seo_frontend_redirect' => env('ADMIN_FRONTEND_URL', env('PAYMENT_FRONTEND_URL', 'http://localhost:3000')),
     ],
 
+    'apple' => [
+        // Apple "Sign in with Apple": client_id is the Services ID; client_secret
+        // is the JWT generated from your Apple key (.p8). Requires the
+        // socialiteproviders/apple package. Redirect is set at runtime.
+        'client_id' => env('APPLE_CLIENT_ID'),
+        'client_secret' => env('APPLE_CLIENT_SECRET'),
+        'redirect' => env('APPLE_REDIRECT_URI', ''),
+    ],
+
     'moyasar' => [
         'base_url' => env('MOYASAR_BASE_URL', 'https://api.moyasar.com'),
         'secret_key' => env('MOYASAR_SECRET_KEY'),
