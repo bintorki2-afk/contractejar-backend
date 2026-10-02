@@ -191,10 +191,27 @@ class WebAuthController extends Controller
     /** Begin a social sign-in (Google / Apple) — redirects to the provider. */
     public function socialRedirect(string $provider)
     {
-        return Socialite::driver($provider)
-            ->stateless()
-            ->redirectUrl($this->socialCallbackUrl($provider))
-            ->redirect();
+        return $this->socialProvider($provider)->redirect();
+    }
+
+    /**
+     * Resolve the Socialite provider for website login. Google uses a dedicated
+     * OAuth client (services.google_login) so it never clashes with the SEO
+     * integration's `google` client; Apple uses the standard driver.
+     */
+    private function socialProvider(string $provider)
+    {
+        $redirect = $this->socialCallbackUrl($provider);
+
+        if ($provider === 'google') {
+            return Socialite::buildProvider(\Laravel\Socialite\Two\GoogleProvider::class, [
+                'client_id' => config('services.google_login.client_id'),
+                'client_secret' => config('services.google_login.client_secret'),
+                'redirect' => $redirect,
+            ])->stateless();
+        }
+
+        return Socialite::driver($provider)->stateless()->redirectUrl($redirect);
     }
 
     /**
@@ -206,10 +223,7 @@ class WebAuthController extends Controller
         $frontend = rtrim((string) config('app.frontend_url'), '/');
 
         try {
-            $socialUser = Socialite::driver($provider)
-                ->stateless()
-                ->redirectUrl($this->socialCallbackUrl($provider))
-                ->user();
+            $socialUser = $this->socialProvider($provider)->user();
         } catch (\Throwable) {
             return redirect()->away($frontend . '/login?error=social');
         }

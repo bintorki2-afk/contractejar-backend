@@ -54,6 +54,14 @@ return [
         'seo_frontend_redirect' => env('ADMIN_FRONTEND_URL', env('PAYMENT_FRONTEND_URL', 'http://localhost:3000')),
     ],
 
+    // Dedicated OAuth client for website customer "Sign in with Google" — kept
+    // separate from `google` above (which the SEO/Search Console integration
+    // uses) so the two never collide.
+    'google_login' => [
+        'client_id' => env('GOOGLE_LOGIN_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_LOGIN_CLIENT_SECRET'),
+    ],
+
     'apple' => [
         // Apple "Sign in with Apple": client_id is the Services ID; client_secret
         // is the JWT generated from your Apple key (.p8). Requires the
