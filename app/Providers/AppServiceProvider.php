@@ -76,7 +76,7 @@ class AppServiceProvider extends ServiceProvider
             $frontend = rtrim((string) config('app.frontend_url'), '/');
             $email = urlencode($notifiable->getEmailForPasswordReset());
 
-            return $frontend.'/auth/reset-password?token='.$token.'&email='.$email;
+            return $frontend.'/reset-password?token='.$token.'&email='.$email;
         });
     }
 }

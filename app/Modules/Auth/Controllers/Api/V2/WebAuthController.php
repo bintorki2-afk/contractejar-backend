@@ -166,7 +166,7 @@ class WebAuthController extends Controller
         $user = User::find($id);
 
         if (! $user || ! hash_equals(sha1($user->getEmailForVerification()), $hash)) {
-            return redirect()->away($frontend . '/auth/verify-email?status=invalid');
+            return redirect()->away($frontend . '/verify-email?status=invalid');
         }
 
         if (! $user->hasVerifiedEmail()) {
@@ -174,7 +174,7 @@ class WebAuthController extends Controller
             event(new Verified($user));
         }
 
-        return redirect()->away($frontend . '/auth/verify-email?status=success');
+        return redirect()->away($frontend . '/verify-email?status=success');
     }
 
     /** Shared auth payload: a fresh Sanctum token + the user resource. */
