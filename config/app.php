@@ -60,6 +60,10 @@ return [
 
     'asset_url' => env('ASSET_URL'),
 
+    // Public website (SPA) base URL — used to build password-reset and email
+    // verification links that land on the site rather than the backend.
+    'frontend_url' => env('FRONTEND_URL', 'https://contractejar.com'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

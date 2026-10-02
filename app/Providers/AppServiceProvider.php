@@ -9,6 +9,7 @@ use App\Services\MoyasarPaymentService;
 use Illuminate\Contracts\Routing\ResponseFactory as ResponseFactoryContract;
 use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Routing\Redirector;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\ServiceProvider;
@@ -66,6 +67,16 @@ class AppServiceProvider extends ServiceProvider
             $startDate = \Carbon\Carbon::createFromFormat('Y-m-d', $value);
 
             return $startDate->gte(now()->subDays(280));
+        });
+
+        // Password-reset emails link to the website's reset page (SPA), not a
+        // backend Blade route. Verification links use the named backend route
+        // `verification.verify`, which then redirects back to the site.
+        ResetPassword::createUrlUsing(function ($notifiable, string $token) {
+            $frontend = rtrim((string) config('app.frontend_url'), '/');
+            $email = urlencode($notifiable->getEmailForPasswordReset());
+
+            return $frontend.'/auth/reset-password?token='.$token.'&email='.$email;
         });
     }
 }

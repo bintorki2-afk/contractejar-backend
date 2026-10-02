@@ -204,4 +204,11 @@ return [
     'newsletter_email_required' => 'The email field is required',
     'newsletter_email_invalid' => 'The email must be a valid email address',
 
+    // Website (email) auth
+    'web_register_success' => 'Account created. Check your email to confirm your account.',
+    'web_credentials_error' => 'Invalid email or password',
+    'web_reset_link_sent' => 'If that email is registered, we have sent it a password reset link.',
+    'web_reset_password_success' => 'Your password has been updated. You can now sign in.',
+    'web_verification_resent' => 'If the account needs confirmation, we have emailed a confirmation link.',
+
 ];
