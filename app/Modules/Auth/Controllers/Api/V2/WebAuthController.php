@@ -188,9 +188,17 @@ class WebAuthController extends Controller
         );
     }
 
-    /** Begin a social sign-in (Google / Apple) — redirects to the provider. */
+    /** Begin a social sign-in (Google) — redirects to the provider. */
     public function socialRedirect(string $provider)
     {
+        // Apple sign-in is not enabled yet (pending Apple Services ID + key).
+        // Fail gracefully instead of a 500 if a stale button points here.
+        if ($provider !== 'google') {
+            $frontend = rtrim((string) config('app.frontend_url'), '/');
+
+            return redirect()->away($frontend . '/login?error=provider_unavailable');
+        }
+
         return $this->socialProvider($provider)->redirect();
     }
 
