@@ -105,14 +105,18 @@ class SubmitContractStep1Action
             }
         }
 
+        // Sensitive legal/identity documents go to the PRIVATE disk (like deed
+        // images) and are served only through signed URLs — never world-readable.
+        $privateDisk = \App\Support\DeedImage::DISK;
+
         if ($request->hasFile('copy_of_the_endowment_registration_certificate')) {
             $step1Data['copy_of_the_endowment_registration_certificate'] = $request->file('copy_of_the_endowment_registration_certificate')
-                ->store('contracts/endowment-registration-certificates', 'public');
+                ->store('contracts/endowment-registration-certificates', $privateDisk);
         }
 
         if ($request->hasFile('copy_of_the_trusteeship_deed')) {
             $step1Data['copy_of_the_trusteeship_deed'] = $request->file('copy_of_the_trusteeship_deed')
-                ->store('contracts/trusteeship-deeds', 'public');
+                ->store('contracts/trusteeship-deeds', $privateDisk);
         }
 
         foreach ([
@@ -121,12 +125,12 @@ class SubmitContractStep1Action
             'copy_of_guardians_power_of_attorney_for_agent' => 'contracts/guardians-powers-of-attorney',
         ] as $instrumentFileField => $storageDir) {
             if ($request->hasFile($instrumentFileField)) {
-                $step1Data[$instrumentFileField] = $request->file($instrumentFileField)->store($storageDir, 'public');
+                $step1Data[$instrumentFileField] = $request->file($instrumentFileField)->store($storageDir, $privateDisk);
             }
         }
 
         if ($request->hasFile('image_address')) {
-            $step1Data['image_address'] = $request->file('image_address')->store('images/contracts', 'public');
+            $step1Data['image_address'] = $request->file('image_address')->store('images/contracts', $privateDisk);
         }
 
         $contract->update($step1Data);

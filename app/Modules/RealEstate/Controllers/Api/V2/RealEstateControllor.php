@@ -216,8 +216,9 @@ class RealEstateControllor extends ApiRealEstateControllor
                 $form->input('agency_instrument_date_of_property_owner_year')
             );
             if ($request->hasFile('copy_of_the_authorization_or_agency')) {
+                // Private disk + signed URL (see App\Support\RealEstateImage) — never world-readable.
                 $data['copy_of_the_authorization_or_agency'] = $request->file('copy_of_the_authorization_or_agency')
-                    ->store('authorizations', 'public');
+                    ->store('authorizations', \App\Support\RealEstateImage::DISK);
             } elseif (! $isUpdate) {
                 $data['copy_of_the_authorization_or_agency'] = $realEstate->copy_of_the_authorization_or_agency;
             }
