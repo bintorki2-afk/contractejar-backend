@@ -293,7 +293,11 @@ class WebAuthController extends Controller
 
     private function socialCallbackUrl(string $provider): string
     {
-        return rtrim((string) config('app.url'), '/') . '/api/v2/auth/web/' . $provider . '/callback';
+        // Prefer the dedicated OAuth base (a branded domain) so the redirect URI
+        // Google displays is on contractejar.com; fall back to APP_URL otherwise.
+        $base = rtrim((string) (config('services.oauth_base_url') ?: config('app.url')), '/');
+
+        return $base . '/api/v2/auth/web/' . $provider . '/callback';
     }
 
     /** @return array{0: string, 1: ?string} */
