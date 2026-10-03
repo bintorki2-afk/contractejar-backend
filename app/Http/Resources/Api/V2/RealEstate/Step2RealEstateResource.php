@@ -85,8 +85,12 @@ class Step2RealEstateResource extends JsonResource
 
     private function authorizationOrAgencyUrl(): ?string
     {
-        return $this->copy_of_the_authorization_or_agency
-            ? asset('storage/'.$this->copy_of_the_authorization_or_agency)
-            : null;
+        // Private disk: expose only a temporary signed URL (see App\Support\RealEstateImage).
+        $realEstate = $this->resource;
+        while ($realEstate instanceof JsonResource) {
+            $realEstate = $realEstate->resource;
+        }
+
+        return \App\Support\RealEstateImage::signedUrl($realEstate, 'copy_of_the_authorization_or_agency');
     }
 }

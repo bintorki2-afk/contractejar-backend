@@ -13,6 +13,13 @@ class Step1RealEstateResource extends JsonResource
         $firstRegParts = DateInputNormalizer::splitMysqlDate($this->formatMysqlDate($this->date_first_registration));
         $historyParts = DateInputNormalizer::splitMysqlDate($this->formatMysqlDate($this->instrument_history));
 
+        // When nested (e.g. from Step2RealEstateResource) the wrapped resource may itself
+        // be a JsonResource; unwrap to the underlying RealEstate model for signed URLs.
+        $realEstate = $this->resource;
+        while ($realEstate instanceof JsonResource) {
+            $realEstate = $realEstate->resource;
+        }
+
         return [
             'id' => $this->id,
             'contract_ownership' => $this->contract_ownership,
@@ -42,22 +49,13 @@ class Step1RealEstateResource extends JsonResource
             'date_first_registration_year' => $firstRegParts['year'],
             'type_date_first_registration' => $this->type_date_first_registration ?? 'hijri',
             'name_real_estate' => $this->name_real_estate,
-            'image_instrument' => $this->image_instrument
-                ? asset('storage/'.$this->image_instrument)
-                : null,
-            'copy_of_the_endowment_registration_certificate' => $this->copy_of_the_endowment_registration_certificate
-                ? asset('storage/'.$this->copy_of_the_endowment_registration_certificate)
-                : null,
-            'copy_of_the_trusteeship_deed' => $this->copy_of_the_trusteeship_deed
-                ? asset('storage/'.$this->copy_of_the_trusteeship_deed)
-                : null,
+            // Sensitive legal documents live on the private disk: expose only temporary signed URLs.
+            'image_instrument' => \App\Support\RealEstateImage::signedUrl($realEstate, 'image_instrument'),
+            'copy_of_the_endowment_registration_certificate' => \App\Support\RealEstateImage::signedUrl($realEstate, 'copy_of_the_endowment_registration_certificate'),
+            'copy_of_the_trusteeship_deed' => \App\Support\RealEstateImage::signedUrl($realEstate, 'copy_of_the_trusteeship_deed'),
             'is_multiple_trusteeship_deed_copy' => (bool) $this->is_multiple_trusteeship_deed_copy,
-            'copy_of_guardians_power_of_attorney_for_agent' => $this->copy_of_guardians_power_of_attorney_for_agent
-                ? asset('storage/'.$this->copy_of_guardians_power_of_attorney_for_agent)
-                : null,
-            'image_address' => $this->image_address
-                ? asset('storage/'.$this->image_address)
-                : null,
+            'copy_of_guardians_power_of_attorney_for_agent' => \App\Support\RealEstateImage::signedUrl($realEstate, 'copy_of_guardians_power_of_attorney_for_agent'),
+            'image_address' => \App\Support\RealEstateImage::signedUrl($realEstate, 'image_address'),
             'age_of_the_property' => $this->age_of_the_property,
             'number_of_units_per_floor' => $this->number_of_units_per_floor,
             'property_place_id' => $this->property_place_id,

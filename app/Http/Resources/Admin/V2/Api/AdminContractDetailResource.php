@@ -588,8 +588,9 @@ class AdminContractDetailResource extends JsonResource
             ]),
             $this->instrumentTypeFields($m->instrument_type),
             [
-                'copy_of_guardians_power_of_attorney_for_agent' => $this->publicStorageUrl(
-                    $m->getAttributes()['copy_of_guardians_power_of_attorney_for_agent'] ?? null
+                // RealEstate sensitive docs live on the private disk — signed URL, never a public path.
+                'copy_of_guardians_power_of_attorney_for_agent' => \App\Support\RealEstateImage::signedUrl(
+                    $m, 'copy_of_guardians_power_of_attorney_for_agent'
                 ),
             ]
         );

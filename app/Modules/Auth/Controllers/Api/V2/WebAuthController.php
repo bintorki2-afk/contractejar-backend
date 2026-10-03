@@ -241,7 +241,23 @@ class WebAuthController extends Controller
             return redirect()->away($frontend . '/login?error=social_no_email');
         }
 
+        // Only trust the email when the provider explicitly marks it verified.
+        // Prevents taking over an existing email+password account by signing in
+        // socially with an unverified address (Google consumer accounts always
+        // return true, so there is no impact on the normal flow).
+        $rawUser = method_exists($socialUser, 'getRaw') ? $socialUser->getRaw() : [];
+        $providerVerified = $socialUser->user['email_verified']
+            ?? ($rawUser['email_verified'] ?? null);
+        $emailVerifiedByProvider = $providerVerified === true
+            || $providerVerified === 1
+            || $providerVerified === '1'
+            || $providerVerified === 'true';
+
         $user = User::where('email', $email)->first();
+
+        if ($user && ! $emailVerifiedByProvider) {
+            return redirect()->away($frontend . '/login?error=social_unverified');
+        }
 
         if (! $user) {
             [$fname, $lname] = $this->splitName($socialUser->getName());
