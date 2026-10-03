@@ -272,7 +272,7 @@ class WebAuthController extends Controller
 
         $token = $user->createToken('website')->plainTextToken;
 
-        return redirect()->away($frontend . '/auth/social-callback#token=' . $token);
+        return redirect()->away($frontend . '/social-callback#token=' . $token);
     }
 
     private function socialCallbackUrl(string $provider): string
