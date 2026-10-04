@@ -45,7 +45,8 @@ class SubmitContractStep2Action
         $this->address->applyAddressUrlIfPresent($data, $request, $validated);
 
         if ($request->hasFile('image_address')) {
-            $data['image_address'] = $request->file('image_address')->store('images/contracts', 'public');
+            // Sensitive field (DeedImage::FIELDS): private disk + signed URL, never public.
+            $data['image_address'] = $request->file('image_address')->store('images/contracts', \App\Support\DeedImage::DISK);
         }
 
         $contract->update($data);
