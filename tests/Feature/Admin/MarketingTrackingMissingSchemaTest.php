@@ -96,10 +96,15 @@ class MarketingTrackingMissingSchemaTest extends TestCase
             'fname' => 'خالد',
             'mobile' => '0500000098',
             'password' => Hash::make('password'),
+        ]);
+        // utm_* are not mass-assignable; production sets them server-side via
+        // AttributionService. contracts has no utm columns here (live-like), so
+        // all attribution must come from the user's first touch.
+        $user->forceFill([
             'utm_source' => 'google',
             'utm_campaign' => 'Google Search - High Intent',
             'utm_term' => 'عقد إيجار إلكتروني',
-        ]);
+        ])->save();
 
         $paid = Contract::query()->create([
             'user_id' => $user->id,

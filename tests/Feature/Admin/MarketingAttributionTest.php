@@ -97,9 +97,14 @@ class MarketingAttributionTest extends TestCase
             'fname' => 'سارة',
             'mobile' => '0500000002',
             'password' => Hash::make('password'),
+        ]);
+        // utm_* are not mass-assignable (production sets them server-side via
+        // AttributionService), so persist them the same way before the contract
+        // is created and copies the user's first-touch attribution.
+        $user->forceFill([
             'utm_source' => 'whatsapp',
             'utm_campaign' => 'wa-organic',
-        ]);
+        ])->save();
 
         $this->app->instance('request', Request::create('/contract/start', 'POST'));
 
@@ -120,10 +125,15 @@ class MarketingAttributionTest extends TestCase
             'fname' => 'خالد',
             'mobile' => '0500000003',
             'password' => Hash::make('password'),
+        ]);
+        // utm_* are not mass-assignable; production sets them server-side via
+        // AttributionService. The contract-level attribution is then resolved by
+        // joining users, so seeding the user's first touch is enough.
+        $user->forceFill([
             'utm_source' => 'google',
             'utm_campaign' => 'Google - Awareness Campaign (Display)',
             'utm_term' => 'عقد إيجار إلكتروني',
-        ]);
+        ])->save();
 
         $paid = Contract::query()->create([
             'user_id' => $user->id,
@@ -131,9 +141,6 @@ class MarketingAttributionTest extends TestCase
             'step' => 3,
             'is_delete' => 0,
             'is_completed' => 1,
-            'utm_source' => 'google',
-            'utm_campaign' => 'Google - Awareness Campaign (Display)',
-            'utm_term' => 'عقد إيجار إلكتروني',
         ]);
         Contract::query()->create([
             'user_id' => $user->id,
@@ -141,9 +148,6 @@ class MarketingAttributionTest extends TestCase
             'step' => 3,
             'is_delete' => 0,
             'is_completed' => 0,
-            'utm_source' => 'google',
-            'utm_campaign' => 'Google - Awareness Campaign (Display)',
-            'utm_term' => 'عقد إيجار إلكتروني',
         ]);
 
         Payment::query()->create([
