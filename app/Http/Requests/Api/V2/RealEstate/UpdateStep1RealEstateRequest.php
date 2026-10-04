@@ -228,29 +228,33 @@ class UpdateStep1RealEstateRequest extends BaseApiV2Request
             }
         }
 
+        // Sensitive real-estate documents go to the PRIVATE disk and are served only
+        // through signed URLs (see App\Support\RealEstateImage) — never world-readable.
+        $privateDisk = \App\Support\RealEstateImage::DISK;
+
         if ($this->hasFile('image_instrument')) {
             $data['image_instrument'] = $this->file('image_instrument')
-                ->store('images/real_estates', 'public');
+                ->store('images/real_estates', $privateDisk);
         }
 
         if ($this->hasFile('image_address')) {
             $data['image_address'] = $this->file('image_address')
-                ->store('images/real_estates', 'public');
+                ->store('images/real_estates', $privateDisk);
         }
 
         if ($this->hasFile('copy_of_the_endowment_registration_certificate')) {
             $data['copy_of_the_endowment_registration_certificate'] = $this->file('copy_of_the_endowment_registration_certificate')
-                ->store('real_estates/endowment-registration-certificates', 'public');
+                ->store('real_estates/endowment-registration-certificates', $privateDisk);
         }
 
         if ($this->hasFile('copy_of_the_trusteeship_deed')) {
             $data['copy_of_the_trusteeship_deed'] = $this->file('copy_of_the_trusteeship_deed')
-                ->store('real_estates/trusteeship-deeds', 'public');
+                ->store('real_estates/trusteeship-deeds', $privateDisk);
         }
 
         if ($this->hasFile('copy_of_guardians_power_of_attorney_for_agent')) {
             $data['copy_of_guardians_power_of_attorney_for_agent'] = $this->file('copy_of_guardians_power_of_attorney_for_agent')
-                ->store('real_estates/guardians-power-of-attorney', 'public');
+                ->store('real_estates/guardians-power-of-attorney', $privateDisk);
         }
 
         return $data;

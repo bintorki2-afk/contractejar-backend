@@ -2,43 +2,39 @@
 
 namespace App\Support;
 
-use App\Models\Contract;
+use App\Models\RealEstate;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 
 /**
- * Deed / instrument images must NOT be world-readable from the public disk.
+ * Sensitive real-estate documents (deed, endowment / trusteeship certificates,
+ * powers of attorney, address proof) must NOT be world-readable from the public disk.
  *
- * New uploads go to the private disk ({@see self::DISK}); reads happen only through
- * a temporary signed route ({@see routes} `contracts.deed-image`). Legacy files that
- * still live on the public disk are streamed transparently for backward compatibility.
+ * This mirrors {@see DeedImage} but is keyed to a {@see RealEstate} row. New uploads
+ * go to the private disk ({@see self::DISK}); reads happen only through a temporary
+ * signed route ({@see routes} `real-estates.doc-image`). Legacy files that still live
+ * on the public disk are streamed transparently for backward compatibility.
  */
-final class DeedImage
+final class RealEstateImage
 {
-    /** Private disk for new deed uploads. */
+    /** Private disk for new real-estate document uploads. */
     public const DISK = 'local';
-
-    /** Sub-directory (relative to the disk root) new deed images are stored under. */
-    public const DIR = 'contracts/deeds';
 
     /** Signed-URL lifetime. */
     public const TTL_MINUTES = 30;
 
     /**
-     * Contract columns that hold sensitive deed / identity / legal documents.
+     * RealEstate columns that hold sensitive legal / identity documents.
      * All are stored on the private disk and served only via signed URLs.
      */
     public const FIELDS = [
         'image_instrument',
-        'image_instrument_from_the_front',
-        'image_instrument_from_the_back',
         'image_address',
         'copy_of_the_endowment_registration_certificate',
         'copy_of_the_trusteeship_deed',
-        'Image_inheritance_certificate',
-        'copy_power_of_attorney_from_heirs_to_agent',
         'copy_of_guardians_power_of_attorney_for_agent',
+        'copy_of_the_authorization_or_agency',
     ];
 
     public static function isField(string $field): bool
@@ -47,28 +43,28 @@ final class DeedImage
     }
 
     /**
-     * Temporary signed URL to fetch the deed image for a contract field, or null.
+     * Temporary signed URL to fetch a real-estate document field, or null.
      */
-    public static function signedUrl(Contract $contract, string $field): ?string
+    public static function signedUrl(RealEstate $realEstate, string $field): ?string
     {
         if (! self::isField($field)) {
             return null;
         }
 
-        $raw = $contract->getAttributes()[$field] ?? $contract->{$field} ?? null;
+        $raw = $realEstate->getAttributes()[$field] ?? $realEstate->{$field} ?? null;
         if (! is_string($raw) || trim($raw) === '') {
             return null;
         }
 
         return URL::temporarySignedRoute(
-            'contracts.deed-image',
+            'real-estates.doc-image',
             now()->addMinutes(self::TTL_MINUTES),
-            ['contract' => $contract->getKey(), 'field' => $field]
+            ['realEstate' => $realEstate->getKey(), 'field' => $field]
         );
     }
 
     /**
-     * Resolve [disk, path] for a stored deed value, trying the private disk first and
+     * Resolve [disk, path] for a stored value, trying the private disk first and
      * falling back to the legacy public disk. Returns null when nothing is found.
      *
      * @return array{0: string, 1: string}|null

@@ -129,8 +129,18 @@ class RealEstateControllor extends Controller
         try {
             $user = auth()->user();
             $realEstate = RealEstate::with('units')->where('user_id', $user->id)->findOrFail($id);
-            
-            return $this->apiResponse($realEstate,trans('api.have_real'),200);
+
+            // Same payload shape as before, but sensitive legal documents are exposed
+            // as temporary signed URLs (served from the private disk), never as raw
+            // public /storage paths — keeps the add/edit prefill able to display them.
+            $data = $realEstate->toArray();
+            foreach (\App\Support\RealEstateImage::FIELDS as $field) {
+                if (array_key_exists($field, $data)) {
+                    $data[$field] = \App\Support\RealEstateImage::signedUrl($realEstate, $field);
+                }
+            }
+
+            return $this->apiResponse($data, trans('api.have_real'), 200);
         } catch (ModelNotFoundException $e) {
             return $this->errorMessage(trans('api.not_have_real'));
         }

@@ -62,6 +62,13 @@ return [
         'client_secret' => env('GOOGLE_LOGIN_CLIENT_SECRET'),
     ],
 
+    // Base URL used ONLY to build the social-login (OAuth) redirect/callback URI.
+    // Point it at a branded domain (e.g. https://api.contractejar.com) so Google's
+    // consent screen shows the brand instead of the raw hosting domain — without
+    // changing APP_URL (which would also move every asset and signed-doc URL).
+    // Falls back to APP_URL when unset, so the default behaviour is unchanged.
+    'oauth_base_url' => env('OAUTH_BASE_URL'),
+
     'apple' => [
         // Apple "Sign in with Apple": client_id is the Services ID; client_secret
         // is the JWT generated from your Apple key (.p8). Requires the

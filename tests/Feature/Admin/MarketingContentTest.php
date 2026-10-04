@@ -174,19 +174,21 @@ class MarketingContentTest extends TestCase
             'fname' => 'خالد',
             'mobile' => '0500000011',
             'password' => Hash::make('password'),
+        ]);
+        // utm_* are not mass-assignable; production sets them server-side via
+        // AttributionService. Attribution is resolved by joining users, so
+        // seeding the user's first touch drives the article attribution.
+        $user->forceFill([
             'utm_source' => 'google',
             'utm_content' => $published->slug,
             'utm_campaign' => $published->slug,
-        ]);
+        ])->save();
         $paid = Contract::query()->create([
             'user_id' => $user->id,
             'contract_type' => 'housing',
             'step' => 3,
             'is_delete' => 0,
             'is_completed' => 1,
-            'utm_source' => 'google',
-            'utm_content' => $published->slug,
-            'utm_campaign' => $published->slug,
         ]);
         Payment::query()->create([
             'contract_uuid' => (string) $paid->uuid,

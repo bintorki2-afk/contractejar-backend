@@ -241,7 +241,23 @@ class WebAuthController extends Controller
             return redirect()->away($frontend . '/login?error=social_no_email');
         }
 
+        // Only trust the email when the provider explicitly marks it verified.
+        // Prevents taking over an existing email+password account by signing in
+        // socially with an unverified address (Google consumer accounts always
+        // return true, so there is no impact on the normal flow).
+        $rawUser = method_exists($socialUser, 'getRaw') ? $socialUser->getRaw() : [];
+        $providerVerified = $socialUser->user['email_verified']
+            ?? ($rawUser['email_verified'] ?? null);
+        $emailVerifiedByProvider = $providerVerified === true
+            || $providerVerified === 1
+            || $providerVerified === '1'
+            || $providerVerified === 'true';
+
         $user = User::where('email', $email)->first();
+
+        if ($user && ! $emailVerifiedByProvider) {
+            return redirect()->away($frontend . '/login?error=social_unverified');
+        }
 
         if (! $user) {
             [$fname, $lname] = $this->splitName($socialUser->getName());
@@ -277,7 +293,11 @@ class WebAuthController extends Controller
 
     private function socialCallbackUrl(string $provider): string
     {
-        return rtrim((string) config('app.url'), '/') . '/api/v2/auth/web/' . $provider . '/callback';
+        // Prefer the dedicated OAuth base (a branded domain) so the redirect URI
+        // Google displays is on contractejar.com; fall back to APP_URL otherwise.
+        $base = rtrim((string) (config('services.oauth_base_url') ?: config('app.url')), '/');
+
+        return $base . '/api/v2/auth/web/' . $provider . '/callback';
     }
 
     /** @return array{0: string, 1: ?string} */

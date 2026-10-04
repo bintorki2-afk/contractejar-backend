@@ -35,9 +35,7 @@ class Step2Resource extends JsonResource
            // 'name_real_estate' => $this->name_real_estate,
             // Deed images live on the private disk: expose only the temporary signed URL.
             'image_instrument' => \App\Support\DeedImage::signedUrl($this->resource, 'image_instrument'),
-            'image_address' => $this->image_address
-                ? asset('storage/'.$this->image_address)
-                : null,
+            'image_address' => \App\Support\DeedImage::signedUrl($this->resource, 'image_address'),
             'address_url' => $this->address_url,
             'age_of_the_property' => $this->age_of_the_property,
             'number_of_units_per_floor' => $this->number_of_units_per_floor,
