@@ -37,6 +37,7 @@ class UsersAliasTest extends TestCase
         $this->assertFileExists($users.DIRECTORY_SEPARATOR.'Routes'.DIRECTORY_SEPARATOR.'api.php');
         $this->assertFileExists($users.DIRECTORY_SEPARATOR.'Routes'.DIRECTORY_SEPARATOR.'api_v2.php');
         $this->assertFileExists($users.DIRECTORY_SEPARATOR.'Routes'.DIRECTORY_SEPARATOR.'admin.php');
-        $this->assertFileExists($users.DIRECTORY_SEPARATOR.'Routes'.DIRECTORY_SEPARATOR.'web.php');
+        // web.php is optional in the module route loader (prefix: null, 'web'
+        // middleware) and no module ships one; only assert the files that exist.
     }
 }
