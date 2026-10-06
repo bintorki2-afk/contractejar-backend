@@ -154,6 +154,12 @@ class UserOtpService
 
     public function generatePlain(): string
     {
+        // Temporary review mode: a fixed code via OTP_FIXED_CODE (see config/otp.php).
+        $fixed = trim((string) config('otp.fixed_code', ''));
+        if ($fixed !== '' && ctype_digit($fixed)) {
+            return $fixed;
+        }
+
         $length = max(4, min(8, (int) config('otp.length', 4)));
         $min = 10 ** ($length - 1);
         $max = (10 ** $length) - 1;
