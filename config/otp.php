@@ -33,6 +33,19 @@ return [
     */
     'length' => (int) env('OTP_LENGTH', 4),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Fixed review code (TEMPORARY — testing only)
+    |--------------------------------------------------------------------------
+    |
+    | When OTP_FIXED_CODE is set (e.g. "1111"), every issued OTP equals this
+    | value so the app can be reviewed without SMS delivery. Leave it EMPTY in
+    | production once SMS is live. The code is still hashed/verified/consumed
+    | and rate-limited exactly like a random one.
+    |
+    */
+    'fixed_code' => env('OTP_FIXED_CODE'),
+
     'ttl_minutes' => (int) env('OTP_TTL_MINUTES', 10),
 
     'max_attempts' => (int) env('OTP_MAX_ATTEMPTS', 5),
