@@ -15,6 +15,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         pdo_mysql mbstring bcmath gd zip exif pcntl intl opcache \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# ----- PHP upload limits (deed/address images from the app can reach ~5MB each) ---
+RUN printf 'upload_max_filesize=25M\npost_max_size=40M\nmemory_limit=256M\nmax_execution_time=120\nmax_input_time=120\n' \
+    > /usr/local/etc/php/conf.d/zz-uploads.ini
+
 # ----- Composer -------------------------------------------------------------
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
