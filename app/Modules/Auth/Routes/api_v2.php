@@ -6,6 +6,9 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->controller(AuthController::class)->group(function () {
     Route::post('/login', 'login')->middleware('throttle:login');
+    // Passwordless phone login (mobile + OTP only, no name/email/password).
+    Route::post('/otp/request', 'requestOtp')->middleware('throttle:otp-send');
+    Route::post('/otp/verify', 'otpLogin')->middleware('throttle:otp-verify');
     Route::post('/signup', 'signup')->middleware('throttle:otp-send');
     Route::post('/verification', 'verification')->middleware('throttle:otp-verify');
     Route::post('/resend', 'resend')->middleware('throttle:otp-send');

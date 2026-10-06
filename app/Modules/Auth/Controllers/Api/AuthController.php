@@ -7,8 +7,10 @@ use App\Modules\Auth\Actions\ConfirmResetPasswordCodeAction;
 use App\Modules\Auth\Actions\ForgotPasswordAction;
 use App\Modules\Auth\Actions\LoginUserAction;
 use App\Modules\Auth\Actions\ResendVerificationAction;
+use App\Modules\Auth\Actions\RequestOtpLoginAction;
 use App\Modules\Auth\Actions\ResetUserPasswordAction;
 use App\Modules\Auth\Actions\SignupUserAction;
+use App\Modules\Auth\Actions\VerifyOtpLoginAction;
 use App\Modules\Auth\Actions\VerifyUserAction;
 use App\Modules\Auth\Requests\Api\ForgotPasswordRequest;
 use App\Modules\Auth\Requests\Api\LoginUserRequest;
@@ -70,6 +72,42 @@ class AuthController extends Controller
         }
 
         return $this->errorMessage($outcome['message'], $outcome['code'] ?? 400);
+    }
+
+    /**
+     * Passwordless login — step 1: send an OTP to the mobile number.
+     * Creates a minimal account for a first-time number. No name/email/password.
+     */
+    public function requestOtp(Request $request, RequestOtpLoginAction $action)
+    {
+        $request->validate(['mobile' => ['required', 'string']]);
+
+        $outcome = $action->execute($request);
+
+        if ($outcome['ok']) {
+            return $this->successMessage(trans('api.send_otp_success'));
+        }
+
+        return $this->errorMessage($outcome['message'], $outcome['code'] ?? 400);
+    }
+
+    /**
+     * Passwordless login — step 2: verify the OTP and return an auth token.
+     */
+    public function otpLogin(Request $request, VerifyOtpLoginAction $action)
+    {
+        $request->validate([
+            'mobile' => ['required', 'string'],
+            'verification_code' => ['required', 'string'],
+        ]);
+
+        $outcome = $action->execute($request);
+
+        if (! $outcome['ok']) {
+            return $this->errorMessage($outcome['message'], $outcome['code'] ?? 400);
+        }
+
+        return $this->apiResponse($outcome['result'], trans('api.login_success'));
     }
 
     public function forgotPassword(ForgotPasswordRequest $request, ForgotPasswordAction $action)
