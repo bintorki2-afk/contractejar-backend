@@ -86,6 +86,9 @@ class Step1Request extends BaseApiV2Request
                 'mimes:jpg,jpeg,png,webp,pdf',
                 'max:10240',
             ],
+            // صفحات إضافية للصك (الصك الورقي متعدد الصفحات) — حتى 10 ملفات.
+            'image_instrument_pages' => ['nullable', 'array', 'max:10'],
+            'image_instrument_pages.*' => ['file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:10240'],
             'image_address' => 'nullable|image|max:10240',
             'address_url' => 'nullable|string|max:2048',
             'instrument_number' => 'nullable|string|max:255',

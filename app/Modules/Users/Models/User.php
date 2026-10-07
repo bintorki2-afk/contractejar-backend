@@ -41,6 +41,9 @@ class User extends Authenticatable implements MustVerifyEmail
         'fcm_token',
         'platform',
         'is_active',
+        'is_guest',
+        'contact_mobile',
+        'merged_into_user_id',
     ];
 
     protected $appends = ['name', 'photo_path', 'status', 'fcm_token', 'created_at_label', 'mobile', 'email'];
@@ -49,6 +52,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
         'is_active' => 'boolean',
+        'is_guest' => 'boolean',
         'attributed_at' => 'datetime',
         'verification_code_expires_at' => 'datetime',
         'verification_locked_until' => 'datetime',
@@ -107,6 +111,12 @@ class User extends Authenticatable implements MustVerifyEmail
     public function isActive()
     {
         return $this->is_active == 1;
+    }
+
+    /** جلسة زائر من الموقع (بدون رقم دخول) — تُدمج لاحقاً في حساب موثّق. */
+    public function isGuest(): bool
+    {
+        return (bool) $this->is_guest;
     }
 
     public static function generateVerificationCode(): string

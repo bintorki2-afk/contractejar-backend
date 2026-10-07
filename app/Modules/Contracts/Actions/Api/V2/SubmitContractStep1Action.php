@@ -93,6 +93,17 @@ class SubmitContractStep1Action
             $step1Data['image_instrument'] = $validated['image_instrument'];
         }
 
+        // صفحات الصك الإضافية: تُستبدل القائمة كاملة عند إرسالها (العميل يرسل كل الصفحات).
+        if ($request->hasFile('image_instrument_pages')) {
+            $pages = [];
+            foreach ((array) $request->file('image_instrument_pages') as $page) {
+                if ($page instanceof \Illuminate\Http\UploadedFile && $page->isValid()) {
+                    $pages[] = $page->store(\App\Support\DeedImage::DIR, \App\Support\DeedImage::DISK);
+                }
+            }
+            $step1Data['image_instrument_pages'] = $pages;
+        }
+
         foreach (['image_instrument_from_the_front', 'image_instrument_from_the_back'] as $deedImageField) {
             if ($request->hasFile($deedImageField)) {
                 $step1Data[$deedImageField] = $request->file($deedImageField)->store(\App\Support\DeedImage::DIR, \App\Support\DeedImage::DISK);

@@ -67,6 +67,36 @@ final class DeedImage
         );
     }
 
+    /** مفتاح صفحات الصك الإضافية (JSON في `contracts.image_instrument_pages`). */
+    public const PAGES_FIELD = 'image_instrument_pages';
+
+    /**
+     * Signed URLs for the extra deed pages, in order (empty when none).
+     *
+     * @return list<string>
+     */
+    public static function signedPageUrls(Contract $contract): array
+    {
+        $pages = $contract->image_instrument_pages;
+        if (! is_array($pages) || $pages === []) {
+            return [];
+        }
+
+        $urls = [];
+        foreach (array_values($pages) as $index => $path) {
+            if (! is_string($path) || trim($path) === '') {
+                continue;
+            }
+            $urls[] = URL::temporarySignedRoute(
+                'contracts.deed-page',
+                now()->addMinutes(self::TTL_MINUTES),
+                ['contract' => $contract->getKey(), 'index' => $index]
+            );
+        }
+
+        return $urls;
+    }
+
     /**
      * Resolve [disk, path] for a stored deed value, trying the private disk first and
      * falling back to the legacy public disk. Returns null when nothing is found.

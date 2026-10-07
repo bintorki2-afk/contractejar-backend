@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Contracts\Controllers\Api\V2\ContractController as V2ContractController;
+use App\Modules\Contracts\Controllers\Api\V2\ContractTrackController;
 use App\Modules\Contracts\Controllers\Api\V2\DeedImageController;
 use App\Modules\Contracts\Controllers\Api\V2\UncompeleteContractController as V2UncompeleteContractController;
 use Illuminate\Support\Facades\Route;
@@ -10,6 +11,15 @@ use Illuminate\Support\Facades\Route;
 Route::get('/contracts/{contract}/deed-image/{field}', [DeedImageController::class, 'show'])
     ->middleware('signed')
     ->name('contracts.deed-image');
+Route::get('/contracts/{contract}/deed-page/{index}', [DeedImageController::class, 'page'])
+    ->whereNumber('index')
+    ->middleware('signed')
+    ->name('contracts.deed-page');
+
+// تتبّع الطلب بدون حساب (الموقع): رقم الطلب + الجوال. عام ومقيّد.
+Route::post('/contract/track', [ContractTrackController::class, 'track'])
+    ->middleware('throttle:payment-public')
+    ->name('v2.contract.track');
 
 Route::middleware(['auth:sanctum', 'ensure.customer'])->group(function () {
     Route::prefix('contract')->name('v2.contract.')->controller(V2ContractController::class)->group(function () {

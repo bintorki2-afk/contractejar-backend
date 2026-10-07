@@ -67,6 +67,7 @@ class Step1Resource extends JsonResource
             'property_usages_id' => $this->property_usages_id,
             // Deed/instrument images are private: temporary signed URLs, not public paths.
             'image_instrument' => \App\Support\DeedImage::signedUrl($this->resource, 'image_instrument'),
+            'image_instrument_pages' => \App\Support\DeedImage::signedPageUrls($this->resource),
             'image_instrument_from_the_front' => \App\Support\DeedImage::signedUrl($this->resource, 'image_instrument_from_the_front'),
             'image_instrument_from_the_back' => \App\Support\DeedImage::signedUrl($this->resource, 'image_instrument_from_the_back'),
             'age_of_the_property' => $this->age_of_the_property,

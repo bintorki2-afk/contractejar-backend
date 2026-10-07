@@ -21,6 +21,10 @@ class OfferResource extends JsonResource
             'title' => $this->title,
             'body' => $this->body,
             'is_read' => (bool) $this->is_read,
+            // ربط الإشعار بالطلب: يفتح التطبيق/الموقع الطلب مباشرة بدل البحث بالنص.
+            'contract_id' => $this->contract_id,
+            'contract_uuid' => $this->contract_id ? (string) optional($this->contract)->uuid : null,
+            'order_number' => $this->contract_id ? (string) optional($this->contract)->uuid : null,
             'created_at' => date('Y-m-d H:i A', strtotime($this->created_at))
         ];
     }

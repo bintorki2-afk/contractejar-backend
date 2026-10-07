@@ -105,6 +105,7 @@ class AccountController extends Controller
         }
 
         $notifications = Offer::query()
+            ->with('contract:id,uuid')
             ->where(function ($query) use ($user) {
                 $query->where('user_id', $user->id)
                     ->orWhereNull('user_id');
