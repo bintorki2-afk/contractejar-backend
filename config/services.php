@@ -82,6 +82,10 @@ return [
         'base_url' => env('MOYASAR_BASE_URL', 'https://api.moyasar.com'),
         'secret_key' => env('MOYASAR_SECRET_KEY'),
         'publishable_key' => env('MOYASAR_PUBLISHABLE_KEY'),
+        // Apple Pay inside the mobile app (Moyasar SDK): Apple merchant identifier
+        // (merchant.com.contractejar.app) registered in Apple Developer + Moyasar.
+        'apple_merchant_id' => env('MOYASAR_APPLE_MERCHANT_ID'),
+        'apple_merchant_display_name' => env('MOYASAR_APPLE_MERCHANT_DISPLAY_NAME', 'عقد إيجار'),
         'currency' => env('MOYASAR_CURRENCY', 'SAR'),
         // Hosted invoice / payment page language. Arabic by default.
         'locale' => env('MOYASAR_LOCALE', 'ar'),

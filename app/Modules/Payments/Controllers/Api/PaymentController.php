@@ -280,6 +280,12 @@ class PaymentController extends Controller
         return str_contains($accept, 'application/json');
     }
 
+    /** GET /payment/apple-pay/{uuid} — إعدادات Apple Pay داخل التطبيق + المبلغ من الخادم. */
+    public function applePayConfig(string $uuid)
+    {
+        return $this->apiResponse($this->paymentService->applePayConfig((string) $uuid), trans('api.success'));
+    }
+
     public function syncFromGateway(Request $request, string $uuid)
     {
         return $this->apiResponse(
