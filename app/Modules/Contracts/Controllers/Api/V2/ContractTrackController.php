@@ -46,6 +46,7 @@ class ContractTrackController extends Controller
             'order_number' => (string) $contract->uuid,
             'id' => $contract->id,
             'uuid' => (string) $contract->uuid,
+            'smart_link' => \App\Support\SmartLink::for($contract),
             'contract_type' => $contract->contract_type,
             'name_real_estate' => $contract->name_real_estate,
             'step' => (int) $contract->step,

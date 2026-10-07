@@ -83,6 +83,7 @@ class AdminContractDetailResource extends JsonResource
 
         return array_merge($full, $enriched, $this->step4TenantFields($c), $this->ownerAndDateSplitFields($c, $full), $this->returnOrderFields(), $this->returnAcceptanceFields(), $this->contractPaymentFields(), $this->displayAliases($c, $frontend), $receivedTiming, [
             'image_instrument_pages' => \App\Support\DeedImage::signedPageUrls($c),
+            'smart_link' => \App\Support\SmartLink::for($c),
             'relation_labels' => $this->relationLabels($c),
             'documentation_deadline_at' => $c->documentationDeadlineAt()?->format('Y-m-d H:i:s'),
             'status_case' => $this->statusCasePayload($c, $full),

@@ -125,6 +125,7 @@ class ContractFrontendStatus
             'type' => 'contract_status_changed',
             'contract_id' => (string) $contract->id,
             'contract_uuid' => (string) ($contract->uuid ?? ''),
+            'url' => SmartLink::for($contract),
             'status' => (string) $payload['status'],
             'status_label' => (string) $payload['status_label'],
             'status_type' => (string) $payload['status_type'],

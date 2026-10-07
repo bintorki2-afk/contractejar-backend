@@ -20,6 +20,7 @@ class ContractResource extends JsonResource
         return $this->withDocumentationDeadline([
             'id' => $this->id,
             'uuid' => $this->uuid,
+            'smart_link' => \App\Support\SmartLink::for($this->resource),
             'contract_type' => $this->contract_type,
             'contract_ownership' => $this->contract_ownership,
             'duration_preset' => $this->duration_preset,
