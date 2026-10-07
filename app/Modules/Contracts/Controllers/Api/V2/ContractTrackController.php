@@ -32,6 +32,25 @@ class ContractTrackController extends Controller
         $contract = $this->findByOrder(trim($data['order']));
         $variants = AuthMobile::lookupVariants($data['mobile']);
 
+        if ($contract === null) {
+            // طلب خدمة «تغيير المؤجر» بنفس رقم الطلب + الجوال.
+            $lessorChange = $this->findLessorChange(trim($data['order']), $variants);
+            if ($lessorChange !== null) {
+                return $this->apiResponse(array_merge($lessorChange->toClientArray(), [
+                    'contract_type' => 'lessor_change',
+                    'name_real_estate' => null,
+                    'step' => null,
+                    'is_draft' => false,
+                    'status_client_explanation' => $lessorChange->status_note,
+                    'timeline' => array_values(array_filter([
+                        ['status_label' => 'تم إنشاء الطلب', 'at' => optional($lessorChange->created_at)->toDateTimeString()],
+                        $lessorChange->paid_at ? ['status_label' => 'تم الدفع', 'at' => $lessorChange->paid_at->toDateTimeString()] : null,
+                        $lessorChange->completed_at ? ['status_label' => 'اكتمل الطلب', 'at' => $lessorChange->completed_at->toDateTimeString()] : null,
+                    ])),
+                ]), trans('api.success'));
+            }
+        }
+
         if ($contract === null || ! $this->mobileMatches($contract, $variants)) {
             // رسالة واحدة للحالتين حتى لا يُستخدم المسار لتخمين أرقام الطلبات.
             return $this->errorMessage(trans('api.not_found'), 404);
@@ -83,6 +102,30 @@ class ContractTrackController extends Controller
         }
 
         return (clone $base)->where('uuid', $order)->first();
+    }
+
+    /** @param  list<string>  $variants */
+    private function findLessorChange(string $order, array $variants): ?\App\Models\LessorChangeRequest
+    {
+        $digits = ltrim(preg_replace('/\D+/', '', $order) ?? '', '0');
+        if ($digits === '') {
+            return null;
+        }
+
+        $row = \App\Models\LessorChangeRequest::findByUuid($digits);
+        if ($row === null) {
+            return null;
+        }
+        $row->loadMissing('user');
+
+        $candidates = array_filter([$row->mobile, $row->user?->contact_mobile, $row->user?->mobile]);
+        foreach ($candidates as $candidate) {
+            if (array_intersect(AuthMobile::lookupVariants((string) $candidate), $variants) !== []) {
+                return $row;
+            }
+        }
+
+        return null;
     }
 
     /** @param  list<string>  $variants */

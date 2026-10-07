@@ -117,7 +117,7 @@ class CatalogLookupController extends Controller
     public function contractPeriods(FilterByContractTypeRequest $request)
     {
         $type = (string) $request->contract_type;
-        $contractPeriods = $this->rememberCatalog('contract-periods.'.$type, fn () => ContractPeriod::where('contract_type', $type)->get());
+        $contractPeriods = $this->rememberCatalog('contract-periods.v2.'.$type, fn () => ContractPeriod::where('contract_type', $type)->where('is_active', true)->orderBy('months')->get());
 
         return $this->apiResponse(ContractPeriodResource::collection($contractPeriods), trans('api.success'));
     }

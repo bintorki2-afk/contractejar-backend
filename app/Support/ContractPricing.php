@@ -16,7 +16,9 @@ use App\Services\CouponDiscountResolver;
  *  - The documentation fee comes from ONE place (DocFee rules; legacy ContractPeriod as a fallback).
  *    No double counting of service/application fees.
  *  - VAT is proportional: vat = fee * vat_rate% (rate read from settings.vat_rate; currently 0 => VAT 0).
- *  - total = fee + vat + meter_fees - coupon (meter fees are a genuine, separate, conditional charge).
+ *  - document_surcharge = fixed one-time fee for special deed types (DocumentSurcharge, settings-driven).
+ *  - total = fee + document_surcharge + vat + meter_fees - coupon (meter fees are a genuine, separate, conditional charge).
+ *  - The shared-meter monthly amount is a contract TERM between the parties, never part of our total.
  *  - When vat == 0 it is displayed as "مجانًا".
  */
 final class ContractPricing
@@ -98,6 +100,7 @@ final class ContractPricing
         $rate = self::vatRate($setting);
         $vat = round($fee * $rate / 100, 2);
         $meter = MeterFees::forContract($contract, $setting);
+        $surcharge = DocumentSurcharge::forContract($contract, $setting);
 
         $coupon = 0.0;
         if ($applyCoupon && filled($contract->uuid)) {
@@ -108,17 +111,19 @@ final class ContractPricing
             }
         }
 
-        $total = round(max(0, $fee + $vat + $meter['meter_fees_total'] - $coupon), 2);
+        $total = round(max(0, $fee + $surcharge + $vat + $meter['meter_fees_total'] - $coupon), 2);
 
         return [
             'fee' => round($fee, 2),
+            'document_surcharge' => round($surcharge, 2),
+            'document_surcharge_applies' => $surcharge > 0,
             'vat_rate' => $rate,
             'vat' => $vat,
             'vat_label' => self::vatLabel($vat),
             'meter_fees' => $meter,
             'meter_fees_total' => $meter['meter_fees_total'],
             'coupon' => round($coupon, 2),
-            'subtotal' => round($fee, 2),
+            'subtotal' => round($fee + $surcharge, 2),
             'total' => $total,
             'doc_fee_summary' => $docFeeSummary,
         ];

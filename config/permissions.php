@@ -38,6 +38,7 @@ return [
         'draft_contract_statuses' => ['ar' => 'حالات المسودة', 'en' => 'Draft Contract Statuses'],
         'contract_periods' => ['ar' => 'مدة الطلب', 'en' => 'Order duration'],
         'contract_whatsapp' => ['ar' => 'طلبات واتساب', 'en' => 'Contract WhatsApp'],
+        'lessor_change' => ['ar' => 'طلبات تغيير المؤجر', 'en' => 'Lessor change requests'],
         'instrument_settings' => ['ar' => 'إعدادات نوع الصك', 'en' => 'Instrument Type Settings'],
         'coupons' => ['ar' => 'الكوبونات', 'en' => 'Coupons'],
         'blogs' => ['ar' => 'المدونة', 'en' => 'Blogs'],
@@ -62,6 +63,7 @@ return [
      * @var array<string, string>
      */
     'screens' => [
+        'lessor-change' => 'lessor_change',
         'unit-types' => 'property_reference',
         'unit-usage' => 'property_reference',
         'property-types' => 'property_reference',

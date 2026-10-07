@@ -40,8 +40,8 @@ return new class extends Migration
             $table->integer('window_ac')->nullable();
             $table->integer('split_ac')->nullable();
             $table->enum('contract_type', ['housing', 'commercial'])->nullable();
-            $table->enum('electricity_meter_ownership', ['owner', 'tenant'])->nullable();
-            $table->enum('water_meter_ownership', ['owner', 'tenant'])->nullable();
+            $table->enum('electricity_meter_ownership', ['owner', 'tenant', 'shared'])->nullable();
+            $table->enum('water_meter_ownership', ['owner', 'tenant', 'shared'])->nullable();
             $table->foreign('real_estates_units_id', 'real_units_real_estates_units_id_foreign')->references('id')->on('real_estates')->nullOnDelete();
             $table->foreign('unit_type_id', 'real_units_unit_type_id_foreign')->references('id')->on('unit_types')->nullOnDelete();
             $table->foreign('unit_usage_id', 'real_units_unit_usage_id_foreign')->references('id')->on('unit_usages')->nullOnDelete();

@@ -79,6 +79,9 @@ class ContractFinancialService
             'vat_label' => $pricing['vat_label'],
             'electricity_meter_fee' => $meterFees['electricity_meter_fee'],
             'water_meter_fee' => $meterFees['water_meter_fee'],
+            'document_surcharge' => $pricing['document_surcharge'],
+            'document_surcharge_applies' => $pricing['document_surcharge_applies'],
+            'shared_meters' => $meterFees['shared_meters'] ?? null,
         ];
 
         if ($docFeeSummary) {
@@ -111,10 +114,13 @@ class ContractFinancialService
             'additional_services' => $services,
             'services_total' => (float) $pricingRows->sum(fn ($service) => (float) $service->price),
             'fee' => $pricing['fee'],
+            'document_surcharge' => $pricing['document_surcharge'],
+            'document_surcharge_applies' => $pricing['document_surcharge_applies'],
             'vat' => $pricing['vat'],
             'vat_rate' => $pricing['vat_rate'],
             'vat_label' => $pricing['vat_label'],
             'meter_fees_total' => $pricing['meter_fees_total'],
+            'shared_meters' => $meterFees['shared_meters'] ?? null,
             'total_price' => $pricing['total'],
         ];
 

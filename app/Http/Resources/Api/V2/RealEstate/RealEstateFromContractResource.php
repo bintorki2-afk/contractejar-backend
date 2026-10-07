@@ -26,6 +26,7 @@ class RealEstateFromContractResource extends JsonResource
     {
         return [
             'user_id' => $this->userId,
+            'source_contract_id' => $this->resource->id,
             'property_owner_iban' => $this->property_owner_iban,
             'contract_type' => $this->contract_type,
             'date_first_registration' => $this->date_first_registration,

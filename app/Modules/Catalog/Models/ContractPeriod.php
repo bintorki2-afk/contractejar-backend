@@ -17,6 +17,8 @@ class ContractPeriod extends Model
         'note_en',
         'contract_type',
         'price',
+        'months',
+        'is_active',
     ];
 
     protected $appends = ['created_at_label', 'note_trans'];

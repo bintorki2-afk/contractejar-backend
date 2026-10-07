@@ -11,12 +11,12 @@ class SettingsSeeder extends Seeder
     {
         $settings = [
             'whatsapp' => '966501234567',
-            'instagram' => 'https://instagram.com/aqdi',
-            'twitter' => 'https://twitter.com/aqdi',
-            'snapchat' => 'aqdi_app',
-            'facebook' => 'https://facebook.com/aqdi',
-            'tiktok' => 'https://tiktok.com/@aqdi',
-            'linkedIn' => 'https://linkedin.com/company/aqdi',
+            'instagram' => null,
+            'twitter' => null,
+            'snapchat' => null,
+            'facebook' => null,
+            'tiktok' => null,
+            'linkedIn' => null,
             'whatsapp_contact' => '966501234567',
             'whatsapp_contract' => '966501234567',
             'housing_tax' => 15,

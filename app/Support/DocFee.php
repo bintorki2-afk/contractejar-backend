@@ -14,7 +14,53 @@ final class DocFee
 
     public const COMMERCIAL_FIRST_YEAR = 349.0;
 
-    public const COMMERCIAL_EXTRA_YEAR = 500.0;
+    public const COMMERCIAL_EXTRA_YEAR = 250.0;
+
+    /** القيم الفعلية تُقرأ من الإعدادات (قابلة للتعديل من لوحة التحكم)؛ الثوابت أعلاه احتياط فقط. */
+    private static ?array $settingsCache = null;
+
+    public static function flushSettingsCache(): void
+    {
+        self::$settingsCache = null;
+    }
+
+    /** @return array{housing_first: float, housing_extra: float, commercial_first: float, commercial_extra: float} */
+    public static function rates(): array
+    {
+        if (self::$settingsCache !== null) {
+            return self::$settingsCache;
+        }
+
+        $defaults = [
+            'housing_first' => self::HOUSING_FIRST_YEAR,
+            'housing_extra' => self::HOUSING_EXTRA_YEAR,
+            'commercial_first' => self::COMMERCIAL_FIRST_YEAR,
+            'commercial_extra' => self::COMMERCIAL_EXTRA_YEAR,
+        ];
+
+        try {
+            $setting = \App\Models\Setting::query()->first();
+        } catch (\Throwable) {
+            $setting = null;
+        }
+
+        if ($setting) {
+            $map = [
+                'housing_first' => 'doc_fee_housing_first_year',
+                'housing_extra' => 'doc_fee_housing_extra_year',
+                'commercial_first' => 'doc_fee_commercial_first_year',
+                'commercial_extra' => 'doc_fee_commercial_extra_year',
+            ];
+            foreach ($map as $key => $column) {
+                $value = $setting->getAttribute($column);
+                if ($value !== null && is_numeric($value) && (float) $value > 0) {
+                    $defaults[$key] = (float) $value;
+                }
+            }
+        }
+
+        return self::$settingsCache = $defaults;
+    }
 
     public const PRESETS = [
         '3_months' => 3,
@@ -69,17 +115,17 @@ final class DocFee
     /** السنة الأولى */
     public static function firstYearFee(string $contractType): float
     {
-        return $contractType === 'commercial'
-            ? self::COMMERCIAL_FIRST_YEAR
-            : self::HOUSING_FIRST_YEAR;
+        $rates = self::rates();
+
+        return $contractType === 'commercial' ? $rates['commercial_first'] : $rates['housing_first'];
     }
 
     /** كل سنة إضافية */
     public static function extraYearFee(string $contractType): float
     {
-        return $contractType === 'commercial'
-            ? self::COMMERCIAL_EXTRA_YEAR
-            : self::HOUSING_EXTRA_YEAR;
+        $rates = self::rates();
+
+        return $contractType === 'commercial' ? $rates['commercial_extra'] : $rates['housing_extra'];
     }
 
     /** الرقم فقط */
@@ -180,9 +226,16 @@ final class DocFee
             return null;
         }
 
-        $period = $contract->relationLoaded('contractTermInYears')
-            ? $contract->contractTermInYears?->period
-            : $contract->contractTermInYears()->value('period');
+        $row = $contract->relationLoaded('contractTermInYears')
+            ? $contract->contractTermInYears
+            : $contract->contractTermInYears()->first();
+
+        // الأشهر الصريحة من جدول المدد (سنة = 12 / سنتين = 24) لها الأولوية على تحليل النص.
+        if ($row !== null && isset($row->months) && (int) $row->months > 0) {
+            return (int) $row->months;
+        }
+
+        $period = $row?->period;
 
         if ($period === null) {
             // Dangling id (period row deleted): still a chosen duration → one billable year.

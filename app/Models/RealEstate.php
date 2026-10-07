@@ -71,7 +71,7 @@ class RealEstate extends Model
         'mobile',
         'iban_bank',
         'name_owner','property_owner_id_num', 'property_owner_dob_hijri', 'property_owner_mobile', 'property_owner_iban', 'name_real_estate', 
-        'number_of_units_in_realestate', 'property_type_id', 'property_usages_id', 'property_place_id', 'neighborhood','user_id',
+        'number_of_units_in_realestate', 'property_type_id', 'property_usages_id', 'property_place_id', 'neighborhood','user_id', 'source_contract_id',
         'contract_type','instrument_type','id_num_of_property_owner_agent','id_num_of_property_owner_agent ',
         'property_city_id', 'street', 'number_of_floors','building_number',
         'postal_code','extra_figure','real_estate_registry_number'

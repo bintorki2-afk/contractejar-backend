@@ -39,6 +39,8 @@ class ContractUnitsService
             'water_meter',
             'electricity_meter_ownership',
             'water_meter_ownership',
+            'electricity_shared_monthly_fee',
+            'water_shared_monthly_fee',
             'Number_parking_spaces',
             'contract_type',
         ];
@@ -258,6 +260,10 @@ class ContractUnitsService
             'water_meter' => (int) filter_var($payload['water_meter'] ?? false, FILTER_VALIDATE_BOOLEAN),
             'electricity_meter_ownership' => $this->nullableOwnership($payload['electricity_meter_ownership'] ?? null),
             'water_meter_ownership' => $this->nullableOwnership($payload['water_meter_ownership'] ?? null),
+            'electricity_shared_monthly_fee' => ($payload['electricity_meter_ownership'] ?? null) === 'shared' && isset($payload['electricity_shared_monthly_fee'])
+                ? (float) $payload['electricity_shared_monthly_fee'] : null,
+            'water_shared_monthly_fee' => ($payload['water_meter_ownership'] ?? null) === 'shared' && isset($payload['water_shared_monthly_fee'])
+                ? (float) $payload['water_shared_monthly_fee'] : null,
         ];
 
         if (array_key_exists('Number_parking_spaces', $payload)) {

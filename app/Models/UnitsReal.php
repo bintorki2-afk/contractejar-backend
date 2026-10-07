@@ -21,7 +21,7 @@ class UnitsReal extends Model
             'The_number_of_halls', 'The_number_of_kitchens', 'property_city_id', 'unit_area','water_meter_number','electricity_meter_number',
             'unit_number','unit_usage_id','unit_type_id','floor_number', 'real_estates_units_id','Number_parking_spaces',
             'kitchen_tank', 'furnished', 'type_furnished', 'electricity_meter', 'water_meter',
-            'electricity_meter_ownership', 'water_meter_ownership',
+            'electricity_meter_ownership', 'water_meter_ownership', 'electricity_shared_monthly_fee', 'water_shared_monthly_fee',
             'number_of_rooms', 'The_number_of_the_toilet', 'Services', 'is_deleted', 'contract_type',
     ];
 

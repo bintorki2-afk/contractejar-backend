@@ -2,7 +2,6 @@
 
 namespace App\Models\Concerns;
 
-use Illuminate\Support\Facades\Schema;
 
 trait MapsRealEstateOwnerAttributes
 {
@@ -29,8 +28,8 @@ trait MapsRealEstateOwnerAttributes
      */
     public static function mapOwnerAttributesForDatabase(array $attributes): array
     {
-        static $columns = null;
-        $columns ??= Schema::getColumnListing('real_estates');
+        // SchemaCache (قابل للتفريغ في الاختبارات) بدل static محلي يعلق بمخطط قديم.
+        $columns = \App\Support\SchemaCache::columns('real_estates');
 
         $mapped = [];
 

@@ -68,6 +68,13 @@ class SettingController extends Controller
                 'electricity_meter_fee_housing_tenant' => ['nullable', 'numeric', 'min:0'],
                 'water_meter_fee_commercial_tenant' => ['nullable', 'numeric', 'min:0'],
                 'water_meter_fee_housing_tenant' => ['nullable', 'numeric', 'min:0'],
+                'doc_fee_housing_first_year' => ['nullable', 'numeric', 'min:1'],
+                'doc_fee_housing_extra_year' => ['nullable', 'numeric', 'min:0'],
+                'doc_fee_commercial_first_year' => ['nullable', 'numeric', 'min:1'],
+                'doc_fee_commercial_extra_year' => ['nullable', 'numeric', 'min:0'],
+                'document_surcharge_fee' => ['nullable', 'numeric', 'min:0'],
+                'lessor_change_fee' => ['nullable', 'numeric', 'min:0'],
+                'vat_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
                 'is_open' => ['nullable', 'boolean'],
                 'working_hours' => ['nullable', 'string', 'max:500'],
                 'image_banner' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
@@ -78,7 +85,9 @@ class SettingController extends Controller
             $this->applyOptionalSettingImages($request, $setting, $validated);
             unset($validated['image_banner']);
 
+            // الحقول غير المرسلة لا تُلمس؛ والمرسلة فارغة تُمسح (مثل حذف حساب تواصل).
             $setting->update($validated);
+            \App\Support\DocFee::flushSettingsCache();
 
             return $this->settingsUpdatedResponse($setting);
         } catch (ValidationException $e) {
@@ -224,6 +233,20 @@ class SettingController extends Controller
                     : null,
                 'is_open' => isset($setting->is_open) ? (bool) $setting->is_open : null,
                 'working_hours' => $setting->working_hours,
+            ],
+            'pricing' => [
+                'doc_fee_housing_first_year' => (float) ($setting->doc_fee_housing_first_year ?? 249),
+                'doc_fee_housing_extra_year' => (float) ($setting->doc_fee_housing_extra_year ?? 150),
+                'doc_fee_commercial_first_year' => (float) ($setting->doc_fee_commercial_first_year ?? 349),
+                'doc_fee_commercial_extra_year' => (float) ($setting->doc_fee_commercial_extra_year ?? 250),
+                'document_surcharge_fee' => (float) ($setting->document_surcharge_fee ?? 75),
+                'lessor_change_fee' => (float) ($setting->lessor_change_fee ?? 400),
+                'vat_rate' => (float) ($setting->vat_rate ?? 0),
+                'electricity_meter_fee_housing_tenant' => (float) ($setting->electricity_meter_fee_housing_tenant ?? 15),
+                'water_meter_fee_housing_tenant' => (float) ($setting->water_meter_fee_housing_tenant ?? 15),
+                'electricity_meter_fee_commercial_tenant' => (float) ($setting->electricity_meter_fee_commercial_tenant ?? 25),
+                'water_meter_fee_commercial_tenant' => (float) ($setting->water_meter_fee_commercial_tenant ?? 25),
+                'document_surcharge_instrument_types' => \App\Support\DocumentSurcharge::INSTRUMENT_TYPES,
             ],
             'social' => [
                 'whatsapp' => $setting->whatsapp ?? '',

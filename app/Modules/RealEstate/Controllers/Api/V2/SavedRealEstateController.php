@@ -24,6 +24,38 @@ class SavedRealEstateController extends \App\Http\Controllers\Api\SavedRealEstat
 
         $contract = Contract::findOwnedOrFail($validated['contract_id']);
 
+        // عقد أُنشئ من عقار محفوظ أصلاً: لا شيء يُحفظ (الخيار لا يُعرض للعميل).
+        $state = \App\Support\SavedPropertyState::forContract($contract);
+        if ($state['from_saved']) {
+            return response()->json([
+                'message' => 'هذا العقد مرتبط بعقار محفوظ مسبقاً',
+                'code' => Response::HTTP_OK,
+                'success' => true,
+                'data' => ['saved_property' => $state],
+            ]);
+        }
+
+        // مُفعّل سابقاً لنفس العقد: نُعيد العقار نفسه بدل إنشاء نسخة مكررة (idempotent).
+        $existing = RealEstate::query()
+            ->where('source_contract_id', $contract->id)
+            ->where('user_id', $userId)
+            ->first();
+        if ($existing) {
+            if ($existing->name_real_estate !== $validated['name_real_estate']) {
+                $existing->update(['name_real_estate' => $validated['name_real_estate']]);
+            }
+
+            return response()->json([
+                'message' => 'العقار محفوظ مسبقاً',
+                'code' => Response::HTTP_OK,
+                'success' => true,
+                'data' => [
+                    'real_estate' => $existing->fresh(),
+                    'saved_property' => \App\Support\SavedPropertyState::forContract($contract->fresh()),
+                ],
+            ]);
+        }
+
         DB::beginTransaction();
 
         try {
@@ -97,6 +129,72 @@ class SavedRealEstateController extends \App\Http\Controllers\Api\SavedRealEstat
                 'success' => false,
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
+    }
+
+    /**
+     * إلغاء حفظ العقار الذي أُنشئ من هذا العقد (قبل الدفع أو بعده): يُحذف العقار ووحداته
+     * التي أُنشئت من العقد فقط، ويُفك الربط من العقد.
+     *
+     * DELETE /api/v2/save/property/{contract}
+     */
+    public function unsave(int $contractId)
+    {
+        $userId = Auth::id();
+        $contract = Contract::findOwnedOrFail($contractId);
+
+        $state = \App\Support\SavedPropertyState::forContract($contract);
+        if ($state['from_saved']) {
+            return response()->json([
+                'message' => 'هذا العقد مرتبط بعقار محفوظ مسبقاً ولا يمكن فك ارتباطه من هنا',
+                'code' => Response::HTTP_UNPROCESSABLE_ENTITY,
+                'success' => false,
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $real = RealEstate::query()
+            ->where('source_contract_id', $contract->id)
+            ->where('user_id', $userId)
+            ->first();
+
+        DB::beginTransaction();
+        try {
+            if ($real) {
+                // العقود الأخرى التي استخدمت هذا العقار لاحقاً تبقى سليمة (لا حذف إذا كان مستخدماً).
+                $usedElsewhere = Contract::query()
+                    ->where('real_id', $real->id)
+                    ->where('id', '!=', $contract->id)
+                    ->exists();
+
+                if (! $usedElsewhere) {
+                    UnitsReal::query()
+                        ->where('real_estates_units_id', $real->id)
+                        ->update(['real_estates_units_id' => null]);
+                    $real->delete();
+                }
+            }
+
+            $contract->update(['real_id' => null, 'is_real' => false]);
+            \App\Models\ContractUnit::query()
+                ->where('contract_id', $contract->id)
+                ->update(['real_estate_id' => null]);
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'message' => 'حدث خطأ أثناء إلغاء حفظ العقار',
+                'code' => Response::HTTP_INTERNAL_SERVER_ERROR,
+                'success' => false,
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        return response()->json([
+            'message' => 'تم إلغاء حفظ العقار',
+            'code' => Response::HTTP_OK,
+            'success' => true,
+            'data' => ['saved_property' => \App\Support\SavedPropertyState::forContract($contract->fresh())],
+        ]);
     }
 
     /**

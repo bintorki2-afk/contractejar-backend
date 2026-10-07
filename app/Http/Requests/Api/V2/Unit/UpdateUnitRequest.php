@@ -77,8 +77,10 @@ class UpdateUnitRequest extends FormRequest
             'type_furnished' => TypeFurnished::rules(true),
             'electricity_meter' => 'sometimes|boolean',
             'water_meter' => 'sometimes|boolean',
-            'electricity_meter_ownership' => 'nullable|in:owner,tenant',
-            'water_meter_ownership' => 'nullable|in:owner,tenant',
+            'electricity_meter_ownership' => 'nullable|in:owner,tenant,shared',
+            'water_meter_ownership' => 'nullable|in:owner,tenant,shared',
+            'electricity_shared_monthly_fee' => 'nullable|numeric|min:0|max:1000000',
+            'water_shared_monthly_fee' => 'nullable|numeric|min:0|max:1000000',
         ];
     }
 }

@@ -265,11 +265,15 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             'doc_fee_lines' => $docFeeSummary['doc_fee_lines'] ?? [],
             // Single-source money breakdown (fee + proportional VAT + meter fees).
             'fee' => $pricing['fee'],
+            'document_surcharge' => $pricing['document_surcharge'],
+            'document_surcharge_applies' => $pricing['document_surcharge_applies'],
+            'shared_meters' => $meterFees['shared_meters'] ?? null,
             'vat' => $pricing['vat'],
             'vat_rate' => $pricing['vat_rate'],
             'vat_label' => $pricing['vat_label'],
             'coupon' => $pricing['coupon'],
             'total' => $pricing['total'],
+            'saved_property' => \App\Support\SavedPropertyState::forContract($contract),
             'payment_success_url' => $redirectUrls['success'],
             'payment_error_url' => $redirectUrls['error'],
         ]);
@@ -303,6 +307,26 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
         }
 
         return $this->createInvoiceOrFail($amount, 'Employee payment ' . $contractUuid, $contractUuid);
+    }
+
+    /**
+     * فاتورة لخدمة مستقلة (مثل تغيير المؤجر) بنفس آلية العقود: المفتاح هو uuid الطلب.
+     *
+     * @return array{payment_url: string, invoice_id: string|null, success_url: string, error_url: string}
+     */
+    public function requestServicePaymentUrl(string $uuid, float $amount, string $description, string $client = 'web'): array
+    {
+        $uuid = $this->normalizeContractUuid($uuid);
+
+        if ($this->isUuidPaymentSettled($uuid)) {
+            throw new \InvalidArgumentException(trans('api.contract_already_paid'));
+        }
+
+        if ($amount <= 0) {
+            throw new \InvalidArgumentException(trans('api.contract_payment_amount_invalid'));
+        }
+
+        return $this->createInvoiceOrFail($amount, $description, $uuid, $client);
     }
 
     public function processIpn(Request $request, string $uuid): void
@@ -405,8 +429,11 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             ->where('contract_uuid', $uuid)
             ->first();
         $contract = Contract::where('uuid', $uuid)->first();
+        $lessorChange = (! $contract && ! $employeePaidRecord)
+            ? \App\Models\LessorChangeRequest::findByUuid($uuid)
+            : null;
 
-        if (! $contract && ! $employeePaidRecord) {
+        if (! $contract && ! $employeePaidRecord && ! $lessorChange) {
             abort(404, trans('api.contract_not_found'));
         }
 
@@ -433,10 +460,17 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             ? 'success'
             : ($paymentStatus === 'failed' ? 'error' : $result);
 
+        if ($lessorChange && $paymentConfirmed) {
+            \App\Models\LessorChangeRequest::markPaidByUuid($uuid);
+            $lessorChange = $lessorChange->fresh();
+        }
+
         return [
             'result' => $result,
             'resolved_result' => $resolvedResult,
             'contract_uuid' => $uuid,
+            'kind' => $lessorChange ? 'lessor_change' : 'contract',
+            'lessor_change' => $lessorChange?->toClientArray(),
             'contract_id' => $contract?->id,
             'is_completed' => $contract ? (bool) $contract->is_completed : false,
             'payment_confirmed' => $paymentConfirmed,
@@ -578,6 +612,8 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             'cart_amount' => $amount,
             'is_paid' => true,
             'fee' => $pricing['fee'] ?? $amount,
+            'document_surcharge' => $pricing['document_surcharge'] ?? 0.0,
+            'document_surcharge_applies' => $pricing['document_surcharge_applies'] ?? false,
             'vat' => $pricing['vat'] ?? 0.0,
             'vat_rate' => $pricing['vat_rate'] ?? 0.0,
             'vat_label' => $pricing['vat_label'] ?? \App\Support\ContractPricing::VAT_FREE_LABEL,
@@ -1271,6 +1307,9 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
 
         // CR2: a potential-customer lead for this contract converts to "paid".
         \App\Models\Lead::markPaidForContractUuid($uuid);
+
+        // خدمة تغيير المؤجر تشترك في نفس مسار الدفع (المفتاح uuid الطلب).
+        \App\Models\LessorChangeRequest::markPaidByUuid($uuid);
 
         if ($becameCompleted && $contract) {
             $paidAmount = (float) (Payment::query()

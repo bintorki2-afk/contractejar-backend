@@ -153,8 +153,8 @@ return new class extends Migration
             $table->boolean('accept_retrun_contract')->default(false);
             $table->unsignedBigInteger('accept_retrun_contract_employee_id')->nullable();
             $table->unsignedBigInteger('draft_contract_status_id')->nullable();
-            $table->enum('electricity_meter_ownership', ['owner', 'tenant'])->nullable();
-            $table->enum('water_meter_ownership', ['owner', 'tenant'])->nullable();
+            $table->enum('electricity_meter_ownership', ['owner', 'tenant', 'shared'])->nullable();
+            $table->enum('water_meter_ownership', ['owner', 'tenant', 'shared'])->nullable();
             $table->string('duration_preset', 32)->nullable();
             $table->unsignedTinyInteger('duration_years')->nullable();
             $table->unsignedTinyInteger('duration_months')->nullable();

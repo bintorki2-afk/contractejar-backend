@@ -47,5 +47,11 @@ class Setting extends Model
         'operating_budget',
         'marketing_budget',
         'meter_transfer_fee',
+        'doc_fee_housing_first_year',
+        'doc_fee_housing_extra_year',
+        'doc_fee_commercial_first_year',
+        'doc_fee_commercial_extra_year',
+        'document_surcharge_fee',
+        'lessor_change_fee',
     ];
 }
