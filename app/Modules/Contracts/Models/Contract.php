@@ -129,6 +129,7 @@ class Contract extends Model
         'notes',
         'app_or_web',
         'image_instrument',
+        'image_instrument_pages',
         'age_of_the_property',
         'number_of_units_per_floor',
         'image_address',
@@ -187,6 +188,7 @@ class Contract extends Model
     protected $casts = [
         'tenant_role_ids' => 'array',
         'tenant_role_values' => 'array',
+        'image_instrument_pages' => 'array',
         'other_conditions_list' => 'array',
         'kitchen_tank' => 'boolean',
         'furnished' => 'boolean',

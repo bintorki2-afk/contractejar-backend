@@ -42,11 +42,15 @@ class ContractController extends Controller
 {
     use Responser;
 
-    public function index(ListUserContractsAction $action)
+    public function index(Request $request, ListUserContractsAction $action)
     {
         $this->authorize('viewAny', Contract::class);
 
-        $contracts = $action->paginateForApiV2((int) auth()->id());
+        $contracts = $action->paginateForApiV2((int) auth()->id(), [
+            'search' => (string) $request->query('search', ''),
+            'per_page' => (int) $request->query('per_page', 10),
+            'status_id' => (int) $request->query('status_id', 0),
+        ]);
 
         return $this->apiResponse(
             [

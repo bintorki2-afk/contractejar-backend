@@ -32,6 +32,7 @@ class ContractResource extends JsonResource
             'instrument_type' => $this->instrument_type,
             ...Contract::instrumentTypeImageRequirements($this->instrument_type),
             'image_instrument' => \App\Support\DeedImage::signedUrl($this->resource, 'image_instrument'),
+            'image_instrument_pages' => \App\Support\DeedImage::signedPageUrls($this->resource),
             'age_of_the_property' => $this->age_of_the_property,
             'number_of_units_per_floor' => $this->number_of_units_per_floor,
             'image_address' => \App\Support\DeedImage::signedUrl($this->resource, 'image_address'),

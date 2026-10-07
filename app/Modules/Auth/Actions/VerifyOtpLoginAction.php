@@ -4,6 +4,7 @@ namespace App\Modules\Auth\Actions;
 
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Modules\Auth\Services\GuestAccountService;
 use App\Modules\Auth\Services\UserOtpService;
 use App\Modules\Auth\Support\AuthMobile;
 use Illuminate\Http\Request;
@@ -50,6 +51,16 @@ class VerifyOtpLoginAction
         }
 
         $user->refresh();
+
+        // دمج طلبات ضيوف الموقع الذين كتبوا هذا الرقم (ثبتت ملكيته الآن بالـ OTP).
+        try {
+            app(GuestAccountService::class)->mergeGuestsInto($user, (string) $request->mobile);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Guest merge after OTP failed', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         return [
             'ok' => true,

@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Auth\Controllers\Api\AuthController;
+use App\Modules\Auth\Controllers\Api\V2\GuestSessionController;
 use App\Modules\Auth\Controllers\Api\V2\WebAuthController;
 use Illuminate\Support\Facades\Route;
 
@@ -21,7 +22,11 @@ Route::middleware(['auth:sanctum', 'ensure.customer'])->group(function () {
     Route::controller(AuthController::class)->group(function () {
         Route::post('/auth/logout', 'logout');
     });
+    Route::post('/auth/guest/contact', [GuestSessionController::class, 'contact'])->middleware('throttle:30,1');
 });
+
+// جلسة زائر للموقع (بدون حساب) — توكن مؤقت يكفي لإنشاء العقد والدفع.
+Route::post('/auth/guest', [GuestSessionController::class, 'start'])->middleware('throttle:10,1');
 
 /*
 |--------------------------------------------------------------------------
