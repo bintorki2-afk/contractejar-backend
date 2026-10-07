@@ -13,6 +13,7 @@ class CheckUncompletedContractAction
     {
         $contract = Contract::query()
             ->incompleteForUser($userId, $contractType)
+            ->visibleToCustomer()
             ->latest('created_at')
             ->first();
 

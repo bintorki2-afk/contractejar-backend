@@ -74,6 +74,18 @@ trait HasContractScopes
         return $query->where('step', '>=', $minStep);
     }
 
+    /**
+     * Drafts the CUSTOMER may see/resume: deed (step 1), address (step 2) and
+     * owner (step 3) must all be submitted, i.e. the next step is 4+.
+     * Earlier drafts stay invisible to the customer (admin lists are unaffected).
+     */
+    public const CUSTOMER_VISIBLE_MIN_STEP = 4;
+
+    public function scopeVisibleToCustomer($query)
+    {
+        return $query->where('step', '>=', self::CUSTOMER_VISIBLE_MIN_STEP);
+    }
+
     public function scopeIncomplete($query)
     {
         return $query->where('is_completed', 0);

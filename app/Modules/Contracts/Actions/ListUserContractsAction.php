@@ -27,7 +27,8 @@ class ListUserContractsAction
             ->with(['realEstate', 'contractStatus', 'draftContractStatus', 'receivedContract', 'statusHistories'])
             ->orderBy('updated_at', 'desc')
             ->where('is_delete', 0)
-            ->reachedAdminOrderStep();
+            ->reachedAdminOrderStep()
+            ->visibleToCustomer();
 
         if (! empty($filters['status_id'])) {
             $query->where('contract_status_id', (int) $filters['status_id']);

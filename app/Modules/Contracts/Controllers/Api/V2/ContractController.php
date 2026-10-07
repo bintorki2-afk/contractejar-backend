@@ -122,6 +122,7 @@ class ContractController extends Controller
         $contract = Contract::query()
             ->ownedBy(Contract::requireApiUserId())
             ->reachedAdminOrderStep()
+            ->visibleToCustomer()
             ->with([
                 'realEstate',
                 'contractStatus',

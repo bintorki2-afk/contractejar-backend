@@ -84,7 +84,7 @@ class CheckUncompletedContractByTypeTest extends TestCase
         $user = $this->makeUser();
         Sanctum::actingAs($user);
 
-        $housing = $this->makeIncompleteContract($user->id, 'housing', 2);
+        $housing = $this->makeIncompleteContract($user->id, 'housing', 4);
         $this->makeIncompleteContract($user->id, 'commercial', 5);
 
         $this->getJson('/api/v2/contract/check-uncompleted-contract?contract_type=housing')
@@ -92,6 +92,32 @@ class CheckUncompletedContractByTypeTest extends TestCase
             ->assertJsonPath('data.check', true)
             ->assertJsonPath('data.contract_id', $housing->id)
             ->assertJsonPath('data.contract_type', 'housing');
+    }
+
+    /**
+     * A draft is offered for resume only after deed (1), address (2) and owner (3)
+     * were submitted — i.e. `step` >= 4. Earlier drafts are invisible to the customer.
+     */
+    public function test_v2_check_ignores_drafts_before_owner_step(): void
+    {
+        $user = $this->makeUser();
+        Sanctum::actingAs($user);
+
+        $this->makeIncompleteContract($user->id, 'housing', 1);
+        $this->makeIncompleteContract($user->id, 'housing', 2);
+        $this->makeIncompleteContract($user->id, 'housing', 3);
+
+        $this->getJson('/api/v2/contract/check-uncompleted-contract?contract_type=housing')
+            ->assertOk()
+            ->assertJsonPath('data.check', false);
+
+        $resumable = $this->makeIncompleteContract($user->id, 'housing', 4);
+
+        $this->getJson('/api/v2/contract/check-uncompleted-contract?contract_type=housing')
+            ->assertOk()
+            ->assertJsonPath('data.check', true)
+            ->assertJsonPath('data.contract_id', $resumable->id)
+            ->assertJsonPath('data.step', 4);
     }
 
     public function test_v1_commercial_check_ignores_incomplete_housing_contract(): void
