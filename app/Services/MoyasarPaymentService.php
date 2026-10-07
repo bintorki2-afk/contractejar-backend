@@ -99,6 +99,56 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
         return $this->testMode;
     }
 
+    /**
+     * Apple Pay (in-app, via the Moyasar mobile SDK): the client needs the public
+     * key, the Apple merchant id and — above all — the server-computed amount, so
+     * the native sheet charges exactly what the hosted page would. The payment
+     * itself is confirmed afterwards through {@see syncGatewayPaymentStatus}.
+     *
+     * @return array{enabled: bool, reason?: string, publishable_key?: string, merchant_id?: string, merchant_display_name?: string, country?: string, currency?: string, amount?: int, amount_sar?: float, description?: string, contract_uuid?: string}
+     */
+    public function applePayConfig(string $uuid): array
+    {
+        $uuid = $this->normalizeContractUuid($uuid);
+        $publishableKey = trim((string) config('services.moyasar.publishable_key', ''));
+        $merchantId = trim((string) config('services.moyasar.apple_merchant_id', ''));
+
+        if ($this->testMode || $publishableKey === '' || $merchantId === '') {
+            return ['enabled' => false, 'reason' => 'not_configured'];
+        }
+
+        $contract = Contract::where('uuid', $uuid)->first();
+        if (! $contract) {
+            return ['enabled' => false, 'reason' => 'contract_not_found'];
+        }
+
+        if ($this->isUuidPaymentSettled($uuid) || ! $this->contractCanBePaid($contract)) {
+            return ['enabled' => false, 'reason' => 'already_paid'];
+        }
+
+        if (! $contract->contract_term_in_years && ! $contract->duration_preset && ! $contract->total_months) {
+            return ['enabled' => false, 'reason' => 'period_not_set'];
+        }
+
+        $cartAmount = $this->calculateCartAmount($contract);
+        if ($cartAmount <= 0) {
+            return ['enabled' => false, 'reason' => 'invalid_amount'];
+        }
+
+        return [
+            'enabled' => true,
+            'publishable_key' => $publishableKey,
+            'merchant_id' => $merchantId,
+            'merchant_display_name' => (string) config('services.moyasar.apple_merchant_display_name', 'عقد إيجار'),
+            'country' => 'SA',
+            'currency' => $this->currency,
+            'amount' => $this->toMinorUnits($cartAmount),
+            'amount_sar' => round($cartAmount, 2),
+            'description' => 'Contract ' . $uuid,
+            'contract_uuid' => $uuid,
+        ];
+    }
+
     public function createPaymentUrlResponse(string $uuid, string $client = 'web'): JsonResponse
     {
         $client = $this->normalizePaymentClient($client);

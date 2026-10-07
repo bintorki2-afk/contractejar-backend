@@ -50,6 +50,11 @@ Route::get('/payment/result/{uuid}', [PaymentController::class, 'paymentResult']
     ->middleware('throttle:payment-public')
     ->name('v2.payment.result');
 
+Route::get('/payment/apple-pay/{uuid}', [PaymentController::class, 'applePayConfig'])
+    ->withoutMiddleware([CheckApi::class, ApiLocalization::class, 'auth:sanctum'])
+    ->middleware('throttle:payment-public')
+    ->name('v2.payment.apple-pay');
+
 Route::get('/payment/sync/{uuid}', [PaymentController::class, 'syncFromGateway'])
     ->withoutMiddleware([CheckApi::class, ApiLocalization::class, 'auth:sanctum'])
     ->middleware('throttle:payment-public')
