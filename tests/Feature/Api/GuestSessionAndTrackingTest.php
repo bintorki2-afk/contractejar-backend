@@ -167,8 +167,12 @@ class GuestSessionAndTrackingTest extends TestCase
         Sanctum::actingAs($user);
 
         $a = $this->makeContract($user->id, 7, ['name_real_estate' => 'برج الريان']);
-        $this->makeContract($user->id, 7, ['name_real_estate' => 'فيلا الحمراء']);
-        $this->makeContract($user->id, 7, ['name_real_estate' => 'شقة']);
+        $b = $this->makeContract($user->id, 7, ['name_real_estate' => 'فيلا الحمراء']);
+        $c = $this->makeContract($user->id, 7, ['name_real_estate' => 'شقة']);
+        // أرقام طلب ثابتة حتى لا يتطابق البحث بالمعرّف مع بداية رقم طلب عشوائي (كان الاختبار متقلباً).
+        foreach ([$a, $b, $c] as $i => $contract) {
+            DB::table('contracts')->where('id', $contract->id)->update(['uuid' => '90000'.($i + 1)]);
+        }
 
         $this->getJson('/api/v2/contracts?search='.urlencode('الريان'))
             ->assertOk()

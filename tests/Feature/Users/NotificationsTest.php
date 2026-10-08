@@ -99,6 +99,12 @@ class NotificationsTest extends TestCase
             $table->date('start_date')->nullable();
             $table->date('end_date')->nullable();
             $table->boolean('is_read')->default(false);
+            $table->timestamp('read_at')->nullable();
+            $table->string('kind', 48)->nullable();
+            $table->string('url', 500)->nullable();
+            $table->json('data')->nullable();
+            $table->unsignedBigInteger('contract_id')->nullable();
+            $table->unsignedBigInteger('lessor_change_request_id')->nullable();
             $table->timestamps();
         });
 
