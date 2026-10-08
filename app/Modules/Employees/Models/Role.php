@@ -108,13 +108,11 @@ class Role extends Model
             if ($candidate !== '' && in_array($candidate, $titles, true)) {
                 return true;
             }
-
-            if (self::looksLikeAdminTitle($candidate)) {
-                return true;
-            }
         }
 
-        return self::looksLikeAdminTitle($normalizedName);
+        // مطابقة تامة فقط للأسماء/العناوين المعتمدة في config/permissions.php — لا مطابقة جزئية
+        // (كان «content_admin» أو «مساعد الأدمن» يحصل على صلاحيات مدير النظام). (CROSS-6)
+        return false;
     }
 
     public static function normalizeAccessKey(?string $value): string

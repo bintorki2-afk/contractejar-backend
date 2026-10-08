@@ -121,6 +121,18 @@ class EmployeeRolePrivilegeEscalationTest extends TestCase
         $this->assertTrue(Hash::check('secret', $adminTarget->fresh()->password));
     }
 
+    /** CROSS-6: دور اسمه يحتوي admin (content_admin) بصلاحية واحدة لا يصبح مدير نظام. */
+    public function test_role_named_like_admin_does_not_get_full_access(): void
+    {
+        $role = $this->role('content_admin', ['blogs.view']);
+        $employee = $this->employee($role);
+        Sanctum::actingAs($employee);
+
+        $this->assertFalse($employee->fresh()->isSystemAdmin());
+        $this->getJson('/api/admin/settings')->assertStatus(403);
+        $this->getJson('/api/admin/blogs')->assertOk();
+    }
+
     public function test_paid_order_cannot_be_deleted_without_force(): void
     {
         $adminRole = $this->role('admin');
