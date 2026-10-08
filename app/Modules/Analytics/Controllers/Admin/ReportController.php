@@ -153,6 +153,15 @@ class ReportController extends Controller
         }
     }
 
+    /** GET /api/admin/reports/overview?range=today|week|month|year|all (افتراضي week). */
+    public function overview(Request $request)
+    {
+        return $this->apiResponse(
+            app(\App\Services\Admin\ReportsOverviewService::class)->overview((string) $request->query('range', 'week')),
+            trans('api.success')
+        );
+    }
+
     public function marketing(Request $request)
     {
         try {
