@@ -5,6 +5,12 @@ use App\Modules\Payments\Controllers\Admin\PaymentController;
 use App\Modules\Payments\Controllers\Admin\PaymentMessageController;
 use Illuminate\Support\Facades\Route;
 
+// دفعة (د) — ب8: الاسترجاع عبر Moyasar (قبل /payments/{id} حتى لا يلتقطه).
+Route::prefix('payments')->name('payments.')->controller(\App\Modules\Payments\Controllers\Admin\PaymentRefundController::class)->middleware('auth:sanctum')->group(function () {
+    Route::get('/refunds', 'index')->middleware('permission:payments.view')->name('refunds.index');
+    Route::post('/{payment}/refund', 'store')->whereNumber('payment')->middleware('permission:payments.refund')->name('refund');
+});
+
 // Payments Management
 Route::prefix('payments')->name('payments.')->controller(PaymentController::class)->middleware(['auth:sanctum', 'permission:payments.view'])->group(function () {
     Route::get('/', 'index')->name('index');

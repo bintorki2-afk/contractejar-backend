@@ -16,6 +16,10 @@ class Payment extends Model
         'name',
         'amount',
         'status',
+        // دفعة (د) — ب8
+        'gateway_payment_id',
+        'refunded_amount',
+        'refund_status',
     ];
 
     public function contract()

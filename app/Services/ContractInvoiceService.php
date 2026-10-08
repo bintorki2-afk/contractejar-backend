@@ -485,6 +485,10 @@ class ContractInvoiceService
             'print_label' => 'طباعة / تحميل الفاتورة',
             'is_paid' => $isPaid,
             'is_refunded' => $status['status'] === 'refunded',
+            // دفعة (د) — ب8: المبلغ المسترجع عبر Moyasar.
+            'refunded_amount' => $status['refunded_amount'] ?? 0.0,
+            'refunded_amount_label' => $this->formatAmountLabel((float) ($status['refunded_amount'] ?? 0)),
+            'is_partially_refunded' => $status['status'] === 'partially_refunded',
         ];
     }
 
@@ -568,6 +572,20 @@ class ContractInvoiceService
      */
     private function resolveStatus(Contract $contract): array
     {
+        // دفعة (د) — ب8: استرجاع Moyasar (كلي/جزئي).
+        $moyasarRefunded = \App\Services\Payments\PaymentRefundService::refundedTotalFor($contract);
+        if ($moyasarRefunded > 0) {
+            $paid = \App\Services\Payments\PaymentRefundService::paidTotalFor($contract);
+            $full = $paid <= 0 || $moyasarRefunded + 0.009 >= $paid;
+
+            return [
+                'status' => $full ? 'refunded' : 'partially_refunded',
+                'status_label' => $full ? 'مُسترجعة' : 'مُسترجعة جزئياً',
+                'status_color' => '#DC2626',
+                'refunded_amount' => round($moyasarRefunded, 2),
+            ];
+        }
+
         $refund = $contract->relationLoaded('refundableContract')
             ? $contract->refundableContract
             : RefundableContract::query()->where('contract_id', $contract->id)->latest('id')->first();

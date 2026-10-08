@@ -1236,7 +1236,7 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             return;
         }
 
-        Payment::create([
+        Payment::create(array_merge([
             'name' => $this->resolvePaymentName(
                 $metadata['name'] ?? $request->input('metadata.name'),
                 $contractUuid
@@ -1248,7 +1248,75 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             'payment_brand' => $this->resolvePaymentBrand($source),
             'status' => $status,
             'payment_date' => now(),
-        ]);
+        ], $this->gatewayIdColumn($verified['id'] ?? null)));
+    }
+
+    /**
+     * دفعة (د) — ب8: حفظ معرّف دفعة Moyasar (لازم للاسترجاع).
+     *
+     * @return array<string, string>
+     */
+    private function gatewayIdColumn(mixed $gatewayId): array
+    {
+        if (! is_string($gatewayId) || trim($gatewayId) === '' || ! \App\Support\SchemaCache::hasColumn('payments', 'gateway_payment_id')) {
+            return [];
+        }
+
+        return ['gateway_payment_id' => trim($gatewayId)];
+    }
+
+    /**
+     * دفعة (د) — ب8: استرجاع مبلغ دفعة عبر Moyasar — POST /v1/payments/{id}/refund (المبلغ بالهللات؛ كامل عند عدم التحديد).
+     * في وضع الاختبار (بلا مفتاح) يُحاكى النجاح.
+     *
+     * @return array{success: bool, refund_id: string|null, gateway_payment_id: string|null, message: string|null, data: array<string, mixed>|null}
+     */
+    public function refund(Payment $payment, ?float $amount = null): array
+    {
+        $gatewayId = (string) ($payment->gateway_payment_id ?? '');
+
+        if ($this->testMode) {
+            return [
+                'success' => true,
+                'refund_id' => 'sim_refund_'.$payment->id.'_'.now()->timestamp,
+                'gateway_payment_id' => $gatewayId !== '' ? $gatewayId : null,
+                'message' => null,
+                'data' => ['simulated' => true, 'amount' => $amount !== null ? $this->toMinorUnits($amount) : null],
+            ];
+        }
+
+        if ($gatewayId === '') {
+            $latest = $this->fetchLatestPaymentByContractUuid((string) $payment->contract_uuid);
+            if (is_array($latest) && in_array(strtolower((string) ($latest['status'] ?? '')), ['paid', 'captured'], true)) {
+                $gatewayId = (string) ($latest['id'] ?? '');
+            }
+        }
+
+        if ($gatewayId === '') {
+            return ['success' => false, 'refund_id' => null, 'gateway_payment_id' => null, 'message' => 'تعذّر العثور على معرّف الدفعة في Moyasar.', 'data' => null];
+        }
+
+        $body = $amount !== null ? ['amount' => $this->toMinorUnits($amount)] : [];
+        $response = $this->buildRequest('POST', '/v1/payments/'.$gatewayId.'/refund', $body);
+        $data = is_array($response['data'] ?? null) ? $response['data'] : null;
+
+        if (! $response['success'] || ! is_array($data)) {
+            return [
+                'success' => false,
+                'refund_id' => null,
+                'gateway_payment_id' => $gatewayId,
+                'message' => (string) ($response['message'] ?? 'رفضت بوابة الدفع الاسترجاع.'),
+                'data' => $data,
+            ];
+        }
+
+        return [
+            'success' => true,
+            'refund_id' => trim($gatewayId.':'.(string) ($data['refunded_at'] ?? now()->toIso8601String()), ':'),
+            'gateway_payment_id' => $gatewayId,
+            'message' => null,
+            'data' => array_intersect_key($data, array_flip(['id', 'status', 'amount', 'refunded', 'refunded_at', 'currency'])),
+        ];
     }
 
     /**
@@ -1264,7 +1332,7 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             return;
         }
 
-        Payment::create([
+        Payment::create(array_merge([
             'name' => $this->resolvePaymentName($metadata['name'] ?? null, $contractUuid),
             'amount' => $this->normalizeGatewayAmount($gatewayPayment['amount'] ?? 0),
             'contract_uuid' => $contractUuid,
@@ -1273,7 +1341,7 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             'payment_brand' => $this->resolvePaymentBrand($source),
             'status' => $status,
             'payment_date' => now(),
-        ]);
+        ], $this->gatewayIdColumn($gatewayPayment['id'] ?? null)));
     }
 
     /**

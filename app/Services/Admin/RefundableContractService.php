@@ -574,7 +574,8 @@ class RefundableContractService
             ->where('is_refunded', false)
             ->exists();
 
-        if (! $exists) {
+        // دفعة (د) — ب8: استرجاع ناجح عبر Moyasar يكفي أيضاً.
+        if (! $exists && \App\Services\Payments\PaymentRefundService::refundedTotalFor($contract) <= 0) {
             throw new InvalidArgumentException(trans('api.refund_request_required_for_return_status'));
         }
     }

@@ -55,7 +55,7 @@ class RolePermissionResolver
 
             foreach ((array) $actions as $action) {
                 $action = strtolower(trim((string) $action));
-                if (! in_array($action, $configuredActions, true)) {
+                if (! in_array($action, $configuredActions, true) || ! self::actionAllowedForSection($sectionKey, $action)) {
                     continue;
                 }
 
@@ -68,6 +68,17 @@ class RolePermissionResolver
         }
 
         return $ids;
+    }
+
+    /** دفعة (د): بعض الإجراءات خاصة بأقسام محددة (مثل payments.refund). */
+    public static function actionAllowedForSection(string $section, string $action): bool
+    {
+        $only = config('permissions.section_only_actions', []);
+        if (! array_key_exists($action, $only)) {
+            return true;
+        }
+
+        return in_array($section, (array) $only[$action], true);
     }
 
     public function normalizeSectionKey(string $section): string
@@ -128,6 +139,9 @@ class RolePermissionResolver
             $actionRows = [];
 
             foreach ($actions as $actionKey => $actionLabels) {
+                if (! self::actionAllowedForSection((string) $sectionKey, (string) $actionKey)) {
+                    continue;
+                }
                 $permission = $sectionPermissions->firstWhere('action', $actionKey);
                 $name = $permission?->name ?? "{$sectionKey}.{$actionKey}";
                 $row = [
@@ -178,7 +192,8 @@ class RolePermissionResolver
         $action = strtolower(trim($action));
 
         if (! array_key_exists($sectionKey, config('permissions.sections', []))
-            || ! array_key_exists($action, config('permissions.actions', []))) {
+            || ! array_key_exists($action, config('permissions.actions', []))
+            || ! self::actionAllowedForSection($sectionKey, $action)) {
             return null;
         }
 
@@ -210,6 +225,9 @@ class RolePermissionResolver
 
         foreach (array_keys(config('permissions.sections', [])) as $sectionKey) {
             foreach (array_keys(config('permissions.actions', [])) as $actionKey) {
+                if (! self::actionAllowedForSection($sectionKey, $actionKey)) {
+                    continue;
+                }
                 $permission = Permission::query()
                     ->where('name', "{$sectionKey}.{$actionKey}")
                     ->first();
@@ -277,6 +295,9 @@ class RolePermissionResolver
 
         foreach (array_keys(config('permissions.sections', [])) as $section) {
             foreach (array_keys(config('permissions.actions', [])) as $action) {
+                if (! self::actionAllowedForSection($section, $action)) {
+                    continue;
+                }
                 $names[] = "{$section}.{$action}";
             }
         }
