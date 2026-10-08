@@ -101,7 +101,7 @@ class ContractPeriodController extends Controller
             ->exists();
 
         if ($inUse) {
-            return $this->apiResponse(null, trans('api.contract_period_in_use'), false, 409);
+            return $this->apiResponse(null, trans('api.contract_period_in_use'), false, 422);
         }
 
         $contractPeriod->delete();

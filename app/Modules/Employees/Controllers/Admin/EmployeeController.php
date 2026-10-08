@@ -266,6 +266,15 @@ class EmployeeController extends Controller
                 return $denied;
             }
 
+            // حذف الموظف كان يحذف متسلسلاً سجلاته المالية/التشغيلية (روابط الدفع، الاستلام،
+            // الاسترجاع، التعليقات). نرفض الحذف ما دام مرتبطاً؛ البديل الإيقاف. (CROSS-0)
+            foreach (['contract_paid_by_employees', 'received_contracts', 'refundable_contracts', 'contract_comments'] as $table) {
+                if (\Illuminate\Support\Facades\Schema::hasTable($table)
+                    && \Illuminate\Support\Facades\DB::table($table)->where('employee_id', $employee->id)->exists()) {
+                    return $this->errorMessage(trans('api.employee_has_records'), 422);
+                }
+            }
+
             if ($employee->profile_image && Storage::disk('public')->exists(str_replace('storage/', '', $employee->profile_image))) {
                 Storage::disk('public')->delete(str_replace('storage/', '', $employee->profile_image));
             }

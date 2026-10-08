@@ -98,6 +98,12 @@ class CityController extends Controller
         }
 
         $this->authorize('delete', $city);
+
+        // لا يُحذف صف مرجعي مرتبط بطلبات عملاء (كان الحذف يُسلسِل حذف الطلبات). (CROSS-0)
+        if (\App\Support\LookupUsage::contractsReference('cities', (int) $city->id)) {
+            return response()->json(['message' => trans('api.lookup_in_use'), 'code' => 422, 'success' => false], 422);
+        }
+
         $city->delete();
 
         return $this->apiResponse([], trans('api.deleted_successfully'));

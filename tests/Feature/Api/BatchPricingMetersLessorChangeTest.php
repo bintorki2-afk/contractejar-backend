@@ -279,7 +279,7 @@ class BatchPricingMetersLessorChangeTest extends TestCase
         ]);
 
         $this->postJson('/api/admin/contract-periods/'.$periodId.'/delete')
-            ->assertStatus(409);
+            ->assertStatus(422);
 
         $this->assertDatabaseHas('contract_periods', ['id' => $periodId]);
     }

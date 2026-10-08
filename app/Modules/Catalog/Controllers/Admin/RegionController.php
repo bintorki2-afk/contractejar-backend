@@ -95,6 +95,12 @@ class RegionController extends Controller
         }
 
         $this->authorize('delete', $region);
+
+        // لا يُحذف صف مرجعي مرتبط بطلبات عملاء (كان الحذف يُسلسِل حذف الطلبات). (CROSS-0)
+        if (\App\Support\LookupUsage::contractsReference('regions', (int) $region->id)) {
+            return response()->json(['message' => trans('api.lookup_in_use'), 'code' => 422, 'success' => false], 422);
+        }
+
         $region->delete();
 
         return $this->apiResponse([], trans('api.deleted_successfully'));

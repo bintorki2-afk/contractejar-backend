@@ -88,6 +88,12 @@ class ReaEstatUsageController extends Controller
         }
 
         $this->authorize('delete', $usage);
+
+        // لا يُحذف صف مرجعي مرتبط بطلبات عملاء (كان الحذف يُسلسِل حذف الطلبات). (CROSS-0)
+        if (\App\Support\LookupUsage::contractsReference('rea_estat_usages', (int) $usage->id)) {
+            return response()->json(['message' => trans('api.lookup_in_use'), 'code' => 422, 'success' => false], 422);
+        }
+
         $usage->delete();
 
         return $this->apiResponse([], trans('api.deleted_successfully'));
