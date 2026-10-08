@@ -185,9 +185,14 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
                     $client
                 );
             } catch (\RuntimeException $e) {
+                // لا نكشف خطأ البوابة الداخلي في الرد العام (DASHBOARD-7) — نسجّله فقط.
+                Log::warning('Moyasar employee payment invoice rejected', [
+                    'contract_uuid' => $uuid,
+                    'gateway_error' => $e->getMessage(),
+                ]);
+
                 return response()->json([
                     'message' => trans('api.not_accept'),
-                    'gateway_error' => $e->getMessage(),
                     'success' => false,
                 ], 400);
             }
@@ -242,10 +247,9 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
                 'gateway_error' => $invoice['message'],
             ]);
 
+            // خطأ البوابة الداخلي يبقى في اللوق أعلاه ولا يُكشف في الرد العام (DASHBOARD-7).
             return response()->json([
                 'message' => trans('api.not_accept'),
-                'gateway_error' => $invoice['message'],
-                'status_code' => $invoice['status'],
             ], 400);
         }
 
