@@ -73,8 +73,10 @@ class StoreUnitsRequest extends BaseApiV2Request
             'units.*.type_furnished' => TypeFurnished::rules(),
             'units.*.electricity_meter' => 'nullable|boolean',
             'units.*.water_meter' => 'nullable|boolean',
-            'units.*.electricity_meter_ownership' => 'nullable|in:owner,tenant',
-            'units.*.water_meter_ownership' => 'nullable|in:owner,tenant',
+            'units.*.electricity_meter_ownership' => 'nullable|in:owner,tenant,shared',
+            'units.*.water_meter_ownership' => 'nullable|in:owner,tenant,shared',
+            'units.*.electricity_shared_monthly_fee' => 'nullable|numeric|min:0|max:1000000',
+            'units.*.water_shared_monthly_fee' => 'nullable|numeric|min:0|max:1000000',
             'units.*.Number_parking_spaces' => 'nullable|string|max:255',
         ];
     }

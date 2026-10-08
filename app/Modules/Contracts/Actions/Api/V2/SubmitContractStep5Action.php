@@ -46,7 +46,10 @@ class SubmitContractStep5Action
             if ($values->isEmpty()) {
                 continue;
             }
-            $step5Data[$ownershipColumn] = $values->contains('tenant') ? 'tenant' : 'owner';
+            // الأولوية: مستأجر (رسوم نقل) > مشترك (بند عقد) > مالك.
+            $step5Data[$ownershipColumn] = $values->contains('tenant')
+                ? 'tenant'
+                : ($values->contains('shared') ? 'shared' : 'owner');
         }
 
         $contract->update($step5Data);

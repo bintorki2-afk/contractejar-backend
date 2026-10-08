@@ -69,8 +69,8 @@ return new class extends Migration
             $table->string('property_owner_dob_hijri')->nullable();
             $table->string('property_owner_mobile')->nullable();
             $table->string('property_owner_iban')->nullable();
-            $table->enum('electricity_meter_ownership', ['owner', 'tenant'])->nullable();
-            $table->enum('water_meter_ownership', ['owner', 'tenant'])->nullable();
+            $table->enum('electricity_meter_ownership', ['owner', 'tenant', 'shared'])->nullable();
+            $table->enum('water_meter_ownership', ['owner', 'tenant', 'shared'])->nullable();
             $table->foreign('property_city_id', 'real_estates_property_city_id_foreign')->references('id')->on('cities')->nullOnDelete();
             $table->foreign('property_place_id', 'real_estates_property_place_id_foreign')->references('id')->on('regions')->nullOnDelete();
             $table->foreign('property_type_id', 'real_estates_property_type_id_foreign')->references('id')->on('rea_estat_types')->nullOnDelete();

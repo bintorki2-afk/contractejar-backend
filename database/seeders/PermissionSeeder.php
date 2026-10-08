@@ -41,6 +41,7 @@ class PermissionSeeder extends Seeder
         $VIEW = ['view'];
 
         $requestSections = [
+            'lessor_change',
             'all_requests', 'completed_request', 'incomplete_request',
             'completed_whatsapp_request', 'incomplete_whatsapp_request',
             'returned_request',
@@ -91,7 +92,7 @@ class PermissionSeeder extends Seeder
             // موظف استلام — receiving and handing over contracts.
             'receiver' => array_merge(
                 $this->fill(['all_requests', 'completed_request', 'incomplete_request'], $WORK),
-                $this->fill(['returned_request'], $WORK),
+                $this->fill(['returned_request', 'lessor_change'], $WORK),
                 $this->fill(['contract_statuses', 'draft_contract_statuses'], $VIEW),
                 $this->fill(['users'], $VIEW),
                 $this->fill(['contract_payments'], $WORK),

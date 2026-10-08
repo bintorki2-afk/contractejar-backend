@@ -165,6 +165,9 @@ class GeneralController extends Controller
             'water_meter_fee_housing_tenant' => $setting?->water_meter_fee_housing_tenant !== null
                 ? (float) $setting->water_meter_fee_housing_tenant
                 : null,
+            'document_surcharge_fee' => \App\Support\DocumentSurcharge::fee($setting),
+            'document_surcharge_instrument_types' => \App\Support\DocumentSurcharge::INSTRUMENT_TYPES,
+            'lessor_change_fee' => $setting && is_numeric($setting->lessor_change_fee) ? (float) $setting->lessor_change_fee : 400.0,
             'terms' => [
                 'description' => $terms ? $terms->description_trans : '',
             ],

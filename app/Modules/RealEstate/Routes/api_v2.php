@@ -16,6 +16,7 @@ Route::get('/realstate/{realEstate}/doc-image/{field}', [RealEstateDocImageContr
 Route::middleware(['auth:sanctum', 'ensure.customer'])->group(function () {
     Route::controller(V2SavedRealEstateController::class)->group(function () {
         Route::post('/save/property', 'SavedRealEstate');
+        Route::delete('/save/property/{contract}', 'unsave')->whereNumber('contract');
     });
 
     foreach (['realstate', 'realState'] as $realEstatePrefix) {

@@ -43,6 +43,8 @@ class UnitResource extends JsonResource
             'water_meter' => (bool) $this->water_meter,
             'electricity_meter_ownership' => $this->electricity_meter_ownership,
             'water_meter_ownership' => $this->water_meter_ownership,
+            'electricity_shared_monthly_fee' => $this->electricity_shared_monthly_fee !== null ? (float) $this->electricity_shared_monthly_fee : null,
+            'water_shared_monthly_fee' => $this->water_shared_monthly_fee !== null ? (float) $this->water_shared_monthly_fee : null,
             'sub_delay' => $this->sub_delay,
             'property_city_id' => $this->property_city_id,
             'Number_parking_spaces' => $this->Number_parking_spaces,
