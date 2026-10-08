@@ -78,6 +78,13 @@ class OrderFlowService
         }
 
         $this->activity($contract, 'status_changed', null, ['contract_status_id' => $before], ['contract_status_id' => $underReview], 'system');
+
+        // ب13: الإسناد التلقائي (إن كان مفعّلاً من الإعدادات).
+        try {
+            app(AutoAssignService::class)->assign($contract->fresh());
+        } catch (\Throwable $e) {
+            Log::warning('auto-assign failed', ['contract_id' => $contract->id, 'error' => $e->getMessage()]);
+        }
     }
 
     /**

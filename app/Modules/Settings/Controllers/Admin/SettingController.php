@@ -88,6 +88,11 @@ class SettingController extends Controller
                 'app_android_latest_version' => ['nullable', 'string', 'max:50'],
                 'app_android_store_url' => ['nullable', 'string', 'max:500'],
                 'app_force_update_message' => ['nullable', 'string', 'max:2000'],
+                // دفعة (د) — ب13: الإسناد التلقائي
+                'auto_assign_orders' => ['nullable', 'boolean'],
+                'auto_assign_strategy' => ['nullable', 'in:round_robin,least_load'],
+                'auto_assign_employee_ids' => ['nullable', 'array'],
+                'auto_assign_employee_ids.*' => ['integer', 'exists:employees,id'],
             ]);
 
             $setting = $this->resolveSettingRow();
@@ -256,6 +261,18 @@ class SettingController extends Controller
                     : null,
                 'is_open' => isset($setting->is_open) ? (bool) $setting->is_open : null,
                 'working_hours' => $setting->working_hours,
+            ],
+            'auto_assign' => [
+                'enabled' => (bool) ($setting->auto_assign_orders ?? false),
+                'strategy' => $setting->auto_assign_strategy ?? 'round_robin',
+                'strategies' => [
+                    ['value' => 'round_robin', 'label' => 'بالدور'],
+                    ['value' => 'least_load', 'label' => 'الأقل طلبات مفتوحة'],
+                ],
+                'employee_ids' => is_array($setting->auto_assign_employee_ids ?? null) ? array_map('intval', $setting->auto_assign_employee_ids) : [],
+                'eligible_employees' => app(\App\Services\Orders\AutoAssignService::class)->eligible($setting)
+                    ->map(fn ($e) => ['id' => $e->id, 'name' => $e->name])->values()->all(),
+                'note' => 'يُسند الطلب المدفوع تلقائياً لموظف لديه صلاحية استلام الطلبات (تعديل جميع الطلبات).',
             ],
             'pricing' => [
                 'doc_fee_housing_first_year' => (float) ($setting->doc_fee_housing_first_year ?? 249),
