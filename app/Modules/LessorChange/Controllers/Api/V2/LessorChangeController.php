@@ -3,10 +3,12 @@
 namespace App\Modules\LessorChange\Controllers\Api\V2;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\Api\V2\InvoiceResource;
 use App\Models\LessorChangeRequest;
 use App\Models\Setting;
 use App\Modules\Auth\Support\AuthMobile;
 use App\Modules\LessorChange\Requests\StoreLessorChangeRequest;
+use App\Services\ContractInvoiceService;
 use App\Services\MoyasarPaymentService;
 use App\Shared\Responses\Responser;
 use Illuminate\Http\Request;
@@ -101,6 +103,29 @@ class LessorChangeController extends Controller
         }
 
         return $this->apiResponse($row->toClientArray(), trans('api.success'));
+    }
+
+    /**
+     * فاتورة طلب تغيير المؤجر (بعد الدفع) — نفس شكل فاتورة العقد.
+     * GET /api/v2/lessor-change/{uuid}/invoice
+     */
+    public function invoice(Request $request, string $uuid, ContractInvoiceService $invoices)
+    {
+        $row = LessorChangeRequest::query()
+            ->where('uuid', $uuid)
+            ->where('user_id', $request->user()->id)
+            ->where('is_delete', false)
+            ->first();
+
+        if (! $row) {
+            return $this->errorMessage(trans('api.not_found'), 404);
+        }
+
+        // قبل الدفع: معاينة فقط (لا يُنشأ سجل فاتورة).
+        return $this->apiResponse(
+            new InvoiceResource($invoices->forLessorChange($row, persist: $row->isPaid())),
+            trans('api.success')
+        );
     }
 
     /**

@@ -822,17 +822,18 @@ class AdminContractDetailResource extends JsonResource
         )->toArray($request);
     }
 
+    /**
+     * الفاتورة للوحة التحكم: نفس بنود فاتورة العميل (items / subtotal / discount / vat / total)
+     * من {@see \App\Services\ContractInvoiceService}. للطلبات المدفوعة يُصدر سجل الفاتورة إن لم يوجد؛
+     * وغير المدفوعة تُعرض معاينة حيّة بدون إنشاء سجل.
+     */
     private function invoiceSummary($c): ?array
     {
         $invoice = $c->relationLoaded('invoices')
             ? $c->invoices->sortByDesc('id')->first()
             : null;
 
-        if (! $invoice instanceof Invoice) {
-            return null;
-        }
-
-        return [
+        $legacy = $invoice instanceof Invoice ? [
             'id' => $invoice->id,
             'invoice_number' => $invoice->invoice_number,
             'order_number' => $invoice->order_number,
@@ -842,7 +843,24 @@ class AdminContractDetailResource extends JsonResource
             'rental_fees' => $invoice->rental_fees,
             'service_fees' => $invoice->service_fees,
             'total_amount' => $invoice->total_amount,
-        ];
+        ] : null;
+
+        if (! $invoice instanceof Invoice && ! (bool) $c->is_completed) {
+            return null;
+        }
+
+        try {
+            $payload = app(\App\Services\ContractInvoiceService::class)
+                ->forContract($c, persist: (bool) $c->is_completed);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $legacy;
+        }
+
+        return array_merge($legacy ?? [], $payload, [
+            'customer_phone' => $legacy['customer_phone'] ?? ($c->user?->mobile ?? null),
+        ]);
     }
 
     private function refundableContractSummary(?RefundableContract $m): ?array
