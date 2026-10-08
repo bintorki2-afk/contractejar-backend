@@ -58,7 +58,7 @@ class UserOtpService
     {
         $this->assertPurpose($purpose);
 
-        $plain = $this->generatePlain();
+        $plain = $this->generatePlain((string) $user->mobile);
         $columns = $this->columns($purpose);
         $ttl = max(1, (int) config('otp.ttl_minutes', 10));
 
@@ -153,8 +153,14 @@ class UserOtpService
         return hash_hmac('sha256', $plain, (string) config('app.key'));
     }
 
-    public function generatePlain(): string
+    public function generatePlain(?string $mobile = null): string
     {
+        // دفعة (د) — ب4: رقم مراجعة المتاجر (OTP_REVIEW_MOBILE) يحصل على كود ثابت (OTP_REVIEW_CODE)
+        // — يعمل في الإنتاج لهذا الرقم فقط، ويبقى خاضعاً لنفس التشفير/المحاولات/حدود الإرسال.
+        if ($mobile !== null && ($review = self::reviewCodeFor($mobile)) !== null) {
+            return $review;
+        }
+
         // Temporary review mode: a fixed code via OTP_FIXED_CODE (see config/otp.php).
         $fixed = self::fixedCode();
         if ($fixed !== null) {
@@ -166,6 +172,34 @@ class UserOtpService
         $max = (10 ** $length) - 1;
 
         return (string) random_int($min, $max);
+    }
+
+    /**
+     * كود المراجعة الثابت لرقم المراجعة فقط (أي بيئة بما فيها الإنتاج). أي رقم آخر ⇒ null.
+     */
+    public static function reviewCodeFor(string $mobile): ?string
+    {
+        $reviewMobile = trim((string) config('otp.review_mobile', ''));
+        $code = trim((string) config('otp.review_code', ''));
+        if ($reviewMobile === '' || $code === '' || ! ctype_digit($code) || strlen($code) < 4) {
+            return null;
+        }
+
+        $digits = static fn (string $m) => preg_replace('/\D+/', '', $m) ?? '';
+        $candidate = $digits($mobile);
+        $target = $digits($reviewMobile);
+        if ($candidate === '' || $target === '') {
+            return null;
+        }
+
+        $same = AuthMobile::normalizeSaudiMobile($candidate) === AuthMobile::normalizeSaudiMobile($target);
+        if (! $same) {
+            return null;
+        }
+
+        Log::info('OTP review code issued for the store-review number.');
+
+        return $code;
     }
 
     /**
