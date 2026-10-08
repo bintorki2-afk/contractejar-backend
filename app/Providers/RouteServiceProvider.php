@@ -25,8 +25,17 @@ class RouteServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // الحد العام (CROSS-10): المسجّل 180/دقيقة لكل حساب، وغير المسجّل 120/دقيقة لكل IP عميل
+        // حقيقي (بعد WEBSITE-1 صار IP الزائر الحقيقي لا IP خادم الموقع). قابل للضبط من البيئة.
+        // حدود OTP/التتبّع/الدفع/الزائر الخاصة تبقى كما هي (أشدّ).
         RateLimiter::for('api', function (Request $request) {
-            return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
+            $user = $request->user();
+            if ($user !== null) {
+                return Limit::perMinute(max(1, (int) config('app.api_rate_limit_user', 180)))
+                    ->by(class_basename($user).':'.$user->getAuthIdentifier());
+            }
+
+            return Limit::perMinute(max(1, (int) config('app.api_rate_limit_guest', 120)))->by($request->ip());
         });
 
         RateLimiter::for('otp-send', function (Request $request) {
