@@ -89,8 +89,19 @@ class AccountController extends Controller
             return $this->errorMessage(trans('api.unauthorized'), 401);
         }
 
+        $token = (string) $request->fcm_token;
+
+        // الرمز يخص جهازاً واحداً: انزعه من أي حساب آخر يحمله حتى لا يتشارك جهازان
+        // نفس رمز الإشعارات (تسرّب إشعارات بين حسابين على نفس الجهاز).
+        if ($token !== '') {
+            User::query()
+                ->where('fcm_token', $token)
+                ->whereKeyNot($user->id)
+                ->update(['fcm_token' => null]);
+        }
+
         $user->update([
-            'fcm_token' => $request->fcm_token,
+            'fcm_token' => $token !== '' ? $token : null,
         ]);
 
         return $this->successMessage(trans('api.success'));

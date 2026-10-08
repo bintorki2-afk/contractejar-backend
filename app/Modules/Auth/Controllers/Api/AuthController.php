@@ -151,6 +151,11 @@ class AuthController extends Controller
             return $this->errorMessage(trans('api.unauthorized'), 401);
         }
 
+        // مسح رمز إشعارات الجهاز حتى لا تصل إشعارات هذا الحساب لمن يستخدم الجهاز بعده.
+        if (isset($user->fcm_token) && $user->fcm_token !== null) {
+            $user->forceFill(['fcm_token' => null])->save();
+        }
+
         $user->tokens()->delete();
 
         return $this->successMessage(trans('api.logout_success'));
