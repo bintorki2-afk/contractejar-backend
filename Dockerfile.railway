@@ -7,9 +7,11 @@
 FROM php:8.2-cli
 
 # ----- System deps + PHP extensions -----------------------------------------
+# default-mysql-client: mysqldump/mysql for `php artisan aqdi:db-backup` / `aqdi:db-restore` (ف21)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git unzip libzip-dev libpng-dev libjpeg-dev libfreetype6-dev \
         libonig-dev libxml2-dev libicu-dev zlib1g-dev \
+        default-mysql-client gzip \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j"$(nproc)" \
         pdo_mysql mbstring bcmath gd zip exif pcntl intl opcache \
