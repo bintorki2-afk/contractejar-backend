@@ -90,7 +90,7 @@ class RefundableContractFlowTest extends TestCase
 
         $this->assertFalse((bool) $rejected->admin_confirmed);
         $contract->refresh();
-        $this->assertSame(ContractStatus::RETURN_ID, (int) $contract->contract_status_id);
+        $this->assertSame(ContractStatus::refundedId(), (int) $contract->contract_status_id);
 
         [, $contract2, $refund2] = $this->seedReturnOrder();
         $service->applyAdminUpdate($refund2, [
@@ -241,7 +241,7 @@ class RefundableContractFlowTest extends TestCase
 
         $contract = Contract::query()->create([
             'user_id' => $userId,
-            'contract_status_id' => ContractStatus::RETURN_ID,
+            'contract_status_id' => ContractStatus::refundedId(),
             'contract_type' => 'housing',
             'instrument_type' => 'electronic',
             'step' => 3,
@@ -315,7 +315,7 @@ class RefundableContractFlowTest extends TestCase
         });
 
         DB::table('contract_statuses')->insert([
-            ['id' => ContractStatus::RETURN_ID, 'name' => 'استرجاع', 'color' => '#f00', 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 2, 'name' => 'استرجاع', 'color' => '#f00', 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()],
             ['id' => ContractStatus::RECEIVED_ID, 'name' => 'مستلم', 'color' => '#0f0', 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()],
         ]);
 

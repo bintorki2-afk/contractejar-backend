@@ -27,6 +27,7 @@ class UpdateContractStatusRequest extends FormRequest
             'client_explanation' => ['nullable', 'string'],
             'order' => ['nullable', 'integer', 'min:0'],
             'is_active' => ['nullable', 'boolean'],
+            'status_key' => ['nullable', 'string', Rule::in(\App\Models\ContractStatus::KEYS), Rule::unique('contract_statuses', 'status_key')->ignore($statusId)],
         ];
     }
 

@@ -1357,6 +1357,16 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
                 ]);
             }
 
+            // دفعة (د) — ب2/ب13: الطلب المدفوع ينتقل إلى «قيد المراجعة» (+ الإسناد التلقائي إن كان مفعّلاً).
+            try {
+                app(\App\Services\Orders\OrderFlowService::class)->afterPayment($contract);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to move paid contract to under_review', [
+                    'contract_id' => $contract->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             try {
                 app(FirebaseNotificationService::class)
                     ->notifyEmployeesOfNewContract($contract->fresh(['user']), $paidAmount > 0 ? $paidAmount : null);

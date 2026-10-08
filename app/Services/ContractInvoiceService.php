@@ -570,7 +570,7 @@ class ContractInvoiceService
             ];
         }
 
-        if ((int) $contract->contract_status_id === ContractStatus::RETURN_ID) {
+        if ($contract->contract_status_id && (int) $contract->contract_status_id === ContractStatus::refundedId()) {
             return [
                 'status' => 'returned',
                 'status_label' => 'مسترجع',

@@ -15,14 +15,17 @@ class RefundableContractService
 {
     public const PERIODS = ['today', 'week', 'month', 'year', 'total'];
 
-    /** Returned orders (مسترجع): GET /api/admin/orders?status_id=2 */
-    public const RETURN_CONTRACT_STATUS_ID = ContractStatus::RETURN_ID;
+    /** حالة «مسترجع» تُحدَّد بالمفتاح refunded (لا رقم ثابت — دفعة د). */
+    public static function returnStatusId(): int
+    {
+        return ContractStatus::refundedId() ?? -1;
+    }
 
     public function baseQuery(): Builder
     {
         return RefundableContract::query()
             ->whereHas('contract', fn (Builder $q) => $q
-                ->where('contract_status_id', self::RETURN_CONTRACT_STATUS_ID)
+                ->where('contract_status_id', self::returnStatusId())
                 ->where('is_delete', 0)
             )
             ->with([
@@ -104,7 +107,7 @@ class RefundableContractService
             throw new InvalidArgumentException(trans('api.contract_not_found'));
         }
 
-        if ((int) $contract->contract_status_id === self::RETURN_CONTRACT_STATUS_ID) {
+        if ((int) $contract->contract_status_id === self::returnStatusId()) {
             throw new InvalidArgumentException(trans('api.refund_contract_already_returned'));
         }
 
@@ -325,7 +328,7 @@ class RefundableContractService
                 continue;
             }
 
-            if ((int) $contract->contract_status_id === self::RETURN_CONTRACT_STATUS_ID) {
+            if ((int) $contract->contract_status_id === self::returnStatusId()) {
                 throw new InvalidArgumentException(trans('api.refund_contract_already_returned'));
             }
 
@@ -380,7 +383,7 @@ class RefundableContractService
         ]);
 
         $contract->update([
-            'contract_status_id' => self::RETURN_CONTRACT_STATUS_ID,
+            'contract_status_id' => self::returnStatusId(),
             'updated_at' => now(),
         ]);
 
@@ -525,7 +528,7 @@ class RefundableContractService
         // so `update()` silently dropped them and approvals never flagged the contract → forceFill.
         if ($action === 'retract') {
             $contract->forceFill([
-                'contract_status_id' => ContractStatus::RECEIVED_ID,
+                'contract_status_id' => ContractStatus::receivedId(),
                 'accept_retrun_contract' => false,
                 'accept_retrun_contract_employee_id' => null,
                 'updated_at' => now(),
@@ -536,7 +539,7 @@ class RefundableContractService
 
         if ($action === 'approve') {
             $contractUpdates = [
-                'contract_status_id' => self::RETURN_CONTRACT_STATUS_ID,
+                'contract_status_id' => self::returnStatusId(),
                 'accept_retrun_contract' => true,
                 'updated_at' => now(),
             ];
@@ -552,7 +555,7 @@ class RefundableContractService
 
         // reject — stay in return status awaiting employee action or archive
         $contract->update([
-            'contract_status_id' => self::RETURN_CONTRACT_STATUS_ID,
+            'contract_status_id' => self::returnStatusId(),
             'updated_at' => now(),
         ]);
     }

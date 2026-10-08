@@ -16,6 +16,7 @@ abstract class TestCase extends BaseTestCase
 
         SchemaCache::flush();
         AttributionSchema::flush();
+        \App\Models\ContractStatus::flushKeyCache();
 
         // ترحيل Telescope يثبّت اتصاله على DB_CONNECTION (mysql في CI) بينما اختبارات كثيرة
         // تبدّل الاتصال الافتراضي إلى sqlite في الذاكرة ثم تشغّل migrate — فيحاول إنشاء

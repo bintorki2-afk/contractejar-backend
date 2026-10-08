@@ -27,7 +27,7 @@ class SetReturnContractAcceptanceAction
         $employee = $request->user();
         $contract = $this->orders->findAdminContract($id);
 
-        if ((int) $contract->contract_status_id !== ContractStatus::RETURN_ID) {
+        if (ContractStatus::refundedId() === null || (int) $contract->contract_status_id !== ContractStatus::refundedId()) {
             return ['ok' => false, 'message' => trans('api.order_not_in_return_status'), 'code' => 422];
         }
 

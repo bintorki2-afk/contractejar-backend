@@ -29,6 +29,12 @@ class ContractFrontendStatus
         'ارسال مسودة العقد لكم عبر واتساب' => 'whatsapp_draft',
         'توثيق العقد في إيجار' => 'ejar_authenticated',
         'توثيق العقد في ايجار' => 'ejar_authenticated',
+        'مسترجع' => 'refunded',
+        'مُسترجع' => 'refunded',
+        'مسترجعة' => 'refunded',
+        'استرجاع' => 'refunded',
+        'تم الاسترجاع' => 'refunded',
+        'بانتظار المشرف' => 'waiting_supervisor',
     ];
 
     /**
@@ -79,7 +85,8 @@ class ContractFrontendStatus
             description: $row?->description,
             clientExplanation: $row?->client_explanation,
             defaultLabel: 'قيد المراجعة',
-            defaultKey: 'under_review'
+            defaultKey: 'under_review',
+            explicitKey: $row?->getAttribute('status_key'),
         );
 
         // الطلب مدفوع (is_completed يُضبط فقط بعد دفعة ناجحة) لكن الموظف لم يغيّر حالته بعد
@@ -156,6 +163,29 @@ class ContractFrontendStatus
         ];
     }
 
+    /** المفتاح الثابت لاسم حالة معروف، أو null. */
+    public static function knownKeyFromName(?string $name): ?string
+    {
+        if ($name === null || trim($name) === '') {
+            return null;
+        }
+
+        return self::NAME_TO_KEY[trim($name)] ?? null;
+    }
+
+    /**
+     * مفتاح حالة صف من جدول الحالات: العمود status_key أولاً ثم الاسم.
+     */
+    public static function keyForStatusRow(?\App\Models\ContractStatus $row): ?string
+    {
+        if ($row === null) {
+            return null;
+        }
+        $explicit = $row->getAttribute('status_key');
+
+        return filled($explicit) ? (string) $explicit : self::knownKeyFromName($row->name);
+    }
+
     public static function keyFromName(?string $name, string $fallback = 'unknown'): string
     {
         if ($name === null || trim($name) === '') {
@@ -195,10 +225,13 @@ class ContractFrontendStatus
         ?string $description,
         ?string $clientExplanation,
         string $defaultLabel,
-        string $defaultKey
+        string $defaultKey,
+        ?string $explicitKey = null,
     ): array {
         $label = $name !== null && trim($name) !== '' ? trim($name) : $defaultLabel;
-        $key = self::keyFromName($name, $id ? "{$statusType}_{$id}" : $defaultKey);
+        $key = filled($explicitKey)
+            ? (string) $explicitKey
+            : self::keyFromName($name, $id ? "{$statusType}_{$id}" : $defaultKey);
         $client = filled($clientExplanation) ? trim((string) $clientExplanation) : null;
 
         // Tracking UI prefers client explanation; fall back to internal description.

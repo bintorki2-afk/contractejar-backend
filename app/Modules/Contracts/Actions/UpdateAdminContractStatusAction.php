@@ -81,7 +81,9 @@ class UpdateAdminContractStatusAction
         $statusId = (int) $request->contract_status_id;
         $status = ContractStatus::query()->find($statusId);
 
-        if ($statusId === ContractStatus::RETURN_ID) {
+        // دفعة (د): «مسترجع» تُحدَّد بالمفتاح refunded؛ «قيد المراجعة» لم تعد تتطلب طلب استرجاع.
+        $refundedId = ContractStatus::refundedId();
+        if ($refundedId !== null && $statusId === $refundedId && (int) $contract->contract_status_id !== $refundedId) {
             $this->refundable->assertRefundableRequestExists($contract);
         }
 

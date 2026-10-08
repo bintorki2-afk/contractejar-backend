@@ -296,7 +296,8 @@ class AdminOrderQueryService
         return Contract::query()
             ->tap(fn ($q) => $this->applySuccessfulPaymentAmountSelect($q))
             ->notDeleted()
-            ->where('contract_status_id', ContractStatus::NEW_ID)
+            // دفعة (د): المدفوع ينتقل تلقائياً إلى «قيد المراجعة» — يبقى بانتظار الاستلام حتى يستلمه موظف.
+            ->whereIn('contract_status_id', $this->awaitingReceiptStatusIds())
             ->whereDoesntHave('receivedContract')
             ->when($request->has('is_completed'), fn ($q) => $q->where('is_completed', $request->boolean('is_completed') ? 1 : 0)
             )
@@ -313,6 +314,12 @@ class AdminOrderQueryService
     /**
      * @return array<string, mixed>
      */
+    /** @return list<int> */
+    public function awaitingReceiptStatusIds(): array
+    {
+        return ContractStatus::idsFor([ContractStatus::KEY_NEW, ContractStatus::KEY_UNDER_REVIEW]) ?: [ContractStatus::NEW_ID];
+    }
+
     private function newOrdersListSummaryIfNeeded(Request $request, int $statusId): array
     {
         if ($statusId !== ContractStatus::NEW_ID) {
@@ -336,7 +343,8 @@ class AdminOrderQueryService
         $base = Contract::query()
             ->notDeleted()
             ->reachedAdminOrderStep()
-            ->where('contract_status_id', ContractStatus::NEW_ID)
+            ->whereIn('contract_status_id', $this->awaitingReceiptStatusIds())
+            ->whereDoesntHave('receivedContract')
             ->when($isCompleted !== null, fn ($q) => $q->where('is_completed', $isCompleted ? 1 : 0)
             )
             ->when($request->filled('search'), fn ($q) => $q->adminSearch($request->string('search')->toString())

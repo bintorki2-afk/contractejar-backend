@@ -82,7 +82,7 @@ class ReportsService
         $paid = (clone $base)->where('is_completed', 1)->count();
         $draft = (clone $base)->where('is_draft', true)->count();
         $incomplete = (clone $base)->where('is_completed', 0)->count();
-        $returned = (clone $base)->where('contract_status_id', ContractStatus::RETURN_ID)->count();
+        $returned = (clone $base)->whereIn('contract_status_id', ContractStatus::idsFor([ContractStatus::KEY_REFUNDED]) ?: [-1])->count();
         $canceled = $this->canceledContractsQuery($range, $contractType, $employeeId)->count();
 
         return new OrdersReportResource([
@@ -525,7 +525,7 @@ class ReportsService
     {
         return ContractStatus::query()
             ->where(function ($q) {
-                $q->whereKey(ContractStatus::WAITING_SUPERVISOR_ID)
+                $q->whereKey(ContractStatus::idsFor([ContractStatus::KEY_WAITING_SUPERVISOR, ContractStatus::KEY_COMPLETED]) ?: [-1])
                     ->orWhere('name', 'مكتمل')
                     ->orWhere('name', 'like', '%بانتظار المشرف%');
             })
@@ -541,14 +541,14 @@ class ReportsService
     {
         $ids = $this->doneStatusIds();
 
-        $closed = ContractStatus::query()
-            ->where(function ($q) {
-                $q->whereKey(ContractStatus::RETURN_ID)
-                    ->orWhereIn('name', ['ملغى', 'مكتمل', 'مسترجع', 'استرجاع']);
-            })
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
-            ->all();
+        $closed = array_values(array_unique([
+            ...ContractStatus::idsFor([ContractStatus::KEY_REFUNDED, ContractStatus::KEY_CANCELLED, ContractStatus::KEY_COMPLETED]),
+            ...ContractStatus::query()
+                ->whereIn('name', ['ملغى', 'مكتمل', 'مسترجع', 'استرجاع'])
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all(),
+        ]));
 
         return array_values(array_unique([...$ids, ...$closed]));
     }

@@ -24,6 +24,7 @@ class StoreContractStatusRequest extends FormRequest
             'client_explanation' => ['nullable', 'string'],
             'order' => ['nullable', 'integer', 'min:0'],
             'is_active' => ['nullable', 'boolean'],
+            'status_key' => ['nullable', 'string', \Illuminate\Validation\Rule::in(\App\Models\ContractStatus::KEYS), 'unique:contract_statuses,status_key'],
         ];
     }
 
