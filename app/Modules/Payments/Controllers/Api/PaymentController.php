@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 class PaymentController extends Controller
 {
     use Responser;
+    use \App\Http\Concerns\RedactsPublicPaymentPayload;
 
     public function __construct(
         protected PaymentGatewayInterface $paymentService
@@ -20,10 +21,21 @@ class PaymentController extends Controller
 
     public function index(Request $request, $uuid)
     {
-        return $this->paymentService->createPaymentUrlResponse(
+        $response = $this->paymentService->createPaymentUrlResponse(
             (string) $uuid,
             $this->resolvePaymentClient($request)
         );
+
+        // طلب مدفوع: لا نكشف معرّف العقد وتفاصيل الدفعة إلا لصاحب الطلب. (DASHBOARD-7/APP-4)
+        $data = $response->getData(true);
+        if (is_array($data) && ($data['already_paid'] ?? false) === true
+            && ! ($data['test_mode'] ?? false)
+            && ! $this->requesterOwnsPaymentUuid($request, (string) $uuid)) {
+            unset($data['contract_id'], $data['payment']);
+            $response->setData($data);
+        }
+
+        return $response;
     }
 
     /**
@@ -100,14 +112,19 @@ class PaymentController extends Controller
     {
         $this->paymentService->processIpn($request, (string) $uuid);
 
-        return response()->json(
-            $this->paymentService->paymentStatusPayload(
-                (string) $uuid,
-                'return',
-                $request->input('id') ?? $request->input('payment_id'),
-                $request->input('invoice_id')
-            )
+        $payload = $this->paymentService->paymentStatusPayload(
+            (string) $uuid,
+            'return',
+            $request->input('id') ?? $request->input('payment_id'),
+            $request->input('invoice_id')
         );
+
+        // نقطة عامة: التفاصيل (معرّفات/مبالغ/بيانات تغيير المؤجر) لصاحب الطلب أو لعودة بوابة موثّقة فقط.
+        if (! $this->requesterOwnsPaymentUuid($request, (string) $uuid) && ! $this->gatewayReturnVerified($request, $payload)) {
+            $payload = $this->minimalPaymentStatus($payload);
+        }
+
+        return response()->json($payload);
     }
 
     /**
@@ -180,6 +197,9 @@ class PaymentController extends Controller
         // Trust gateway/local success only — never ?status=paid from the URL alone.
         $paid = (bool) ($payload['payment_confirmed'] ?? false);
 
+        // معرّف العقد وتفاصيل الدفعة لصاحب الطلب أو لعودة بوابة موثّقة فقط. (APP-4)
+        $detailed = $this->requesterOwnsPaymentUuid($request, $uuid) || $this->gatewayReturnVerified($request, $payload);
+
         $type = $paid ? 'success' : 'failed';
         $message = PaymentMessage::query()->where('type', $type)->first();
 
@@ -188,9 +208,9 @@ class PaymentController extends Controller
             'status' => $paid ? 'success' : 'failed',
             'screen' => $paid ? 'success' : 'error',
             'contract_uuid' => $uuid,
-            'contract_id' => $payload['contract_id'] ?? null,
+            'contract_id' => $detailed ? ($payload['contract_id'] ?? null) : null,
             'is_completed' => (bool) ($payload['is_completed'] ?? false),
-            'payment' => $payload['payment'] ?? null,
+            'payment' => $detailed ? ($payload['payment'] ?? null) : null,
             'content' => $message ? (new PaymentMessageResource($message))->resolve() : null,
             'message_type' => $type,
             'frontend_url' => $this->frontendPaymentRedirectUrl($paid ? 'success' : 'error', $uuid),
@@ -218,13 +238,13 @@ class PaymentController extends Controller
         ]);
 
         if ($this->wantsJsonPaymentResponse($request)) {
+            $payload = $this->paymentService->paymentStatusPayload($uuid, $result, $gatewayId, $invoiceId);
+            if (! $this->requesterOwnsPaymentUuid($request, $uuid) && ! $this->gatewayReturnVerified($request, $payload)) {
+                $payload = $this->minimalPaymentStatus($payload);
+            }
+
             return $this->apiResponse(
-                $this->paymentService->paymentStatusPayload(
-                    $uuid,
-                    $result,
-                    $gatewayId,
-                    $invoiceId
-                ),
+                $payload,
                 $paid ? trans('api.success') : trans('api.error'),
                 $paid ? 200 : 400
             );
