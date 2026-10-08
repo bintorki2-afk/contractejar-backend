@@ -19,6 +19,50 @@ class StartContractAction
      */
     public function execute(ContractTypeRequest $request, int $userId): array
     {
+        // منع التكرار (WEBSITE-3): نفس المفتاح من نفس المستخدم خلال 24 ساعة ⇒ نفس العقد،
+        // حتى لو ضاع الرد الأول وأعاد العميل المحاولة. المفتاح من ترويسة Idempotency-Key
+        // أو الحقل client_reference (رقم المسودة المحلي).
+        $idempotencyKey = trim((string) ($request->header('Idempotency-Key') ?: $request->input('client_reference', '')));
+        if ($idempotencyKey === '' || strlen($idempotencyKey) > 200) {
+            return $this->create($request, $userId);
+        }
+
+        $cacheKey = 'contract-start:'.$userId.':'.sha1($idempotencyKey);
+        $lock = \Illuminate\Support\Facades\Cache::lock($cacheKey.':lock', 15);
+
+        try {
+            $lock->block(10);
+        } catch (\Throwable) {
+            // تعذّر القفل — نتابع بلا ضمان (أفضل من رفض الطلب).
+        }
+
+        try {
+            $existingId = \Illuminate\Support\Facades\Cache::get($cacheKey);
+            if ($existingId) {
+                $existing = Contract::query()->whereKey($existingId)->where('user_id', $userId)->first();
+                if ($existing !== null && ! $existing->is_delete) {
+                    $existing->load(['units.unitType', 'units.unitUsage']);
+
+                    return ['ok' => true, 'contract' => $existing, 'replayed' => true];
+                }
+            }
+
+            $outcome = $this->create($request, $userId);
+            if ($outcome['ok']) {
+                \Illuminate\Support\Facades\Cache::put($cacheKey, $outcome['contract']->id, now()->addDay());
+            }
+
+            return $outcome;
+        } finally {
+            optional($lock)->release();
+        }
+    }
+
+    /**
+     * @return array{ok: true, contract: Contract}|array{ok: false, message: string, code: int}
+     */
+    private function create(ContractTypeRequest $request, int $userId): array
+    {
         $validated = $request->validated();
 
         $instrumentType = $request->filled('instrument_type')
