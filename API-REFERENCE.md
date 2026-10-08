@@ -1,7 +1,7 @@
 # 🔌 مرجع الـ API — contractejar-backend
 
 > خريطة الـ API (Laravel 10). إجمالي ~573 endpoint موزّعة على 16 module.
-> آخر تحديث: 2026-10-08
+> آخر تحديث: 2026-10-09
 
 ## البنية
 الـ API مبني بنظام **Modules** — كل ميزة في مجلد مستقل تحت `app/Modules/<Name>/`.
@@ -103,6 +103,53 @@ GET/POST /api/admin/settings                  قسم app_version (app_ios_min_ve
 notifications:dispatch     كل 15 دقيقة — الإشعارات الذكية (مرة لكل نوع لكل طلب)
 aqdi:db-backup             يومياً 03:10 الرياض — نسخة احتياطية (آخر 7 + رفع اختياري إلى R2)
 aqdi:db-restore {file}     يدوي — الاستعادة (خارج الإنتاج أو --force)
+```
+
+## نقاط دفعة (د) — 2026-10-09
+> التفاصيل الكاملة بالأمثلة: `docs/field-mapping.md` (خريطة الحقول) — وفي هذا القسم ملخص.
+
+### حالات الطلب (ب2)
+كل صف في `contract_statuses` يحمل `status_key` ثابتاً: `new, under_review, received, received_by_employee, whatsapp_draft,
+ejar_authenticated, completed, cancelled, on_hold, refunded` (+ `paid` افتراضية = جديد مدفوع). لا تعتمد على أرقام الحالات.
+الدفع ⇒ `under_review` تلقائياً؛ الاستلام ⇒ `received_by_employee`؛ «مسترجع» حالة مستقلة.
+
+### لوحة التحكم (auth:sanctum + permission)
+```
+GET    /api/admin/orders?status_key=a,b|tab=all|incomplete|<key>   كل الحالات افتراضياً (طلب = الخطوة ≥ 4)
+GET    /api/admin/orders/status-counts          all/paid/unpaid/incomplete/by_key/statuses/tabs (نفس فلاتر القائمة)
+GET    /api/admin/orders/attention              «عليك الحين»: awaiting_receive/draft/notarize + delayed (الأقدم أولاً)
+GET    /api/admin/orders/trash                  السلة (30 يوماً) · DELETE /api/admin/orders/{id} · POST /api/admin/orders/{id}/restore
+PATCH  /api/admin/orders/{id}                   تعديل حقول صغيرة مع سجل قبل/بعد · GET /api/admin/orders/editable-fields
+GET    /api/admin/orders/{id}/stages            المرحلة الحالية/التالية وحقولها
+POST   /api/admin/orders/{id}/stage/{received|draft_sent|notarized}   + رسالة واتساب جاهزة (wa.me)
+GET    /api/admin/orders/{id}/ejar-copy[?format=text]               كتل بيانات إيجار بالترتيب (هجري + ميلادي)
+POST   /api/admin/orders/{id}/notify            { kind: data_missing|status_changed, message?, step? }
+GET    /api/admin/orders/{id}                   + activities[] · notifications_sent[] · applied_discount · payments[] · refunds[] · delay_flags[] · status_key
+POST   /api/admin/payments/{payment}/refund     { amount?, reason } — Moyasar (permission: payments.refund)
+GET    /api/admin/payments/refunds              قائمة الاسترجاعات + ملخص
+GET    /api/admin/reports/overview?range=today|week|month|year|all   6 أرقام
+GET|POST /api/admin/message-templates (+ /{id}, /{id}/delete, /preview)   قوالب واتساب/SMS/Push
+POST   /api/admin/notifications/broadcast/preview   عدد مستلمي الشريحة · all-users يقبل segment/city_id/coupon_code/valid_until
+GET|POST /api/admin/settings                    + قسم auto_assign (auto_assign_orders, auto_assign_strategy, auto_assign_employee_ids)
+DELETE /api/admin/lessor-change/{id} · GET /api/admin/lessor-change/trash · POST /api/admin/lessor-change/{id}/restore
+```
+
+### عامة / العميل
+```
+GET  /api/v2/status                 صفحة الحالة: api/db/scheduler/payments (فحص البوابة مخزّن 5 دقائق)
+GET  /api/v2/contracts/{id}         + activities[] (نسخة آمنة)    ·   POST /api/v2/contract/track  + activities[]
+GET  /api/v2/pricing                meter_transfer_fee.per_meter = true · commercial.extra_year = 450 (من الإعدادات)
+```
+أنواع إشعارات جديدة: `assigned`, `data_missing` (data.step, data.deep_link), `refund` (data.amount, data.full), `discount_applied`;
+و`offer`/`announcement` قد تحمل `coupon_code` + `valid_until`.
+
+### أوامر مجدولة جديدة
+```
+orders:flag-delays     كل 15 دقيقة — علامات التأخير (2/24/72 ساعة) + إشعار الموظفين بالجديد
+trash:purge            يومياً 04:00 — حذف نهائي لما مضى عليه 30 يوماً في السلة
+qa:daily-smoke         يومياً 06:00 — فحص اصطناعي لمسار العميل + تيليجرام (✅/❌)
+reports:weekly-owner   الأحد 09:00 — تقرير المالك الأسبوعي عبر تيليجرام
+docs:field-mapping     يدوي — يولّد docs/field-mapping.md
 ```
 
 ## كيف تستكشف المزيد
