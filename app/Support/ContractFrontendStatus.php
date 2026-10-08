@@ -10,7 +10,8 @@ use App\Services\ContractStatusHistoryService;
  *
  * - status / status_label = current dashboard status (Arabic label as stored).
  * - status_client_explanation = شرح الحالة للعميل (from admin statuses).
- * - journey / status_timeline = only statuses that actually happened (history).
+ * - status_timeline = only statuses that actually happened (history).
+ * - journey = the fixed 6-step customer journey (ContractJourney) with done/current flags.
  */
 class ContractFrontendStatus
 {
@@ -83,11 +84,14 @@ class ContractFrontendStatus
     }
 
     /**
-     * @return list<array<string, mixed>>
+     * رحلة الطلب (ف2): القالب الثابت من 6 خطوات مع علامات done/current لكل خطوة.
+     * (سجل الحالات الفعلي يبقى في `status_timeline`.)
+     *
+     * @return list<array{step: int, key: string, label: string, description: string, done: bool, current: bool, at: string|null}>
      */
     public static function journey(?Contract $contract): array
     {
-        return self::statusTimeline($contract);
+        return ContractJourney::for($contract);
     }
 
     /**

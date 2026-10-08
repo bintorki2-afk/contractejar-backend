@@ -81,6 +81,9 @@ class ContractTrackController extends Controller
                 'status_label' => $row['status_label'] ?? '',
                 'at' => $row['at'] ?? ($row['created_at'] ?? null),
             ], $timeline),
+            // رحلة الطلب (ف2): 6 خطوات ثابتة مع done/current.
+            'journey' => ContractFrontendStatus::journey($contract),
+            'journey_sentence' => \App\Support\ContractJourney::RULE_SENTENCE,
             'created_at' => optional($contract->created_at)->format('Y-m-d'),
             'updated_at' => optional($contract->updated_at)->format('Y-m-d H:i'),
         ], trans('api.success'));

@@ -132,6 +132,7 @@ class ContractController extends Controller
                 'contractStatus',
                 'draftContractStatus',
                 'receivedContract',
+                'statusHistories',
                 'units.unitType',
                 'units.unitUsage',
                 'units.realEstate',
