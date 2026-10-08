@@ -48,7 +48,9 @@ trait ResolvesContractPaymentForAdmin
             // القوائم تحمّل الدفعات الناجحة مسبقاً (+ المبلغ عبر successful_payment_amount):
             // لا استعلام إضافي لكل صف غير مدفوع (كان N+1 في قائمة الطلبات).
             return $this->contractPayments
-                ->filter(fn (Payment $payment) => $this->paymentContractUuidMatches($payment->contract_uuid))
+                // الدفعات الناجحة فقط — مورد التفاصيل يحمّل كل الدفعات (فاشلة أيضاً) للسجل. (DASHBOARD-9)
+                ->filter(fn (Payment $payment) => $payment->status === 'success'
+                    && $this->paymentContractUuidMatches($payment->contract_uuid))
                 ->sortByDesc('id')
                 ->first();
         }
