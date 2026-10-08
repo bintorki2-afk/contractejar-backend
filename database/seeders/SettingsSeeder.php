@@ -26,6 +26,7 @@ class SettingsSeeder extends Seeder
             'electricity_meter_fee_commercial_tenant' => 25,
             'water_meter_fee_commercial_tenant' => 25,
             'commercial_tax' => 15,
+            'doc_fee_commercial_extra_year' => 450,
             'application_fees' => 100,
             'open_payment' => true,
             'version' => '1',

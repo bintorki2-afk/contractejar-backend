@@ -26,7 +26,7 @@ return new class extends Migration
                 'doc_fee_housing_first_year' => 249,
                 'doc_fee_housing_extra_year' => 150,
                 'doc_fee_commercial_first_year' => 349,
-                'doc_fee_commercial_extra_year' => 250,
+                'doc_fee_commercial_extra_year' => 450, // دفعة (د): قرار المالك 450 (الصف القائم يُحدَّث في 2026_10_09_000600)
                 'document_surcharge_fee' => 75,
                 'lessor_change_fee' => 400,
             ] as $column => $default) {

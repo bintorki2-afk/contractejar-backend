@@ -261,7 +261,7 @@ class SettingController extends Controller
                 'doc_fee_housing_first_year' => (float) ($setting->doc_fee_housing_first_year ?? 249),
                 'doc_fee_housing_extra_year' => (float) ($setting->doc_fee_housing_extra_year ?? 150),
                 'doc_fee_commercial_first_year' => (float) ($setting->doc_fee_commercial_first_year ?? 349),
-                'doc_fee_commercial_extra_year' => (float) ($setting->doc_fee_commercial_extra_year ?? 250),
+                'doc_fee_commercial_extra_year' => (float) ($setting->doc_fee_commercial_extra_year ?? \App\Support\DocFee::COMMERCIAL_EXTRA_YEAR),
                 'document_surcharge_fee' => (float) ($setting->document_surcharge_fee ?? 75),
                 'lessor_change_fee' => (float) ($setting->lessor_change_fee ?? 400),
                 'vat_rate' => (float) ($setting->vat_rate ?? 0),

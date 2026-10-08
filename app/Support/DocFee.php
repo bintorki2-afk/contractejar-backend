@@ -14,7 +14,8 @@ final class DocFee
 
     public const COMMERCIAL_FIRST_YEAR = 349.0;
 
-    public const COMMERCIAL_EXTRA_YEAR = 250.0;
+    /** قرار المالك 2026-10-08: 450 (كانت 250). القيمة الفعلية من الإعدادات. */
+    public const COMMERCIAL_EXTRA_YEAR = 450.0;
 
     /** القيم الفعلية تُقرأ من الإعدادات (قابلة للتعديل من لوحة التحكم)؛ الثوابت أعلاه احتياط فقط. */
     private static ?array $settingsCache = null;
