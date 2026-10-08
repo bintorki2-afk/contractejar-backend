@@ -32,10 +32,17 @@ class RouteServiceProvider extends ServiceProvider
         RateLimiter::for('otp-send', function (Request $request) {
             $mobile = (string) $request->input('mobile', '');
 
-            return Limit::perMinutes(
-                max(1, (int) config('otp.send_http_decay_minutes', 10)),
-                max(1, (int) config('otp.send_http_max', 5))
-            )->by($request->ip().'|otp-send|'.$mobile);
+            // حدّان معاً: لكل (IP+رقم) ولكل IP إجمالاً — حتى لا يُستنزف رصيد الرسائل
+            // المدفوعة بتدوير الأرقام من عنوان واحد. (نقطة 14 / CROSS-9)
+            return [
+                Limit::perMinutes(
+                    max(1, (int) config('otp.send_http_decay_minutes', 10)),
+                    max(1, (int) config('otp.send_http_max', 5))
+                )->by($request->ip().'|otp-send|'.$mobile),
+                Limit::perHour(
+                    max(1, (int) config('otp.send_http_ip_max_per_hour', 15))
+                )->by($request->ip().'|otp-send-ip'),
+            ];
         });
 
         RateLimiter::for('otp-verify', function (Request $request) {

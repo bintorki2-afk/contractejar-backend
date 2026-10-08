@@ -67,6 +67,9 @@ return [
     */
     'send_http_max' => (int) env('OTP_SEND_HTTP_MAX', 5),
 
+    // حد إجمالي لإرسال OTP لكل IP في الساعة (بغض النظر عن الرقم) — ضد استنزاف رصيد الرسائل.
+    'send_http_ip_max_per_hour' => (int) env('OTP_SEND_HTTP_IP_MAX_PER_HOUR', 15),
+
     'send_http_decay_minutes' => (int) env('OTP_SEND_HTTP_DECAY_MINUTES', 10),
 
     'verify_http_max' => (int) env('OTP_VERIFY_HTTP_MAX', 10),
