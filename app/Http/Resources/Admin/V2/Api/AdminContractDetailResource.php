@@ -95,6 +95,8 @@ class AdminContractDetailResource extends JsonResource
             'comments_count' => $c->relationLoaded('comments') ? $c->comments->count() : 0,
             'status_timeline' => app(ContractStatusHistoryService::class)->timeline($c),
             'invoice' => $this->invoiceSummary($c),
+            // دفعة (د) — ب9: سجل النشاط (من/ماذا/متى + قبل/بعد).
+            'activities' => app(\App\Services\Orders\ContractActivityLogger::class)->forAdmin($c),
         ]);
     }
 

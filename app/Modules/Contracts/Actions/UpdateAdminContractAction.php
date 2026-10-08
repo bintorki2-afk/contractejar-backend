@@ -65,9 +65,23 @@ class UpdateAdminContractAction
             }
         }
 
+        $beforeStatusId = $contract->contract_status_id;
+        $diff = \App\Services\Orders\ContractActivityLogger::diff($contract, $payload, $statusFields);
+
         $contract->fill($payload);
         $contract->save();
         $contract->refresh();
+
+        // دفعة (د) — ب9: سجل النشاط (تعديل البيانات + تغيير الحالة).
+        $flow = app(\App\Services\Orders\OrderFlowService::class);
+        if ($diff['after'] !== []) {
+            $flow->activity($contract, 'edited', $request->user() instanceof \App\Models\Employee ? $request->user() : null, $diff['before'], $diff['after']);
+        }
+        if ((int) $beforeStatusId !== (int) $contract->contract_status_id) {
+            $flow->activity($contract, ContractStatus::keyForId((int) $contract->contract_status_id) === ContractStatus::KEY_CANCELLED ? 'cancelled' : 'status_changed',
+                $request->user() instanceof \App\Models\Employee ? $request->user() : null,
+                ['contract_status_id' => $beforeStatusId], ['contract_status_id' => $contract->contract_status_id]);
+        }
 
         if ($statusChanged) {
             try {

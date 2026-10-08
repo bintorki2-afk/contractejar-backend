@@ -54,6 +54,9 @@ class OrderFlowService
     public function afterPayment(Contract $contract): void
     {
         $contract->refresh();
+        $amount = (float) (\App\Models\Payment::query()->successfulMatchingContractUuid((string) $contract->uuid)->latest('id')->value('amount') ?? 0);
+        $this->activity($contract, 'payment', null, null, ['amount' => $amount, 'is_completed' => true], 'system');
+
         $key = $this->currentKey($contract);
         if ($key !== null && ! in_array($key, [ContractStatus::KEY_NEW, ContractStatus::KEY_PAID], true)) {
             return;
@@ -142,16 +145,12 @@ class OrderFlowService
      * @param  array<string, mixed>|null  $before
      * @param  array<string, mixed>|null  $after
      */
-    public function activity(Contract $contract, string $action, ?Employee $actor, ?array $before = null, ?array $after = null, string $actorType = 'employee', ?string $note = null): void
+    public function activity(?Contract $contract, string $action, ?Employee $actor, ?array $before = null, ?array $after = null, string $actorType = 'employee', ?string $note = null): void
     {
-        if (! class_exists(\App\Services\Orders\ContractActivityLogger::class)) {
-            return;
-        }
-
         try {
             app(ContractActivityLogger::class)->log($contract, $action, $actor, $before, $after, $actorType, $note);
         } catch (\Throwable $e) {
-            Log::warning('contract activity log failed', ['contract_id' => $contract->id, 'action' => $action, 'error' => $e->getMessage()]);
+            Log::warning('contract activity log failed', ['contract_id' => $contract?->id, 'action' => $action, 'error' => $e->getMessage()]);
         }
     }
 }
