@@ -233,11 +233,21 @@ class ContractInvoiceService
         if ((float) $pricing['document_surcharge'] > 0) {
             $items[] = $this->line('document_surcharge', 'رسوم المستندات الإضافية', (float) $pricing['document_surcharge']);
         }
-        if ((float) ($meter['electricity_meter_fee'] ?? 0) > 0) {
-            $items[] = $this->line('electricity_meter', 'رسوم نقل عداد الكهرباء باسم المستأجر', (float) $meter['electricity_meter_fee']);
-        }
-        if ((float) ($meter['water_meter_fee'] ?? 0) > 0) {
-            $items[] = $this->line('water_meter', 'رسوم نقل عداد المياه باسم المستأجر', (float) $meter['water_meter_fee']);
+        // دفعة (د) — ب1: لكل عداد (الكمية = عدد العدادات باسم المستأجر).
+        foreach (['electricity' => 'الكهرباء', 'water' => 'المياه'] as $kind => $label) {
+            $amount = (float) ($meter[$kind.'_meter_fee'] ?? 0);
+            if ($amount <= 0) {
+                continue;
+            }
+            $count = max(1, (int) ($meter[$kind.'_meter_count'] ?? 1));
+            $unit = (float) ($meter[$kind.'_meter_unit_fee'] ?? $amount);
+            $description = "رسوم نقل عداد {$label} باسم المستأجر";
+            if ($count > 1) {
+                $description .= ' ('.$count.' عدادات × '.rtrim(rtrim(number_format($unit, 2, '.', ''), '0'), '.').' ر.س)';
+            }
+            $line = $this->line($kind.'_meter', $description, $amount);
+            $line['quantity'] = $count;
+            $items[] = $line;
         }
 
         $subtotal = round(array_sum(array_map(static fn (array $i) => (float) $i['amount'], $items)), 2);

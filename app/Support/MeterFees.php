@@ -11,49 +11,80 @@ use App\Models\Setting;
 final class MeterFees
 {
     /**
+     * دفعة (د) — ب1: رسوم نقل العداد **لكل عداد**: لكل وحدة عدادها باسم المستأجر يُحسب رسم مستقل
+     * (وحدتان × عداد كهرباء باسم المستأجر = 2 × 15). إذا لم تُسجَّل وحدات، تُستخدم ملكية العقد (عداد واحد).
+     *
      * @return array{
      *     electricity_meter_fee: float,
      *     water_meter_fee: float,
-     *     meter_fees_total: float
+     *     meter_fees_total: float,
+     *     electricity_meter_count: int,
+     *     water_meter_count: int,
+     *     electricity_meter_unit_fee: float,
+     *     water_meter_unit_fee: float,
+     *     shared_meters: array<string, mixed>
      * }
      */
     public static function forContract(Contract $contract, ?Setting $setting = null): array
     {
         $setting ??= Setting::query()->first();
 
-        $electricity = 0.0;
-        $water = 0.0;
+        $electricityUnit = 0.0;
+        $waterUnit = 0.0;
+        $electricityCount = 0;
+        $waterCount = 0;
 
         if ($setting) {
             $isHousing = $contract->contract_type === 'housing';
 
-            // Contracts created before Step 5 rolled unit ownership up to the contract only carry
-            // the ownership on their units: derive it from them when the contract column is empty.
-            $electricityOwnership = $contract->electricity_meter_ownership ?? self::ownershipFromUnits($contract, 'electricity_meter_ownership');
-            $waterOwnership = $contract->water_meter_ownership ?? self::ownershipFromUnits($contract, 'water_meter_ownership');
+            $electricityUnit = max(0, (float) ($isHousing
+                ? $setting->electricity_meter_fee_housing_tenant
+                : $setting->electricity_meter_fee_commercial_tenant));
+            $waterUnit = max(0, (float) ($isHousing
+                ? $setting->water_meter_fee_housing_tenant
+                : $setting->water_meter_fee_commercial_tenant));
 
-            if ($electricityOwnership === 'tenant') {
-                $electricity = (float) ($isHousing
-                    ? $setting->electricity_meter_fee_housing_tenant
-                    : $setting->electricity_meter_fee_commercial_tenant);
-            }
-
-            if ($waterOwnership === 'tenant') {
-                $water = (float) ($isHousing
-                    ? $setting->water_meter_fee_housing_tenant
-                    : $setting->water_meter_fee_commercial_tenant);
-            }
+            $electricityCount = self::tenantMeterCount($contract, 'electricity');
+            $waterCount = self::tenantMeterCount($contract, 'water');
         }
 
-        $electricity = max(0, $electricity);
-        $water = max(0, $water);
+        $electricity = round($electricityUnit * $electricityCount, 2);
+        $water = round($waterUnit * $waterCount, 2);
 
         return [
             'electricity_meter_fee' => $electricity,
             'water_meter_fee' => $water,
-            'meter_fees_total' => $electricity + $water,
+            'meter_fees_total' => round($electricity + $water, 2),
+            'electricity_meter_count' => $electricityCount,
+            'water_meter_count' => $waterCount,
+            'electricity_meter_unit_fee' => $electricityUnit,
+            'water_meter_unit_fee' => $waterUnit,
             'shared_meters' => self::sharedMetersForContract($contract),
         ];
+    }
+
+    /**
+     * عدد العدادات باسم المستأجر لنوع (electricity|water): وحدة لكل عداد.
+     */
+    public static function tenantMeterCount(Contract $contract, string $kind): int
+    {
+        $column = $kind.'_meter_ownership';
+
+        if ($contract->exists) {
+            try {
+                $units = $contract->relationLoaded('units') ? $contract->units : $contract->units()->get();
+            } catch (\Throwable) {
+                $units = collect();
+            }
+
+            $withOwnership = $units->filter(static fn ($u) => filled($u->{$column} ?? null));
+            if ($withOwnership->isNotEmpty()) {
+                return $withOwnership->filter(static fn ($u) => ($u->{$column} ?? null) === 'tenant')->count();
+            }
+        }
+
+        // لا وحدات بملكية مسجّلة ⇒ ملكية العقد نفسه (عداد واحد).
+        return ($contract->{$column} ?? null) === 'tenant' ? 1 : 0;
     }
 
     /**
@@ -107,27 +138,6 @@ final class MeterFees
         $result['total'] = round($result['total'], 2);
 
         return $result;
-    }
-
-    private static function ownershipFromUnits(Contract $contract, string $column): ?string
-    {
-        if (! $contract->exists) {
-            return null;
-        }
-
-        try {
-            $values = $contract->relationLoaded('units')
-                ? $contract->units->pluck($column)->filter()->values()
-                : $contract->units()->pluck($column)->filter()->values();
-        } catch (\Throwable) {
-            return null;
-        }
-
-        if ($values->isEmpty()) {
-            return null;
-        }
-
-        return $values->contains('tenant') ? 'tenant' : 'owner';
     }
 
     public static function totalForContract(Contract $contract, ?Setting $setting = null): float
