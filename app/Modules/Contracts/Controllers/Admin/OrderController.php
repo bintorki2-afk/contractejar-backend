@@ -71,6 +71,44 @@ class OrderController extends Controller
     }
 
     /**
+     * GET /api/admin/orders/trash — الطلبات في السلة (الأحدث أولاً).
+     */
+    public function trash(Request $request)
+    {
+        $trash = app(\App\Services\Orders\TrashService::class);
+        $paginator = Contract::query()
+            ->where('is_delete', 1)->whereNotNull('trashed_at')
+            ->when($request->filled('search'), fn ($q) => $q->adminSearch($request->string('search')->toString()))
+            ->with($this->orders->orderListRelations())
+            ->latest('trashed_at')
+            ->paginate(min(max((int) $request->input('per_page', 50), 1), 200));
+
+        $items = collect($paginator->items())->map(fn (Contract $c) => array_merge(
+            (new OrderResource($c))->toArray($request),
+            $trash->trashMeta($c->trashed_at, $c->deleted_by),
+        ))->values();
+
+        return $this->paginatedApiResponse($paginator, $items, trans('api.success'), ['retention_days' => \App\Services\Orders\TrashService::RETENTION_DAYS]);
+    }
+
+    /**
+     * POST /api/admin/orders/{id}/restore
+     */
+    public function restore(Request $request, int $id)
+    {
+        try {
+            $contract = app(\App\Services\Orders\TrashService::class)->restoreContract(
+                Contract::query()->findOrFail($id),
+                $request->user() instanceof \App\Models\Employee ? $request->user() : null,
+            );
+
+            return $this->apiResponse(['id' => $contract->id, 'uuid' => (string) $contract->uuid, 'is_delete' => false], 'تمت استعادة الطلب.');
+        } catch (InvalidArgumentException $e) {
+            return $this->errorMessage($e->getMessage(), 422);
+        }
+    }
+
+    /**
      * GET /api/admin/orders/attention — «عليك الحين» (الأقدم أولاً).
      */
     public function attention(Request $request)
@@ -418,15 +456,15 @@ class OrderController extends Controller
                 ]);
             }
 
-            DB::transaction(function () use ($contract) {
-                if (! empty($contract->uuid)) {
-                    Payment::where('contract_uuid', $contract->uuid)->delete();
-                }
+            // دفعة (د) — ب12: نقل للسلة (استعادة خلال 30 يوماً) بدل الحذف النهائي، والدفعات لا تُحذف.
+            $contract = app(\App\Services\Orders\TrashService::class)->trashContract($contract, $actor);
 
-                $contract->delete();
-            });
-
-            return $this->apiResponse(null, trans('api.success'), true, 200);
+            return $this->apiResponse([
+                'id' => $contract->id,
+                'uuid' => (string) $contract->uuid,
+                'message' => 'نُقل الطلب إلى السلة — يمكنك التراجع خلال 30 يوماً.',
+                ...app(\App\Services\Orders\TrashService::class)->trashMeta($contract->trashed_at, $contract->deleted_by),
+            ], trans('api.success'), true, 200);
         } catch (ModelNotFoundException $e) {
             return $this->apiResponse(null, trans('api.contract_not_found'), false, 404);
         } catch (\Throwable $e) {

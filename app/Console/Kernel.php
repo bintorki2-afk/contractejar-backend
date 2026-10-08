@@ -34,6 +34,9 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(30)
             ->appendOutputTo(storage_path('logs/orders-flag-delays.log'));
 
+        // دفعة (د) — ب12: تفريغ السلة (أقدم من 30 يوماً) يومياً 04:00.
+        $schedule->command('trash:purge')->dailyAt('04:00')->timezone('Asia/Riyadh')->withoutOverlapping(60);
+
         // ف21: نسخة احتياطية يومية لقاعدة البيانات 03:10 بتوقيت الرياض.
         $schedule->command('aqdi:db-backup')
             ->dailyAt('03:10')

@@ -86,6 +86,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{id}/return-contract-status', 'updateReturnContractAcceptance')->whereNumber('id')->middleware('permission:returned_request.retrieve')->name('return-contract-status');
         // حذف طلب — صلاحية حذف صريحة (كان «تعديل» فقط)، ويرفض حذف طلب مدفوع. (DASHBOARD-3)
         Route::post('/{id}/delete', 'destroy')->whereNumber('id')->middleware('permission:all_requests.delete')->name('destroy');
+        // دفعة (د) — ب12: سلة المحذوفات (30 يوماً).
+        Route::delete('/{id}', 'destroy')->whereNumber('id')->middleware('permission:all_requests.delete')->name('trash');
+        Route::get('/trash', 'trash')->middleware('permission:all_requests.delete')->name('trash.index');
+        Route::post('/{id}/restore', 'restore')->whereNumber('id')->middleware('permission:all_requests.delete')->name('restore');
     });
 
     // Contract comments (employee-authenticated)
