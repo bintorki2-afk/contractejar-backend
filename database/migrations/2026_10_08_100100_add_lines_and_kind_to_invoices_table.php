@@ -31,6 +31,21 @@ return new class extends Migration
 
     public function down(): void
     {
+        // إسقاط الفهارس أولاً: على sqlite لا يمكن إسقاط عمود ما زال طرفاً في فهرس.
+        Schema::table('invoices', function (Blueprint $table) {
+            foreach ([
+                'invoices_kind_index',
+                'invoices_lessor_change_request_id_index',
+                'invoices_user_id_index',
+            ] as $index) {
+                try {
+                    $table->dropIndex($index);
+                } catch (\Throwable) {
+                    // الفهرس غير موجود — نتجاهل.
+                }
+            }
+        });
+
         Schema::table('invoices', function (Blueprint $table) {
             foreach (['user_id', 'lessor_change_request_id', 'kind', 'lines'] as $column) {
                 if (Schema::hasColumn('invoices', $column)) {
