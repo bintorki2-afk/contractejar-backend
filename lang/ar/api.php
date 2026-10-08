@@ -133,6 +133,7 @@ return [
     'order_not_in_return_status' => 'الطلب ليس في حالة استرجاع',
     'payment_type_in_use' => 'لا يمكن حذف طريقة الدفع لأنها مرتبطة بعقود',
     'contract_period_in_use' => 'لا يمكن حذف هذه المدة لأنها مرتبطة بطلبات. يمكنك إيقافها بدل حذفها.',
+    'cannot_delete_paid_order' => 'لا يمكن حذف طلب مدفوع (له دفعة ناجحة) حفاظاً على السجل المالي.',
     'contract_period_not_set_for_payment' => 'لا يمكن الدفع قبل إكمال مدة العقد (الخطوة 6)',
     'contract_payment_amount_invalid' => 'مبلغ الدفع غير صالح — تأكد من إكمال بيانات العقد ومدة العقد',
     'contract_already_paid' => 'تم دفع هذا العقد بالفعل',

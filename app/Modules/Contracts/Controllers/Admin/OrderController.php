@@ -286,6 +286,26 @@ class OrderController extends Controller
         try {
             $contract = $this->orders->findAdminContract((int) $id);
 
+            // منع حذف طلب مدفوع (له دفعة ناجحة) حفاظاً على الأثر المالي؛ مدير النظام
+            // يتجاوز بـ force=1 (يُسجَّل). (DASHBOARD-3)
+            $hasSuccessfulPayment = ! empty($contract->uuid)
+                && Payment::query()->successfulMatchingContractUuid((string) $contract->uuid)->exists();
+
+            $actor = \App\Support\AuthenticatedEmployee::from($request);
+            $isSystemAdmin = $actor !== null && $actor->isSystemAdmin();
+
+            if ($hasSuccessfulPayment && ! ($isSystemAdmin && $request->boolean('force'))) {
+                return $this->apiResponse(null, trans('api.cannot_delete_paid_order'), false, 422);
+            }
+
+            if ($hasSuccessfulPayment && $isSystemAdmin && $request->boolean('force')) {
+                \Illuminate\Support\Facades\Log::warning('System admin force-deleted a paid order', [
+                    'contract_id' => $contract->id,
+                    'uuid' => $contract->uuid,
+                    'employee_id' => $actor?->id,
+                ]);
+            }
+
             DB::transaction(function () use ($contract) {
                 if (! empty($contract->uuid)) {
                     Payment::where('contract_uuid', $contract->uuid)->delete();

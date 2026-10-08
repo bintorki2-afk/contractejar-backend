@@ -121,6 +121,35 @@ class EmployeeRolePrivilegeEscalationTest extends TestCase
         $this->assertTrue(Hash::check('secret', $adminTarget->fresh()->password));
     }
 
+    public function test_paid_order_cannot_be_deleted_without_force(): void
+    {
+        $adminRole = $this->role('admin');
+        $admin = $this->employee($adminRole);
+        \Laravel\Sanctum\Sanctum::actingAs($admin);
+
+        $user = \App\Modules\Users\Models\User::query()->create([
+            'mobile' => '0551110099', 'email' => 'pd@test.local',
+            'password' => bcrypt('x'), 'is_active' => true,
+        ]);
+        $contract = \App\Models\Contract::query()->create([
+            'user_id' => $user->id, 'contract_type' => 'housing', 'is_completed' => 1,
+        ]);
+        DB::table('payments')->insert([
+            'name' => 'p', 'contract_uuid' => $contract->uuid, 'amount' => 349, 'status' => 'success',
+            'payment_method' => 'moyasar', 'tran_currency' => 'SAR',
+            'payment_date' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        // بلا force → 422، والطلب ودفعته باقيان.
+        $this->postJson('/api/admin/orders/'.$contract->id.'/delete')->assertStatus(422);
+        $this->assertDatabaseHas('contracts', ['id' => $contract->id]);
+        $this->assertSame(1, DB::table('payments')->where('contract_uuid', $contract->uuid)->count());
+
+        // مدير النظام مع force=1 → يُحذف.
+        $this->postJson('/api/admin/orders/'.$contract->id.'/delete', ['force' => true])->assertOk();
+        $this->assertDatabaseMissing('contracts', ['id' => $contract->id]);
+    }
+
     public function test_admin_can_modify_another_system_admin_employee(): void
     {
         $adminRole = $this->role('admin');
