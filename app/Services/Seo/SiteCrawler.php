@@ -168,6 +168,33 @@ class SiteCrawler
     }
 
     /**
+     * نتيجة جلب مرفوضة (رابط داخلي/خاص — حماية SSRF): بنفس شكل صفحة فاشلة.
+     *
+     * @return array<string, mixed>
+     */
+    protected function blockedFetchResult(string $url): array
+    {
+        return [
+            'url' => $url,
+            'path' => $this->displayPath($url),
+            'status_code' => 0,
+            'load_time_ms' => 0,
+            'content_type' => null,
+            'title' => null,
+            'meta_description' => null,
+            'h1s' => [],
+            'h1_count' => 0,
+            'image_count' => 0,
+            'images_missing_alt' => 0,
+            'outbound_urls' => [],
+            'is_html' => false,
+            'is_indexable' => false,
+            'failed' => true,
+            'broken_links' => [],
+        ];
+    }
+
+    /**
      * @param  list<array<string, mixed>>  $pages
      * @param  callable(): bool|null  $shouldStop
      */
@@ -189,6 +216,11 @@ class SiteCrawler
         $body = '';
         $noindexHeader = false;
         $failed = false;
+
+        // حماية SSRF: لا نجلب رابطاً يشير لعنوان داخلي/خاص (الرابط قد يكون من إدخال المستخدم).
+        if (! \App\Support\OutboundUrlGuard::isPubliclyFetchable($url)) {
+            return $this->blockedFetchResult($url);
+        }
 
         try {
             $response = Http::timeout((int) config('seo_crawl.timeout_seconds', 20))
@@ -259,11 +291,18 @@ class SiteCrawler
      */
     protected function urlsFromSitemap(string $origin): array
     {
+        $sitemapUrl = rtrim($origin, '/').'/sitemap.xml';
+
+        // حماية SSRF: لا نجلب sitemap من عنوان داخلي/خاص.
+        if (! \App\Support\OutboundUrlGuard::isPubliclyFetchable($sitemapUrl)) {
+            return [];
+        }
+
         try {
             $response = Http::timeout((int) config('seo_crawl.timeout_seconds', 20))
                 ->withHeaders(['User-Agent' => (string) config('seo_crawl.user_agent')])
                 ->withOptions(['http_errors' => false])
-                ->get(rtrim($origin, '/').'/sitemap.xml');
+                ->get($sitemapUrl);
         } catch (Throwable $e) {
             return [];
         }
