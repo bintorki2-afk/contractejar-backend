@@ -17,5 +17,6 @@ Route::get('/payment/lessor-change/{uuid}', [LessorChangeController::class, 'pay
 Route::middleware(['auth:sanctum', 'ensure.customer'])->controller(LessorChangeController::class)->group(function () {
     Route::post('/lessor-change', 'store')->middleware('throttle:20,1');
     Route::get('/lessor-change/mine', 'mine');
+    Route::get('/lessor-change/{uuid}/invoice', 'invoice')->whereNumber('uuid');
     Route::get('/lessor-change/{uuid}', 'show');
 });

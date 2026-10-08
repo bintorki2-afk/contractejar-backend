@@ -9,6 +9,7 @@ use App\Modules\Contracts\Services\AdminOrderQueryService;
 use App\Services\Admin\RefundableContractService;
 use App\Services\ContractStatusCaseService;
 use App\Services\ContractStatusHistoryService;
+use App\Services\DraftBeforeNotarizationRule;
 use App\Services\FirebaseNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -22,6 +23,7 @@ class UpdateAdminContractStatusAction
         private readonly ContractStatusHistoryService $history,
         private readonly FirebaseNotificationService $firebase,
         private readonly RefundableContractService $refundable,
+        private readonly DraftBeforeNotarizationRule $draftRule,
     ) {}
 
     /**
@@ -84,7 +86,11 @@ class UpdateAdminContractStatusAction
         }
 
         $this->assertStatusCase($request, $contract, $statusId, $status?->name);
-        $this->persist($request, $contract, 'contract_status_id', $statusId, $status?->name);
+        // ف2: لا توثيق قبل إرسال المسودة عبر واتساب (مدير النظام يتجاوز بـ force=1).
+        $override = (int) $contract->contract_status_id !== $statusId
+            ? $this->draftRule->assert($request, $contract, $statusId, $status?->name)
+            : ['forced' => false, 'forced_by' => null];
+        $this->persist($request, $contract, 'contract_status_id', $statusId, $status?->name, $override);
 
         return ['ok' => true, 'contract' => $contract];
     }
@@ -133,12 +139,16 @@ class UpdateAdminContractStatusAction
         }
     }
 
+    /**
+     * @param  array{forced: bool, forced_by: int|null}  $override
+     */
     private function persist(
         Request $request,
         Contract $contract,
         string $statusColumn,
         int $statusId,
-        ?string $statusName
+        ?string $statusName,
+        array $override = ['forced' => false, 'forced_by' => null]
     ): void {
         $extra = $this->caseService->extract($request, $contract, $statusId, $statusName);
 
@@ -149,9 +159,14 @@ class UpdateAdminContractStatusAction
         $contract->load($this->orders->contractDetailRelations());
 
         try {
+            $meta = $this->caseService->historyMeta($statusId, $statusName, $extra) ?? [];
+            if ($override['forced']) {
+                $meta['draft_rule_forced'] = true;
+                $meta['draft_rule_forced_by'] = $override['forced_by'];
+            }
             $this->history->record($contract, [
                 'source' => 'admin',
-                'meta' => $this->caseService->historyMeta($statusId, $statusName, $extra),
+                'meta' => $meta !== [] ? $meta : null,
             ]);
             $this->firebase->notifyContractStatusChanged($contract);
         } catch (\Throwable $notifyError) {

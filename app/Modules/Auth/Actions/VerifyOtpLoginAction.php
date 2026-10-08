@@ -42,7 +42,15 @@ class VerifyOtpLoginAction
             $user->email_verified_at = now();
         }
         if ($request->has('fcm_token')) {
-            $user->fcm_token = $request->fcm_token;
+            $token = (string) $request->fcm_token;
+            // الرمز يخص جهازاً واحداً: انزعه من أي حساب آخر يحمله قبل ربطه بهذا الحساب.
+            if ($token !== '') {
+                User::query()
+                    ->where('fcm_token', $token)
+                    ->whereKeyNot($user->id)
+                    ->update(['fcm_token' => null]);
+            }
+            $user->fcm_token = $token !== '' ? $token : null;
         }
         $user->save();
 

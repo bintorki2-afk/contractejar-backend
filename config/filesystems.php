@@ -56,6 +56,19 @@ return [
             'throw' => false,
         ],
 
+        // النسخ الاحتياطية (ف21): قرص S3 متوافق — Cloudflare R2 أو أي مزوّد S3.
+        // يتطلب حزمة league/flysystem-aws-s3-v3 عند التفعيل (BACKUP_DISK=s3).
+        'backups' => [
+            'driver' => 's3',
+            'key' => env('BACKUP_S3_KEY'),
+            'secret' => env('BACKUP_S3_SECRET'),
+            'region' => env('BACKUP_S3_REGION', 'auto'),
+            'bucket' => env('BACKUP_S3_BUCKET'),
+            'endpoint' => env('BACKUP_S3_ENDPOINT'),
+            'use_path_style_endpoint' => env('BACKUP_S3_PATH_STYLE', true),
+            'throw' => true,
+        ],
+
     ],
 
     /*

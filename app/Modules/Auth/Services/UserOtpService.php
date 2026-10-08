@@ -5,6 +5,7 @@ namespace App\Modules\Auth\Services;
 use App\Models\User;
 use App\Modules\Auth\Support\AuthMobile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use InvalidArgumentException;
 
@@ -155,8 +156,8 @@ class UserOtpService
     public function generatePlain(): string
     {
         // Temporary review mode: a fixed code via OTP_FIXED_CODE (see config/otp.php).
-        $fixed = trim((string) config('otp.fixed_code', ''));
-        if ($fixed !== '' && ctype_digit($fixed)) {
+        $fixed = self::fixedCode();
+        if ($fixed !== null) {
             return $fixed;
         }
 
@@ -165,6 +166,26 @@ class UserOtpService
         $max = (10 ** $length) - 1;
 
         return (string) random_int($min, $max);
+    }
+
+    /**
+     * الكود الثابت (OTP_FIXED_CODE) يعمل فقط خارج الإنتاج — حارس صلب في الكود بغض النظر عن قيمة المتغير.
+     * في الإنتاج يُتجاهل (مع تحذير في اللوق) ويُولَّد كود عشوائي دائماً.
+     */
+    public static function fixedCode(): ?string
+    {
+        $fixed = trim((string) config('otp.fixed_code', ''));
+        if ($fixed === '' || ! ctype_digit($fixed)) {
+            return null;
+        }
+
+        if (app()->environment('production')) {
+            Log::warning('OTP_FIXED_CODE is set but ignored in production (hard guard).');
+
+            return null;
+        }
+
+        return $fixed;
     }
 
     /**

@@ -63,7 +63,8 @@ class OrderResource extends JsonResource
             ...ContractReceivedTiming::for($this->resource, $receivedContract),
             'user_id' => $this->user_id,
             'user_name' => $this->user->name ?? null,
-            'user_mobile' => $this->user->mobile ?? null,
+            // زائر الموقع: جوال الواتساب في contact_mobile. (DASHBOARD-8)
+            'user_mobile' => ($this->user?->mobile ?: null) ?? ($this->user?->contact_mobile ?? null),
             'ownership' => $this->contract_ownership,
             ...$this->instrumentTypeFields(),
             'is_completed' => (bool) $this->is_completed,

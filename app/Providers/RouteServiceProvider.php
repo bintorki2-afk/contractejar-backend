@@ -25,17 +25,33 @@ class RouteServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // الحد العام (CROSS-10): المسجّل 180/دقيقة لكل حساب، وغير المسجّل 120/دقيقة لكل IP عميل
+        // حقيقي (بعد WEBSITE-1 صار IP الزائر الحقيقي لا IP خادم الموقع). قابل للضبط من البيئة.
+        // حدود OTP/التتبّع/الدفع/الزائر الخاصة تبقى كما هي (أشدّ).
         RateLimiter::for('api', function (Request $request) {
-            return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
+            $user = $request->user();
+            if ($user !== null) {
+                return Limit::perMinute(max(1, (int) config('app.api_rate_limit_user', 180)))
+                    ->by(class_basename($user).':'.$user->getAuthIdentifier());
+            }
+
+            return Limit::perMinute(max(1, (int) config('app.api_rate_limit_guest', 120)))->by($request->ip());
         });
 
         RateLimiter::for('otp-send', function (Request $request) {
             $mobile = (string) $request->input('mobile', '');
 
-            return Limit::perMinutes(
-                max(1, (int) config('otp.send_http_decay_minutes', 10)),
-                max(1, (int) config('otp.send_http_max', 5))
-            )->by($request->ip().'|otp-send|'.$mobile);
+            // حدّان معاً: لكل (IP+رقم) ولكل IP إجمالاً — حتى لا يُستنزف رصيد الرسائل
+            // المدفوعة بتدوير الأرقام من عنوان واحد. (نقطة 14 / CROSS-9)
+            return [
+                Limit::perMinutes(
+                    max(1, (int) config('otp.send_http_decay_minutes', 10)),
+                    max(1, (int) config('otp.send_http_max', 5))
+                )->by($request->ip().'|otp-send|'.$mobile),
+                Limit::perHour(
+                    max(1, (int) config('otp.send_http_ip_max_per_hour', 15))
+                )->by($request->ip().'|otp-send-ip'),
+            ];
         });
 
         RateLimiter::for('otp-verify', function (Request $request) {

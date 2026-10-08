@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 class ContractPaymentController extends Controller
 {
     use Responser;
+    use \App\Http\Concerns\RedactsPublicPaymentPayload;
 
     public function __construct(
         protected PaymentGatewayInterface $paymentService
@@ -21,9 +22,18 @@ class ContractPaymentController extends Controller
      * Get ClickPay redirect URL for a contract.
      * GET /api/admin/payment-gateway/{uuid}
      */
-    public function paymentUrl(string $uuid)
+    public function paymentUrl(Request $request, string $uuid)
     {
-        return $this->paymentService->createPaymentUrlResponse($uuid);
+        $response = $this->paymentService->createPaymentUrlResponse($uuid);
+
+        // نقطة عامة (رابط الموظف للعميل): لا معرّف عقد ولا تفاصيل دفعة لطلب مدفوع. (DASHBOARD-7)
+        $data = $response->getData(true);
+        if (is_array($data) && ($data['already_paid'] ?? false) === true && ! ($data['test_mode'] ?? false)) {
+            unset($data['contract_id'], $data['payment']);
+            $response->setData($data);
+        }
+
+        return $response;
     }
 
     /**
@@ -61,14 +71,18 @@ class ContractPaymentController extends Controller
     {
         $this->paymentService->processIpn($request, $uuid);
 
-        return response()->json(
-            $this->paymentService->paymentStatusPayload(
-                $uuid,
-                'return',
-                $request->input('id') ?? $request->input('payment_id'),
-                $request->input('invoice_id')
-            )
+        $payload = $this->paymentService->paymentStatusPayload(
+            $uuid,
+            'return',
+            $request->input('id') ?? $request->input('payment_id'),
+            $request->input('invoice_id')
         );
+
+        if (! $this->gatewayReturnVerified($request, $payload)) {
+            $payload = $this->minimalPaymentStatus($payload);
+        }
+
+        return response()->json($payload);
     }
 
     /**

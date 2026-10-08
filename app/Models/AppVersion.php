@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class AppVersion extends Model
 {
+    use \App\Models\Concerns\FlushesPublicCache;
+
     public const PLATFORM_IOS = 'ios';
 
     public const PLATFORM_ANDROID = 'android';

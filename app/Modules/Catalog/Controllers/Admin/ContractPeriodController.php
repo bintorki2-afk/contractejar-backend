@@ -91,6 +91,19 @@ class ContractPeriodController extends Controller
         }
 
         $this->authorize('delete', $contractPeriod);
+
+        // منع حذف مدة مرتبطة بطلبات (الحذف يُسلسِل حذف العقود على MySQL). (cascade)
+        $inUse = \App\Models\Contract::query()
+            ->where(function ($q) use ($contractPeriod) {
+                $q->where('contract_term_in_years', $contractPeriod->id)
+                    ->orWhere('contract_period_id', $contractPeriod->id);
+            })
+            ->exists();
+
+        if ($inUse) {
+            return $this->apiResponse(null, trans('api.contract_period_in_use'), false, 422);
+        }
+
         $contractPeriod->delete();
 
         return $this->apiResponse(null, trans('api.contract_period_deleted_successfully'));

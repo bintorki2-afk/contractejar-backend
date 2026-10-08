@@ -37,7 +37,8 @@ class StoreContractPaidByEmployeeRequest extends FormRequest
             'contract_period_id' => ['required', 'integer', 'exists:contract_periods,id'],
             'draft_contract_number' => ['required', 'string', 'max:32'],
             'draft_contract_id' => ['nullable', 'integer', 'exists:contracts,id'],
-            'amount' => ['required', 'numeric', 'min:0.01'],
+            // مبلغ مخصّص مسموح (ميزة تجارية) لكن ضمن حدود معقولة. (CROSS-7)
+            'amount' => ['required', 'numeric', 'gt:0', 'max:'.(float) config('services.moyasar.employee_link_max_amount', 10000)],
             'notes' => ['nullable', 'string', 'max:20000'],
         ];
     }

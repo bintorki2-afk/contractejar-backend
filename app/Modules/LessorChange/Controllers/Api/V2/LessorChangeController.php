@@ -3,10 +3,12 @@
 namespace App\Modules\LessorChange\Controllers\Api\V2;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\Api\V2\InvoiceResource;
 use App\Models\LessorChangeRequest;
 use App\Models\Setting;
 use App\Modules\Auth\Support\AuthMobile;
 use App\Modules\LessorChange\Requests\StoreLessorChangeRequest;
+use App\Services\ContractInvoiceService;
 use App\Services\MoyasarPaymentService;
 use App\Shared\Responses\Responser;
 use Illuminate\Http\Request;
@@ -104,6 +106,29 @@ class LessorChangeController extends Controller
     }
 
     /**
+     * فاتورة طلب تغيير المؤجر (بعد الدفع) — نفس شكل فاتورة العقد.
+     * GET /api/v2/lessor-change/{uuid}/invoice
+     */
+    public function invoice(Request $request, string $uuid, ContractInvoiceService $invoices)
+    {
+        $row = LessorChangeRequest::query()
+            ->where('uuid', $uuid)
+            ->where('user_id', $request->user()->id)
+            ->where('is_delete', false)
+            ->first();
+
+        if (! $row) {
+            return $this->errorMessage(trans('api.not_found'), 404);
+        }
+
+        // قبل الدفع: معاينة فقط (لا يُنشأ سجل فاتورة).
+        return $this->apiResponse(
+            new InvoiceResource($invoices->forLessorChange($row, persist: $row->isPaid())),
+            trans('api.success')
+        );
+    }
+
+    /**
      * رابط الدفع (عام مع تقييد المعدل — نفس نمط دفع العقود).
      * GET /api/v2/payment/lessor-change/{uuid}
      */
@@ -130,7 +155,13 @@ class LessorChangeController extends Controller
         } catch (\InvalidArgumentException $e) {
             return $this->errorMessage($e->getMessage(), 422);
         } catch (\Throwable $e) {
-            return $this->errorMessage(trans('api.not_accept'), 400);
+            \Illuminate\Support\Facades\Log::warning('Lessor change payment link failed', ['uuid' => $row->uuid, 'error' => $e->getMessage()]);
+            $unavailable = (int) $e->getCode() >= 500 || (int) $e->getCode() === 0;
+
+            return $this->errorMessage(
+                $unavailable ? trans('api.payment_gateway_unavailable') : trans('api.not_accept'),
+                $unavailable ? 503 : 400
+            );
         }
 
         return $this->apiResponse([

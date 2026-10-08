@@ -30,6 +30,16 @@ class MoyasarEmployeePaidContractIpnTest extends TestCase
         DB::reconnect('sqlite');
 
         $this->createMinimalSchema();
+
+        // هذه الاختبارات تختبر مسار IPN/المزامنة بمخطط مصغّر بلا جداول الأسعار؛ المستحق
+        // للعقد يُثبَّت 574 ر.س (= مبلغ الدفعات المزيّفة) — مطابقة المبلغ مختبرة في
+        // PaymentAmountVerificationTest بالمخطط الكامل.
+        $this->app->instance(\App\Services\PaymentAmountVerifier::class, new class extends \App\Services\PaymentAmountVerifier {
+            protected function expectedForContract(\App\Models\Contract $contract): ?float
+            {
+                return 574.0;
+            }
+        });
     }
 
     protected function tearDown(): void

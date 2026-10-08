@@ -74,6 +74,13 @@ return [
     'not_accept' => 'Not allowed',
     'success_remove' => 'Profile deleted successfully',
     'profile_not_exist' => 'Profile does not exist',
+    'payment_gateway_unavailable' => 'The payment gateway is unavailable right now. Please try again in a few minutes.',
+    'lookup_in_use' => 'Cannot delete: linked to orders.',
+    'employee_has_records' => 'Cannot delete this employee: linked to orders or financial records. Deactivate instead.',
+    'contract_period_in_use' => 'This period cannot be deleted because it is linked to orders. Deactivate it instead.',
+    'cannot_delete_paid_order' => 'A paid order (with a successful payment) cannot be deleted, to preserve the financial record.',
+    'account_deleted' => 'Your account and personal data have been deleted. Your contracts, invoices and payments are retained for accounting and legal purposes only, detached from your personal data.',
+    'confirm_required' => 'Please confirm this action.',
 
     'error_occurred' => 'An error occurred',
     'created_successfully' => 'Created successfully',

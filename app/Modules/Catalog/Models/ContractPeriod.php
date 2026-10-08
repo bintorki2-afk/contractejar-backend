@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class ContractPeriod extends Model
 {
+    use \App\Models\Concerns\FlushesPublicCache;
     use HasCreatedAtLabel;
     use HasFactory;
 

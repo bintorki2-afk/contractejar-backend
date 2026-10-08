@@ -63,9 +63,10 @@ class LessorChangeRequest extends Model
     {
         do {
             $uuid = (string) random_int(100000, 999999);
+            // نفس مساحة أرقام العقود/الدفعات: نفحص كل الجداول المشتركة لتجنّب التصادم. (CROSS-4)
         } while (
-            self::query()->where('uuid', $uuid)->exists()
-            || Contract::query()->where('uuid', $uuid)->exists()
+            Contract::uuidInUse($uuid)
+            || self::query()->where('uuid', $uuid)->exists()
         );
 
         return $uuid;
@@ -90,12 +91,25 @@ class LessorChangeRequest extends Model
     public static function markPaidByUuid(string $uuid): void
     {
         try {
-            self::query()
+            $updated = self::query()
                 ->where('uuid', $uuid)
                 ->where('status', 'pending_payment')
                 ->update(['status' => 'paid', 'paid_at' => now()]);
         } catch (\Throwable) {
             // الجدول غير موجود (بيئات اختبار تبني مخططها يدوياً) — لا شيء يُفعل.
+            return;
+        }
+
+        if ($updated > 0) {
+            // ف8: إشعار العميل بتغيّر حالة طلب تغيير المؤجر (لا يرمي استثناءً).
+            try {
+                $row = self::query()->where('uuid', $uuid)->first();
+                if ($row !== null) {
+                    app(\App\Services\CustomerNotificationService::class)->lessorChangeStatusChanged($row);
+                }
+            } catch (\Throwable) {
+                // يُسجَّل داخل الخدمة.
+            }
         }
     }
 

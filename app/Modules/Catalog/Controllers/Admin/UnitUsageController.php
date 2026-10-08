@@ -103,6 +103,12 @@ class UnitUsageController extends Controller
         }
 
         $this->authorize('delete', $unitUsage);
+
+        // لا يُحذف صف مرجعي مرتبط بطلبات عملاء (كان الحذف يُسلسِل حذف الطلبات). (CROSS-0)
+        if (\App\Support\LookupUsage::contractsReference('unit_usages', (int) $unitUsage->id)) {
+            return response()->json(['message' => trans('api.lookup_in_use'), 'code' => 422, 'success' => false], 422);
+        }
+
         $unitUsage->delete();
 
         return $this->apiResponse([], trans('api.deleted_successfully'));

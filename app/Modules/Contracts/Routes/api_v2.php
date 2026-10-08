@@ -17,8 +17,9 @@ Route::get('/contracts/{contract}/deed-page/{index}', [DeedImageController::clas
     ->name('contracts.deed-page');
 
 // تتبّع الطلب بدون حساب (الموقع): رقم الطلب + الجوال. عام ومقيّد.
+// تقييد: 10 طلبات بالدقيقة لكل IP (حماية من تخمين أرقام الطلبات/الجوالات).
 Route::post('/contract/track', [ContractTrackController::class, 'track'])
-    ->middleware('throttle:payment-public')
+    ->middleware('throttle:10,1')
     ->name('v2.contract.track');
 
 Route::middleware(['auth:sanctum', 'ensure.customer'])->group(function () {

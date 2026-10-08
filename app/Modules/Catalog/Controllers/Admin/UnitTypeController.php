@@ -161,6 +161,12 @@ class UnitTypeController extends Controller
         }
 
         $this->authorize('delete', $unitType);
+
+        // لا يُحذف صف مرجعي مرتبط بطلبات عملاء (كان الحذف يُسلسِل حذف الطلبات). (CROSS-0)
+        if (\App\Support\LookupUsage::contractsReference('unit_types', (int) $unitType->id)) {
+            return response()->json(['message' => trans('api.lookup_in_use'), 'code' => 422, 'success' => false], 422);
+        }
+
         $unitType->delete();
 
         return $this->apiResponse([], trans('api.deleted_successfully'));

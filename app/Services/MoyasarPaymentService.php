@@ -185,11 +185,18 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
                     $client
                 );
             } catch (\RuntimeException $e) {
-                return response()->json([
-                    'message' => trans('api.not_accept'),
+                // لا نكشف خطأ البوابة الداخلي في الرد العام (DASHBOARD-7) — نسجّله فقط.
+                Log::warning('Moyasar employee payment invoice rejected', [
+                    'contract_uuid' => $uuid,
                     'gateway_error' => $e->getMessage(),
+                ]);
+
+                $unavailable = (int) $e->getCode() >= 500 || (int) $e->getCode() === 0;
+
+                return response()->json([
+                    'message' => $unavailable ? trans('api.payment_gateway_unavailable') : trans('api.not_accept'),
                     'success' => false,
-                ], 400);
+                ], $unavailable ? 503 : 400);
             }
 
             return $this->jsonPaymentRedirectResponse($payment, $amount, $client);
@@ -242,11 +249,14 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
                 'gateway_error' => $invoice['message'],
             ]);
 
+            // خطأ البوابة الداخلي يبقى في اللوق أعلاه ولا يُكشف في الرد العام (DASHBOARD-7).
+            // تعذّر الاتصال بالبوابة/عطلها ⇒ 503 برسالة عربية واضحة. (WEBSITE-4)
+            $unavailable = (int) ($invoice['status'] ?? 0) >= 500 || (int) ($invoice['status'] ?? 0) === 0;
+
             return response()->json([
-                'message' => trans('api.not_accept'),
-                'gateway_error' => $invoice['message'],
-                'status_code' => $invoice['status'],
-            ], 400);
+                'message' => $unavailable ? trans('api.payment_gateway_unavailable') : trans('api.not_accept'),
+                'success' => false,
+            ], $unavailable ? 503 : 400);
         }
 
         $redirectUrls = $this->paymentFrontendRedirectUrls((string) $contract->uuid, $client);
@@ -378,6 +388,10 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
                         'invoice_id' => $invoiceId,
                     ]);
 
+                    return;
+                }
+
+                if (! $this->gatewayAmountAccepted($verified, $uuid)) {
                     return;
                 }
 
@@ -531,6 +545,15 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
         $contractUuid = (string) ($metadata['contract_uuid'] ?? $uuid);
 
         if ($gatewayStatus === 'paid') {
+            if (! $this->hasSuccessfulPayment($contractUuid)
+                && ! $this->gatewayAmountAccepted($gatewayPayment, $contractUuid)) {
+                return [
+                    'contract_uuid' => $contractUuid,
+                    'synced' => false,
+                    'reason' => 'amount_mismatch',
+                ];
+            }
+
             $this->persistPaymentFromGateway($gatewayPayment, $contractUuid, 'success');
             $this->markContractAsCompleted($contractUuid);
 
@@ -685,7 +708,8 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
                 'gateway_error' => $invoice['message'],
             ]);
 
-            throw new \RuntimeException($invoice['message'] ?? trans('api.not_accept'));
+            // الكود = حالة HTTP من البوابة (500 عند تعذّر الاتصال) ليُميّز المستدعي العطل. (WEBSITE-4)
+            throw new \RuntimeException($invoice['message'] ?? trans('api.not_accept'), (int) ($invoice['status'] ?? 0));
         }
 
         $redirectUrls = $this->paymentFrontendRedirectUrls($contractUuid, $client);
@@ -1342,6 +1366,16 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
                     'error' => $e->getMessage(),
                 ]);
             }
+
+            // ف8: إشعار العميل باستلام الدفعة (مرة واحدة لكل طلب).
+            try {
+                app(CustomerNotificationService::class)->paymentSucceeded($contract->fresh(['user']));
+            } catch (\Throwable $e) {
+                Log::warning('Failed to notify customer of successful payment', [
+                    'contract_id' => $contract->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
     }
 
@@ -1459,6 +1493,48 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             'payment_success_url' => $payment['payment_success_url'] ?? null,
             'payment_error_url' => $payment['payment_error_url'] ?? null,
         ]);
+    }
+
+    /**
+     * CROSS-8: المبلغ والعملة المدفوعان يجب أن يطابقا المستحق. عند عدم المطابقة لا يُعتمد
+     * الدفع: تُسجَّل الدفعة بحالة pending واسم «مراجعة» للمراجعة اليدوية + سطر critical في اللوق.
+     *
+     * @param  array<string, mixed>  $gatewayPayment
+     */
+    private function gatewayAmountAccepted(array $gatewayPayment, string $uuid): bool
+    {
+        $check = app(PaymentAmountVerifier::class)->check($gatewayPayment, $uuid);
+
+        if ($check['ok']) {
+            return true;
+        }
+
+        Log::critical('Moyasar payment does not match the amount/currency due — NOT marked paid (review)', [
+            'contract_uuid' => $uuid,
+            'gateway_payment_id' => $gatewayPayment['id'] ?? null,
+            'reason' => $check['reason'] ?? null,
+            'expected_minor' => $check['expected_minor'] ?? null,
+            'paid_minor' => $check['paid_minor'] ?? null,
+            'currency' => $check['currency'] ?? null,
+        ]);
+
+        // يُسجَّل صف «pending» (لا يُحتسب مدفوعاً) باسم يوضح سبب المراجعة — مرة واحدة لكل دفعة.
+        $reviewName = 'مراجعة: مبلغ/عملة غير مطابق '.(string) ($gatewayPayment['id'] ?? '');
+        if (! Payment::query()->matchingContractUuid($uuid)->where('name', $reviewName)->exists()) {
+            $source = is_array($gatewayPayment['source'] ?? null) ? $gatewayPayment['source'] : [];
+            Payment::create([
+                'name' => $reviewName,
+                'amount' => $this->normalizeGatewayAmount($gatewayPayment['amount'] ?? 0),
+                'contract_uuid' => $uuid,
+                'tran_currency' => $gatewayPayment['currency'] ?? $this->currency,
+                'payment_method' => $source['type'] ?? 'moyasar',
+                'payment_brand' => $this->resolvePaymentBrand($source),
+                'status' => 'pending',
+                'payment_date' => now(),
+            ]);
+        }
+
+        return false;
     }
 
     private function hasSuccessfulPayment(string $contractUuid): bool

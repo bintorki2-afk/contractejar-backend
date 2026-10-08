@@ -64,6 +64,16 @@ return [
     // verification links that land on the site rather than the backend.
     'frontend_url' => env('FRONTEND_URL', 'https://contractejar.com'),
 
+    // قفزات الوكيل الموثوقة (IP/CIDR مفصولة بفواصل، أو *). فارغ = الشبكات الخاصة فقط. (WEBSITE-1)
+    'trusted_proxies' => env('TRUSTED_PROXIES', ''),
+
+    // سرّ مشترك مع خادم الموقع: يُقبل IP الزائر الذي يمرّره الموقع فقط مع هذا السر.
+    'trusted_forwarder_secret' => env('TRUSTED_FORWARDER_SECRET', ''),
+
+    // حدود الطلبات العامة لكل دقيقة (CROSS-10).
+    'api_rate_limit_user' => (int) env('API_RATE_LIMIT_USER', 180),
+    'api_rate_limit_guest' => (int) env('API_RATE_LIMIT_GUEST', 120),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

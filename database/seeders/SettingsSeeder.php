@@ -10,16 +10,21 @@ class SettingsSeeder extends Seeder
     public function run(): void
     {
         $settings = [
-            'whatsapp' => '966501234567',
+            // رقم الدعم الرسمي (ف18): 0597500014 — دولي 966597500014
+            'whatsapp' => \App\Support\SupportContact::DEFAULT_WHATSAPP,
             'instagram' => null,
             'twitter' => null,
             'snapchat' => null,
             'facebook' => null,
             'tiktok' => null,
             'linkedIn' => null,
-            'whatsapp_contact' => '966501234567',
-            'whatsapp_contract' => '966501234567',
+            'whatsapp_contact' => \App\Support\SupportContact::DEFAULT_WHATSAPP,
+            'whatsapp_contract' => \App\Support\SupportContact::DEFAULT_WHATSAPP,
             'housing_tax' => 15,
+            'electricity_meter_fee_housing_tenant' => 15,
+            'water_meter_fee_housing_tenant' => 15,
+            'electricity_meter_fee_commercial_tenant' => 25,
+            'water_meter_fee_commercial_tenant' => 25,
             'commercial_tax' => 15,
             'application_fees' => 100,
             'open_payment' => true,

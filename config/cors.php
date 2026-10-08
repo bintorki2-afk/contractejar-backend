@@ -21,35 +21,40 @@ return [
     | Allowed Origins
     |--------------------------------------------------------------------------
     */
-    'allowed_origins' => [
-        'http://localhost:3000',
-        'https://localhost:3000',
-        'http://localhost:3001',
-        'https://localhost:3001',
-        'http://127.0.0.1:3000',
-        'http://127.0.0.1:3001',
-        'http://aqdi.aqdi.sa',
-        'https://aqdi.aqdi.sa',
-        'https://new-dashboard.aqdi.sa',
-        'http://new-dashboard.aqdi.sa',
-        'https://dashboard.aqdi.sa',
-        'http://dashboard.aqdi.sa',
-        'https://blogs.aqdi.sa',
-        'http://blogs.aqdi.sa',
-        // Explicit Vercel deployments (test). Production uses *.aqdi.sa below.
-        'https://aqdi-new-frontend-main.vercel.app',
-        'https://mosabnaim-aqdi-new-dashboard-main.vercel.app',
-    ],
-    'allowed_origins_patterns' => [
-        '#^https?://([a-z0-9-]+\.)?aqdi\.sa$#i',
-        '#^https?://localhost:\d+$#',
-        '#^https?://127\.0\.0\.1:\d+$#',
-    ],
+    'allowed_origins' => array_values(array_unique(array_filter(array_merge(
+        [
+            // منتج «عقد إيجار» (الموقع ينادي الـ API من خادمه غالباً؛ هذا للنداءات من المتصفح).
+            'https://contractejar.com',
+            'https://www.contractejar.com',
+            // aqdi.sa مشروع منفصل للمالك (مدونة SEO تستخدم /api/blogs) — أُبقي كما كان حتى لا ينكسر.
+            'https://aqdi.aqdi.sa',
+            'https://new-dashboard.aqdi.sa',
+            'https://dashboard.aqdi.sa',
+            'https://blogs.aqdi.sa',
+        ],
+        // نطاق لوحة التحكم الإنتاجي وأي نطاق إضافي: CORS_ALLOWED_ORIGINS (مفصولة بفواصل).
+        // (اللوحة تمرّر طلباتها عبر proxy من خادمها، فلا تحتاج CORS عادةً.)
+        array_map('trim', explode(',', (string) env('CORS_ALLOWED_ORIGINS', ''))),
+        // التطوير المحلي فقط.
+        env('APP_ENV') === 'local' ? [
+            'http://localhost:3000', 'http://localhost:3001', 'http://localhost:3010', 'http://localhost:3020',
+            'http://127.0.0.1:3000', 'http://127.0.0.1:3001', 'http://127.0.0.1:3010', 'http://127.0.0.1:3020',
+        ] : []
+    )))),
+
+    'allowed_origins_patterns' => array_values(array_filter([
+        // أُبقي (مشروع aqdi.sa — بدون http غير المشفّر).
+        '#^https://([a-z0-9-]+\.)?aqdi\.sa$#i',
+        env('APP_ENV') === 'local' ? '#^https?://localhost:\d+$#' : null,
+        env('APP_ENV') === 'local' ? '#^https?://127\.0\.0\.1:\d+$#' : null,
+    ])),
+
     /*
     |--------------------------------------------------------------------------
     | Allowed Headers
     |--------------------------------------------------------------------------
     */
+
     'allowed_headers' => ['*'],
 
     /*

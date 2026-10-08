@@ -209,6 +209,32 @@ class ContractPaidByEmployeeStoreTest extends TestCase
         $this->assertSame(1, ContractPaidByEmployee::query()->count());
     }
 
+    /** CROSS-7: المبلغ المخصّص مسموح لكن > 0 و ≤ الحد الأعلى، والإنشاء يُسجَّل باسم الموظف. */
+    public function test_employee_link_amount_must_be_positive_and_bounded(): void
+    {
+        $this->actingEmployee('employee-paid-contract-3@test.local');
+        config(['services.moyasar.employee_link_max_amount' => 10000]);
+
+        $period = \App\Models\ContractPeriod::query()->create([
+            'period' => '1', 'note_ar' => 'سنة', 'contract_type' => 'housing', 'price' => 249,
+        ]);
+        $payload = fn ($amount) => [
+            'customer_mobile' => '0598765432', 'contract_type' => 'housing',
+            'contract_period_id' => $period->id, 'draft_contract_number' => '000777', 'amount' => $amount,
+        ];
+
+        $this->postJson('/api/admin/contract-paid-by-employees', $payload(0))->assertStatus(422);
+        $this->postJson('/api/admin/contract-paid-by-employees', $payload(-5))->assertStatus(422);
+        $this->postJson('/api/admin/contract-paid-by-employees', $payload(10000.01))->assertStatus(422);
+        $this->assertSame(0, ContractPaidByEmployee::query()->count());
+
+        \Illuminate\Support\Facades\Log::spy();
+        $this->postJson('/api/admin/contract-paid-by-employees', $payload(300))->assertCreated();
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')
+            ->withArgs(fn ($msg, $ctx = []) => str_contains($msg, 'manual amount') && isset($ctx['employee_id']))
+            ->once();
+    }
+
     public function test_guest_cannot_create_paid_contract(): void
     {
         $response = $this->postJson('/api/admin/contract-paid-by-employees', [

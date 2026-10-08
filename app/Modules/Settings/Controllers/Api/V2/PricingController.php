@@ -7,6 +7,7 @@ use App\Models\Setting;
 use App\Shared\Responses\Responser;
 use App\Support\DocFee;
 use App\Support\DocumentSurcharge;
+use App\Support\PublicCache;
 
 /**
  * الأسعار المعلنة (عام، بدون مصادقة) — مصدر واحد للموقع والتطبيق:
@@ -19,8 +20,19 @@ class PricingController extends Controller
 
     public function show()
     {
+        $payload = PublicCache::remember(PublicCache::KEY_PRICING, fn () => $this->payload());
+
+        return $this->apiResponse($payload, trans('api.success'))
+            ->header('Cache-Control', PublicCache::CACHE_CONTROL);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function payload(): array
+    {
         $setting = Setting::query()->first();
-        DocFee::flushSettingsCache();
+        DocFee::resetRatesCache();
         $rates = DocFee::rates();
 
         $meter = fn (string $column, float $fallback): float => $setting && is_numeric($setting->{$column})
@@ -29,7 +41,7 @@ class PricingController extends Controller
 
         $lessorChangeFee = $setting && is_numeric($setting->lessor_change_fee) ? (float) $setting->lessor_change_fee : 400.0;
 
-        return $this->apiResponse([
+        return [
             'currency' => 'SAR',
             'housing' => [
                 'first_year' => $rates['housing_first'],
@@ -61,6 +73,6 @@ class PricingController extends Controller
             ],
             'lessor_change_fee' => $lessorChangeFee,
             'vat_rate' => $setting && is_numeric($setting->vat_rate) ? (float) $setting->vat_rate : 0.0,
-        ], trans('api.success'));
+        ];
     }
 }

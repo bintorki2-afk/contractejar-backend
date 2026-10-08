@@ -230,7 +230,7 @@ class OrderController extends Controller
         } catch (ModelNotFoundException $e) {
             return $this->apiResponse(null, trans('api.contract_not_found'), false, 404);
         } catch (ValidationException $e) {
-            return $this->errorResponse($e->errors(), 422);
+            return $this->validationErrorResponse($e);
         } catch (\Exception $e) {
             report($e);
 
@@ -286,6 +286,26 @@ class OrderController extends Controller
         try {
             $contract = $this->orders->findAdminContract((int) $id);
 
+            // منع حذف طلب مدفوع (له دفعة ناجحة) حفاظاً على الأثر المالي؛ مدير النظام
+            // يتجاوز بـ force=1 (يُسجَّل). (DASHBOARD-3)
+            $hasSuccessfulPayment = ! empty($contract->uuid)
+                && Payment::query()->successfulMatchingContractUuid((string) $contract->uuid)->exists();
+
+            $actor = \App\Support\AuthenticatedEmployee::from($request);
+            $isSystemAdmin = $actor !== null && $actor->isSystemAdmin();
+
+            if ($hasSuccessfulPayment && ! ($isSystemAdmin && $request->boolean('force'))) {
+                return $this->apiResponse(null, trans('api.cannot_delete_paid_order'), false, 422);
+            }
+
+            if ($hasSuccessfulPayment && $isSystemAdmin && $request->boolean('force')) {
+                \Illuminate\Support\Facades\Log::warning('System admin force-deleted a paid order', [
+                    'contract_id' => $contract->id,
+                    'uuid' => $contract->uuid,
+                    'employee_id' => $actor?->id,
+                ]);
+            }
+
             DB::transaction(function () use ($contract) {
                 if (! empty($contract->uuid)) {
                     Payment::where('contract_uuid', $contract->uuid)->delete();
@@ -330,7 +350,7 @@ class OrderController extends Controller
         } catch (ModelNotFoundException $e) {
             return $this->apiResponse(null, trans('api.contract_not_found'), false, 404);
         } catch (ValidationException $e) {
-            return $this->errorResponse($e->errors(), 422);
+            return $this->validationErrorResponse($e);
         } catch (InvalidArgumentException $e) {
             return $this->errorMessage($e->getMessage(), 422);
         } catch (\Throwable $e) {
@@ -341,5 +361,22 @@ class OrderController extends Controller
                 500
             );
         }
+    }
+
+    /**
+     * 422 مع `message` (أول خطأ) إضافةً إلى `errors` — حتى تعرض اللوحة رسالة الخادم مباشرة
+     * (مثل قاعدة «لا يمكن توثيق العقد قبل إرسال المسودة للعميل عبر واتساب»).
+     */
+    private function validationErrorResponse(ValidationException $e)
+    {
+        $errors = $e->errors();
+        $first = collect($errors)->flatten()->first();
+
+        return $this->jsonResponse([
+            'message' => is_string($first) && $first !== '' ? $first : trans('api.error_occurred'),
+            'code' => 422,
+            'success' => false,
+            'errors' => $errors,
+        ], 422);
     }
 }

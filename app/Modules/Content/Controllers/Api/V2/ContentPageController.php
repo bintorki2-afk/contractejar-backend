@@ -23,7 +23,9 @@ class ContentPageController extends Controller
                 'Page SEO fetched successfully'
             );
         } catch (\Throwable $e) {
-            return $this->errorMessage(trans('api.error_occurred').': '.$e->getMessage(), 500);
+            report($e);
+
+            return $this->errorMessage(trans('api.error_occurred'), 500);
         }
     }
 
@@ -39,7 +41,9 @@ class ContentPageController extends Controller
         } catch (ValidationException $e) {
             return $this->errorResponse($e->errors(), 422);
         } catch (\Throwable $e) {
-            return $this->errorMessage(trans('api.error_occurred').': '.$e->getMessage(), 500);
+            report($e);
+
+            return $this->errorMessage(trans('api.error_occurred'), 500);
         }
     }
 }

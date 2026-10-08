@@ -132,6 +132,7 @@ class ContractController extends Controller
                 'contractStatus',
                 'draftContractStatus',
                 'receivedContract',
+                'statusHistories',
                 'units.unitType',
                 'units.unitUsage',
                 'units.realEstate',
@@ -350,8 +351,9 @@ class ContractController extends Controller
 
         $contracts = $action->execute($searchTerm, (int) auth()->id());
 
+        // لا نتائج → مصفوفة فارغة (العملاء يتوقعون قائمة، لا null). (APP-3)
         if ($contracts->isEmpty()) {
-            return $this->apiResponse(null, trans('api.error'));
+            return $this->apiResponse([], trans('api.success'));
         }
 
         return $this->apiResponse(SearchResource::collection($contracts), trans('api.success'));

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Coupon extends Model
 {
+    use \App\Models\Concerns\FlushesPublicCache;
     use HasFactory;
 
     protected $fillable = [

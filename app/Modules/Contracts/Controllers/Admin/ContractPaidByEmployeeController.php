@@ -100,6 +100,28 @@ class ContractPaidByEmployeeController extends Controller
                 'notes' => $validated['notes'] ?? null,
             ]);
 
+            // سجل تدقيق: من أنشأ الرابط وبأي مبلغ، ومقارنته بالرسم الرسمي للمدة. (CROSS-7)
+            try {
+                $period = \App\Models\ContractPeriod::query()->find($validated['contract_period_id']);
+                $months = (int) ($period->months ?? 12) ?: 12;
+                $official = \App\Support\DocFee::amount($months, (string) $validated['contract_type']);
+            } catch (\Throwable) {
+                $official = null;
+            }
+            $logContext = [
+                'employee_id' => $employee->id,
+                'contract_uuid' => $contractUuid,
+                'amount' => $amount,
+                'official_doc_fee' => $official,
+                'contract_type' => $validated['contract_type'],
+                'contract_period_id' => $validated['contract_period_id'],
+            ];
+            if ($official !== null && abs($official - $amount) > 0.01) {
+                \Illuminate\Support\Facades\Log::warning('Employee payment link with a manual amount (differs from official fee)', $logContext);
+            } else {
+                \Illuminate\Support\Facades\Log::info('Employee payment link created', $logContext);
+            }
+
             try {
                 $payment = $this->paymentService->requestPaymentRedirectUrlWithoutContract(
                     $contractUuid,

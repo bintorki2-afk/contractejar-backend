@@ -19,6 +19,16 @@ class Step3Request extends BaseApiV2Request
     protected function prepareForValidation(): void
     {
         parent::prepareForValidation();
+
+        // التطبيق يرسل القيم المنطقية كنصوص 'true'/'false' في multipart — قاعدة boolean لا تقبلها.
+        foreach (['property_owner_is_deceased', 'add_legal_agent_of_owner'] as $boolKey) {
+            if ($this->has($boolKey) && is_string($this->input($boolKey))) {
+                $normalized = filter_var($this->input($boolKey), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                if ($normalized !== null) {
+                    $this->merge([$boolKey => $normalized ? 1 : 0]);
+                }
+            }
+        }
         $this->resolveContractIdInput();
         $this->normalizeSaudiMobileFields([
             'property_owner_mobile',
@@ -199,7 +209,7 @@ class Step3Request extends BaseApiV2Request
             'type_agency_instrument_date_of_property_owner' => 'nullable|in:hijri,gregorian',
             'name_real_estate' => 'nullable|string|max:255',
             'name_owner' => 'nullable|string',
-            'property_owner_id_num' => $ownerRequired.'|min:10|regex:/^[12]\d{9}$/',
+            'property_owner_id_num' => $ownerRequired.'|min:10|regex:/^[127]\d{9}$/',
             'property_owner_dob_day' => $ownerRequired,
             'property_owner_dob_month' => $ownerRequired,
             'property_owner_dob_year' => $ownerRequired,
@@ -258,7 +268,7 @@ class Step3Request extends BaseApiV2Request
             'type_agency_instrument_date_of_property_owner' => 'nullable|in:hijri,gregorian',
             'name_real_estate' => 'nullable|string|max:255',
             'name_owner' => 'nullable|string',
-            'property_owner_id_num' => 'nullable|min:10|regex:/^[12]\d{9}$/',
+            'property_owner_id_num' => 'nullable|min:10|regex:/^[127]\d{9}$/',
             'property_owner_dob_day' => 'nullable',
             'property_owner_dob_month' => 'nullable',
             'property_owner_dob_year' => 'nullable',

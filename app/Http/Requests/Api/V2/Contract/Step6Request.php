@@ -105,7 +105,9 @@ class Step6Request extends BaseApiV2Request
             'contract_term_in_years' => [
                 Rule::requiredIf(! $isOther),
                 'nullable',
-                'exists:contract_periods,id',
+                // المدد المعروضة للعميل فقط (سنة/سنتين = is_active): منع تمرير مدة
+                // غير مفعّلة بطلب مباشر يتجاوز الواجهة. (CROSS-3)
+                Rule::exists('contract_periods', 'id')->where('is_active', true),
             ],
             // مسار إضافي فقط
             'duration_preset' => 'nullable|in:other',

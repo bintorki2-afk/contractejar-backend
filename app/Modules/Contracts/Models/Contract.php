@@ -252,9 +252,48 @@ class Contract extends Model
     {
         do {
             $uuid = random_int(100000, 999999);
-        } while (self::query()->where('uuid', $uuid)->exists());
+        } while (self::uuidInUse((string) $uuid));
 
         return $uuid;
+    }
+
+    /**
+     * رقم الطلب (uuid) مشترك كمفتاح للدفعات (payments.contract_uuid) بين العقود
+     * وطلبات تغيير المؤجر وروابط دفع الموظف. نفحص كل هذه الجداول حتى لا يتصادم
+     * رقم عقد جديد مع رقم طلب آخر فيُعتبر «مدفوعاً» خطأً. (CROSS-4)
+     */
+    public static function uuidInUse(string $uuid): bool
+    {
+        if (self::query()->where('uuid', $uuid)->exists()) {
+            return true;
+        }
+
+        $tables = [
+            'lessor_change_requests' => 'uuid',
+            'contract_paid_by_employees' => 'contract_uuid',
+            'payments' => 'contract_uuid',
+        ];
+
+        foreach ($tables as $table => $column) {
+            try {
+                if (! \Illuminate\Support\Facades\Schema::hasTable($table)) {
+                    continue;
+                }
+
+                $exists = \Illuminate\Support\Facades\DB::table($table)
+                    ->where($column, $uuid)
+                    ->orWhere($column, 'like', $uuid.'-%')
+                    ->exists();
+
+                if ($exists) {
+                    return true;
+                }
+            } catch (\Throwable) {
+                // جدول غير متاح في بيئة الاختبار المصغّرة — نتجاهله.
+            }
+        }
+
+        return false;
     }
 
     protected static bool $documentationOffsetDaysLoaded = false;

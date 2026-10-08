@@ -1,7 +1,7 @@
 # 🔌 مرجع الـ API — contractejar-backend
 
 > خريطة الـ API (Laravel 10). إجمالي ~573 endpoint موزّعة على 16 module.
-> آخر تحديث: 2026-10-02
+> آخر تحديث: 2026-10-08
 
 ## البنية
 الـ API مبني بنظام **Modules** — كل ميزة في مجلد مستقل تحت `app/Modules/<Name>/`.
@@ -45,6 +45,64 @@ GET  /contracts                           قائمة العقود
 GET  /contracts/{id}                      تفاصيل عقد
 GET  /contract/financial/{uuid}           ملخص مالي للعقد
 GET  /contract/{id}/payment-link          رابط الدفع
+```
+
+## نقاط دفعة الإصلاحات (ب) — 2026-10-08
+
+### عامة (بدون مصادقة) — مع كاش 10 دقائق و`Cache-Control: public, max-age=300`
+```
+GET  /api/v2/pricing                 الأسعار (المصدر الوحيد) — يُفرَّغ الكاش عند حفظ الإعدادات
+GET  /api/v2/settings                الإعدادات: whatsapp / whatsapp_contact / support_phone (دولي، أرقام فقط — احتياطياً 966597500014)
+                                     + support_phone_local + support_whatsapp_url + social{instagram,twitter,snapchat,facebook,tiktok,linkedin}
+GET  /api/v2/contract-periods?contract_type=housing|commercial
+GET  /api/v2/coupons/available       { available: bool }
+GET  /api/v2/app/version             { ios:{min_version,latest_version,store_url,force_update}, android:{...}, force_update_message }
+GET  /api/v2/health                  { status, time, db:'ok'|'error', scheduler_last_run, scheduler_stale, reference_data_ok } (503 عند الخلل)
+                                     — لا يكشف أسماء الجداول/أعدادها (تبقى في السجلّات فقط).
+POST /api/v2/contract/track          { order, mobile } — 10 طلبات/دقيقة لكل IP — الرد يحوي journey (6 خطوات) + journey_sentence
+```
+
+### العميل (auth:sanctum)
+```
+GET  /api/v2/contracts/{id}          يحوي journey: [{step,key,label,description,done,current,at}] (6 خطوات ثابتة)
+                                     + status_timeline (سجل الحالات الفعلي كما كان)
+GET  /api/v2/invoices                فواتير العقود + طلبات تغيير المؤجر (kind: contract | lessor_change) — مرقّمة
+GET  /api/v2/invoices/{contractId}   | /contracts/{contractId}/invoice | /invoices/number/{INV-..}
+GET  /api/v2/lessor-change/{uuid}/invoice
+     شكل الفاتورة: items[{index,key,description,quantity,amount,amount_label,is_discount}], subtotal(+_label),
+     discount(+_label), coupon_code, vat(+_label «مجانًا» عند 0), total_amount(+_label), amount_mismatch, computed_total,
+     invoice_number, order_number (#رقم الطلب), status/status_label, kind.
+GET  /api/v2/notifications?per_page=15&keep_unread=1
+     عناصر: id, title, body, kind, url, is_read, read_at, contract_id, contract_uuid, order_number, smart_link, data, created_at
+     بدون keep_unread=1 تُعلَّم الصفحة المعروضة مقروءة بعد الرد (سلوك التطبيق القديم).
+GET  /api/v2/notifications/unread-count          { unread_count }
+POST /api/v2/notifications/{id}/read             { id, is_read, read_at, unread_count }
+POST /api/v2/notifications/read-all              { updated, unread_count }
+```
+أنواع الإشعارات (`kind`): `draft_sent`، `notarized` (+ data.ask_rating)، `payment_success`، `status_changed`، `lessor_change_status`،
+`order_abandoned_24h`، `order_abandoned_3d`، `awaiting_payment_2h`، `renewal_60d`، `renewal_30d`، `offer`، `announcement`.
+بيانات الـ push (FCM data): `kind`, `url` (الرابط الذكي `https://contractejar.com/r/{order}`), `contract_uuid`, `order_number`, `notification_id` (+ `type` للتوافق).
+
+### لوحة التحكم (auth:sanctum + permission)
+```
+POST /api/admin/orders/{id}/status            { status_id, ... }  — 422 { message, errors } عند محاولة «توثيق العقد في إيجار»/«مكتمل»
+                                              قبل حالة «إرسال مسودة العقد عبر واتساب»؛ مدير النظام يتجاوز بـ force=1 (يُسجَّل).
+                                              الانتقال إلى المسودة يتطلب: ejar_contract_draft_number + contact_number_mode=same|another (+ contact_number)
+                                              الانتقال إلى التوثيق يتطلب: deed_number + deed_type=paper|electronic|other
+GET  /api/admin/orders/{id}                   قسم invoice بنفس شكل فاتورة العميل (items/subtotal/discount/vat/total)
+POST /api/admin/notifications/{user|all-users|send}   + kind: offer|announcement (افتراضي offer) + url اختياري — يُخزَّن في صندوق العميل
+GET  /api/admin/notification-dispatches?kind=&date=&from=&to=&user_id=&contract_id=&search=&per_page=   (permission: notifications.view)
+     items[{id,kind,kind_label,title,body,url,push_result,recipients_count,is_broadcast,user,contract_id,order_number,sent_at,created_at}]
+     + kinds[] + last_run + pagination
+GET/POST /api/admin/settings                  قسم app_version (app_ios_min_version, app_ios_latest_version, app_ios_store_url,
+                                              app_android_*, app_force_update_message) + قسم support — وحقل whatsapp_contact يُطبَّع دولياً
+```
+
+### أوامر مجدولة (schedule:work — يشغّله railway-start.sh)
+```
+notifications:dispatch     كل 15 دقيقة — الإشعارات الذكية (مرة لكل نوع لكل طلب)
+aqdi:db-backup             يومياً 03:10 الرياض — نسخة احتياطية (آخر 7 + رفع اختياري إلى R2)
+aqdi:db-restore {file}     يدوي — الاستعادة (خارج الإنتاج أو --force)
 ```
 
 ## كيف تستكشف المزيد

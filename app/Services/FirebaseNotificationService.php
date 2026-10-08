@@ -92,33 +92,10 @@ class FirebaseNotificationService
             return;
         }
 
-        $payload = ContractFrontendStatus::firebaseData($contract);
-        $label = $payload['status_label'] !== '' ? $payload['status_label'] : 'تم تحديث حالة طلبك';
-        // رقم الطلب الظاهر للعميل في التطبيق والموقع هو uuid (6 أرقام).
-        $contractNo = (string) ($contract->uuid ?: str_pad((string) $contract->id, 6, '0', STR_PAD_LEFT));
-        $title = 'تحديث حالة طلبك';
-        $body = "طلبك رقم {$contractNo}: {$label}";
-
-        // يُحفظ في صندوق الإشعارات مرتبطاً بالطلب حتى يظهر في التطبيق/الموقع
-        // ويفتح الطلب مباشرة — حتى لو لم يصل الـ push (لا توكن أو التطبيق مغلق).
+        // ف8: الصياغة حسب الحالة (مسودة واتساب / توثيق / تحديث عام)، تخزين في صندوق الإشعارات
+        // مرتبطاً بالطلب + Push (إن وُجد توكن) + سجل إرسال يمنع التكرار.
         try {
-            \App\Models\Offer::query()->create([
-                'user_id' => (int) $contract->user_id,
-                'contract_id' => (int) $contract->id,
-                'title' => $title,
-                'body' => $body,
-                'is_active' => true,
-                'is_read' => false,
-            ]);
-        } catch (\Throwable $e) {
-            Log::warning('Persist contract status notification failed', [
-                'contract_id' => $contract->id,
-                'error' => $e->getMessage(),
-            ]);
-        }
-
-        try {
-            $this->sendToUser((int) $contract->user_id, $title, $body, $payload);
+            app(CustomerNotificationService::class)->contractStatusChanged($contract);
         } catch (\Throwable $e) {
             Log::warning('Firebase notify contract status change failed', [
                 'contract_id' => $contract->id,
