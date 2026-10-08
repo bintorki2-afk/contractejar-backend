@@ -77,6 +77,15 @@ Route::get('/health', function () {
         $schedulerLastRun = null;
     }
 
+    // نقطة عامة لمراقبي التشغيل: نكشف أقل قدر من المعلومات. تفاصيل الجداول/المشاكل
+    // (أسماء الجداول وأعدادها) تبقى في السجلّات فقط، ولا تُعرض للعامة.
+    if (! $healthy) {
+        \Illuminate\Support\Facades\Log::warning('Health check degraded', [
+            'issues' => $issues,
+            'tables' => $tables,
+        ]);
+    }
+
     return response()->json([
         'status' => $healthy ? 'ok' : 'degraded',
         'time' => now()->toIso8601String(),
@@ -85,7 +94,6 @@ Route::get('/health', function () {
         'database' => $databaseOk ? 'ok' : 'unreachable',
         'scheduler_last_run' => $schedulerLastRun,
         'scheduler_stale' => $schedulerStale,
-        'issues' => $issues,
-        'tables' => $tables,
+        'reference_data_ok' => $databaseOk && count($issues) === 0,
     ], $healthy ? 200 : 503)->header('Cache-Control', 'no-store');
 });

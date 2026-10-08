@@ -57,7 +57,8 @@ GET  /api/v2/settings                الإعدادات: whatsapp / whatsapp_con
 GET  /api/v2/contract-periods?contract_type=housing|commercial
 GET  /api/v2/coupons/available       { available: bool }
 GET  /api/v2/app/version             { ios:{min_version,latest_version,store_url,force_update}, android:{...}, force_update_message }
-GET  /api/v2/health                  { status, time, db:'ok'|'error', scheduler_last_run, scheduler_stale, ... } (503 عند الخلل)
+GET  /api/v2/health                  { status, time, db:'ok'|'error', scheduler_last_run, scheduler_stale, reference_data_ok } (503 عند الخلل)
+                                     — لا يكشف أسماء الجداول/أعدادها (تبقى في السجلّات فقط).
 POST /api/v2/contract/track          { order, mobile } — 10 طلبات/دقيقة لكل IP — الرد يحوي journey (6 خطوات) + journey_sentence
 ```
 
