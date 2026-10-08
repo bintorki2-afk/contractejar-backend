@@ -328,6 +328,13 @@ class RoleController extends Controller
                 (bool) ($validated['activate_all_permissions'] ?? false)
             );
 
+            // منع تصعيد الصلاحيات: غير مدير النظام لا يمنح دوراً صلاحيات لا يملكها هو،
+            // ولا يحوّل دوراً إلى دور كامل الصلاحيات. (كانت هذه النقطة محميّة في
+            // store/update فقط ومفقودة هنا.)
+            if ($denied = $this->denyRoleEscalation($permissionIds, true, $role, [])) {
+                return $denied;
+            }
+
             $role->permissions()->sync($permissionIds);
             $role->load(['permissions', 'employees'])->loadCount('permissions');
 

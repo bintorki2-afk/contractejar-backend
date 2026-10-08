@@ -139,6 +139,26 @@ class EmployeeController extends Controller
         return null;
     }
 
+    /**
+     * منع الاستيلاء على حساب مدير النظام: لا يجوز لموظف ليس مدير نظام أن يعدّل
+     * (كلمة المرور/البريد/الحظر/الحذف/الحالة) موظفاً هدفه مدير نظام. مدير النظام
+     * وحده يدير حسابات المديرين. يعيد رد خطأ للإيقاف أو null للمتابعة.
+     */
+    protected function denyModifyingSystemAdmin(Employee $target): ?\Illuminate\Http\JsonResponse
+    {
+        $actor = AuthenticatedEmployee::from(request());
+
+        if ($actor !== null && $actor->isSystemAdmin()) {
+            return null;
+        }
+
+        if ($target->isSystemAdmin()) {
+            return $this->errorMessage(trans('api.forbidden'), 403);
+        }
+
+        return null;
+    }
+
     public function store(StoreEmployeeRequest $request)
     {
         try {
@@ -196,6 +216,10 @@ class EmployeeController extends Controller
         try {
             $employee = Employee::findOrFail($id);
 
+            if ($denied = $this->denyModifyingSystemAdmin($employee)) {
+                return $denied;
+            }
+
             $data = $request->validated();
 
             if ($denied = $this->denyRoleEscalation($data['role_id'] ?? null)) {
@@ -238,6 +262,10 @@ class EmployeeController extends Controller
         try {
             $employee = Employee::findOrFail($id);
 
+            if ($denied = $this->denyModifyingSystemAdmin($employee)) {
+                return $denied;
+            }
+
             if ($employee->profile_image && Storage::disk('public')->exists(str_replace('storage/', '', $employee->profile_image))) {
                 Storage::disk('public')->delete(str_replace('storage/', '', $employee->profile_image));
             }
@@ -257,6 +285,11 @@ class EmployeeController extends Controller
     {
         try {
             $employee = Employee::findOrFail($id);
+
+            if ($denied = $this->denyModifyingSystemAdmin($employee)) {
+                return $denied;
+            }
+
             $employee->update(['is_active' => ! $employee->is_active]);
             $employee->load($this->employeeBaseRelations());
 
@@ -280,6 +313,11 @@ class EmployeeController extends Controller
             ]);
 
             $employee = Employee::findOrFail($id);
+
+            if ($denied = $this->denyModifyingSystemAdmin($employee)) {
+                return $denied;
+            }
+
             $employee->update([
                 'blocked_until' => $request->input('blocked_until'),
                 'reason_of_block' => $request->input('reason_of_block'),
@@ -304,6 +342,11 @@ class EmployeeController extends Controller
     {
         try {
             $employee = Employee::findOrFail($id);
+
+            if ($denied = $this->denyModifyingSystemAdmin($employee)) {
+                return $denied;
+            }
+
             $employee->update([
                 'blocked_until' => null,
                 'reason_of_block' => null,
