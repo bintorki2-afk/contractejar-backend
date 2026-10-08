@@ -260,6 +260,31 @@ class BatchPricingMetersLessorChangeTest extends TestCase
     }
 
     /**
+     * cascade: لا يمكن حذف مدة عقد مرتبطة بطلبات (الحذف كان يُسلسِل حذف العقود).
+     */
+    public function test_contract_period_in_use_cannot_be_deleted(): void
+    {
+        $user = $this->customer();
+
+        $admin = \App\Models\Employee::query()->create([
+            'name' => 'مدير', 'email' => 'adm'.uniqid().'@test.local',
+            'password' => bcrypt('x'), 'is_active' => true, 'role' => 'admin',
+        ]);
+        \Laravel\Sanctum\Sanctum::actingAs($admin);
+
+        $periodId = DB::table('contract_periods')->where('is_active', true)->value('id');
+        Contract::query()->create([
+            'user_id' => $user->id, 'contract_type' => 'housing',
+            'contract_term_in_years' => $periodId,
+        ]);
+
+        $this->postJson('/api/admin/contract-periods/'.$periodId.'/delete')
+            ->assertStatus(409);
+
+        $this->assertDatabaseHas('contract_periods', ['id' => $periodId]);
+    }
+
+    /**
      * CROSS-3: لا يُقبل في step6 رقم مدة عقد غير مفعّلة (شهري/ربع سنوي) بطلب مباشر.
      */
     public function test_step6_rejects_an_inactive_contract_period(): void
