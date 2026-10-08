@@ -117,4 +117,9 @@ return [
         'from' => env('TWILIO_PHONE'),
     ],
 
+    // فحص (CROSS-12): DSN من البيئة فقط؛ فارغ = إرسال الأخطاء إلى Sentry معطّل.
+    'sentry' => [
+        'dsn' => env('SENTRY_DSN'),
+    ],
+
 ];
