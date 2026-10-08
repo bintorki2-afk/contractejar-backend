@@ -45,6 +45,9 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo(storage_path('logs/db-backup.log'));
 
         $schedule->command('ads:sync-spend --days=3')->dailyAt('06:00');
+
+        // دفعة (د) — ب18: تقرير المالك الأسبوعي (الأحد 09:00 الرياض) عبر تيليجرام.
+        $schedule->command('reports:weekly-owner')->weeklyOn(0, '09:00')->timezone('Asia/Riyadh')->withoutOverlapping(30);
     }
 
     /**

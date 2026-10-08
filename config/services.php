@@ -34,6 +34,12 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    // دفعة (د) — ب18/ب19: تنبيهات المالك عبر تيليجرام (نفس بوت الموقع). القيم في Railway فقط.
+    'telegram' => [
+        'bot_token' => env('TELEGRAM_BOT_TOKEN'),
+        'chat_id' => env('TELEGRAM_CHAT_ID'),
+    ],
+
     'firebase' => [
         'secret' => env('FIREBASE_SECRET'),
         // Set FIREBASE_DISABLED=true to force push notifications into no-op mode.
