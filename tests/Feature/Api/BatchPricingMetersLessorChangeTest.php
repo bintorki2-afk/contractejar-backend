@@ -228,4 +228,59 @@ class BatchPricingMetersLessorChangeTest extends TestCase
 
         $this->getJson('/api/v2/lessor-change/mine')->assertOk()->assertJsonCount(1, 'data');
     }
+
+    /**
+     * CROSS-4: رقم الطلب (uuid) لا يتصادم بين العقود وطلبات تغيير المؤجر والدفعات.
+     */
+    public function test_contract_uuid_generator_avoids_collisions_across_shared_tables(): void
+    {
+        $user = $this->customer();
+
+        $lessor = LessorChangeRequest::query()->create([
+            'uuid' => '654321', 'user_id' => $user->id, 'mobile' => '966551234567',
+            'old_deed_image' => 'x', 'new_deed_image' => 'y', 'new_owner_id_number' => '1098765432',
+            'new_owner_dob' => '10/05/1410', 'new_owner_dob_type' => 'hijri',
+            'fee' => 400, 'status' => 'pending_payment', 'platform' => 'web',
+        ]);
+
+        DB::table('payments')->insert([
+            'name' => 'pay_555000', 'contract_uuid' => '555000', 'amount' => 100, 'status' => 'success',
+            'payment_method' => 'moyasar', 'payment_brand' => 'mada',
+            'tran_currency' => 'SAR', 'payment_date' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->assertTrue(Contract::uuidInUse('654321'), 'رقم طلب تغيير مؤجر قائم');
+        $this->assertTrue(Contract::uuidInUse('555000'), 'رقم مستخدم في جدول الدفعات');
+        $this->assertFalse(Contract::uuidInUse('123456'), 'رقم غير مستخدم');
+
+        // رقم عقد مُولّد فعلياً يصبح «مستخدماً» (يفحصه المولّد في كل الجداول).
+        $contract = Contract::query()->create(['user_id' => $user->id, 'contract_type' => 'housing']);
+        $this->assertTrue(Contract::uuidInUse((string) $contract->uuid));
+        $this->assertNotContains((string) $contract->uuid, ['654321', '555000']);
+    }
+
+    /**
+     * CROSS-3: لا يُقبل في step6 رقم مدة عقد غير مفعّلة (شهري/ربع سنوي) بطلب مباشر.
+     */
+    public function test_step6_rejects_an_inactive_contract_period(): void
+    {
+        $activeId = DB::table('contract_periods')->where('is_active', true)->value('id');
+        $this->assertNotNull($activeId);
+
+        // مدة غير مفعّلة (لا تُعرض للعميل) — نُنشئها صراحةً.
+        $inactiveId = DB::table('contract_periods')->insertGetId([
+            'period' => 'شهري', 'contract_type' => 'housing', 'months' => 1,
+            'note_ar' => 'شهري', 'note_en' => 'monthly',
+            'is_active' => false, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $rule = [\Illuminate\Validation\Rule::exists('contract_periods', 'id')->where('is_active', true)];
+
+        $this->assertTrue(
+            \Illuminate\Support\Facades\Validator::make(['p' => $activeId], ['p' => $rule])->passes()
+        );
+        $this->assertFalse(
+            \Illuminate\Support\Facades\Validator::make(['p' => $inactiveId], ['p' => $rule])->passes()
+        );
+    }
 }

@@ -63,9 +63,10 @@ class LessorChangeRequest extends Model
     {
         do {
             $uuid = (string) random_int(100000, 999999);
+            // نفس مساحة أرقام العقود/الدفعات: نفحص كل الجداول المشتركة لتجنّب التصادم. (CROSS-4)
         } while (
-            self::query()->where('uuid', $uuid)->exists()
-            || Contract::query()->where('uuid', $uuid)->exists()
+            Contract::uuidInUse($uuid)
+            || self::query()->where('uuid', $uuid)->exists()
         );
 
         return $uuid;
