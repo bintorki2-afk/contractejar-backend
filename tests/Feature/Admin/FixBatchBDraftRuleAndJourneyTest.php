@@ -158,6 +158,25 @@ class FixBatchBDraftRuleAndJourneyTest extends TestCase
         $this->assertSame($admin->id, (int) $row->meta['draft_rule_forced_by']);
     }
 
+    /** WEBSITE-2: طلب مدفوع وحالته الإدارية ما زالت «جديد» يظهر للعميل «تم الدفع». */
+    public function test_paid_order_with_status_new_shows_paid_to_customer(): void
+    {
+        $contract = $this->paidContract();
+        Sanctum::actingAs($contract->user, ['*']);
+
+        $detail = $this->getJson('/api/v2/contracts/'.$contract->id)->assertOk()->json('data');
+        $this->assertSame('paid', $detail['status']);
+        $this->assertSame('تم الدفع', $detail['status_label']);
+
+        $list = $this->getJson('/api/v2/contracts')->assertOk()->json();
+        $this->assertStringContainsString('"status":"paid"', json_encode($list, JSON_UNESCAPED_UNICODE));
+        $this->assertStringNotContainsString('"status":"new"', json_encode($list, JSON_UNESCAPED_UNICODE));
+
+        // غير مدفوع ⇒ يبقى «جديد».
+        $contract->forceFill(['is_completed' => 0])->save();
+        $this->assertSame('new', $this->getJson('/api/v2/contracts/'.$contract->id)->json('data.status'));
+    }
+
     public function test_customer_contract_and_track_expose_six_step_journey(): void
     {
         $contract = $this->paidContract();

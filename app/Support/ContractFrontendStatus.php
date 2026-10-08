@@ -71,7 +71,7 @@ class ContractFrontendStatus
             ? $contract->contractStatus
             : $contract->contractStatus()->first();
 
-        return self::fromRow(
+        $payload = self::fromRow(
             statusType: 'contract',
             id: $contract->contract_status_id ? (int) $contract->contract_status_id : null,
             name: $row?->name,
@@ -81,6 +81,17 @@ class ContractFrontendStatus
             defaultLabel: 'قيد المراجعة',
             defaultKey: 'under_review'
         );
+
+        // الطلب مدفوع (is_completed يُضبط فقط بعد دفعة ناجحة) لكن الموظف لم يغيّر حالته بعد
+        // من «جديد» ⇒ يظهر للعميل «تم الدفع» متسقاً مع journey والإشعارات. (WEBSITE-2)
+        if ($payload['status'] === 'new' && (bool) $contract->is_completed) {
+            $payload['status'] = 'paid';
+            $payload['status_label'] = 'تم الدفع';
+            $payload['status_color'] = '#16A34A';
+            $payload['status_client_explanation'] = 'تم استلام دفعتك — فريقنا يراجع بيانات طلبك الآن.';
+        }
+
+        return $payload;
     }
 
     /**
