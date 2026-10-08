@@ -60,6 +60,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Orders Management
     Route::prefix('orders')->name('orders.')->controller(OrderController::class)->group(function () {
         Route::get('/', 'orders')->middleware('permission:all_requests.view')->name('index');
+        // دفعة (د) — ب3: عدّادات تبويبات «جميع الطلبات».
+        Route::get('/status-counts', 'statusCounts')->middleware('permission:all_requests.view')->name('status-counts');
         Route::get('/return', 'returnOrders')->middleware('permission:returned_request.view')->name('return');
         Route::get('/received', 'receivedOrders')->middleware('permission:request_classification.view')->name('received');
         Route::get('/status/{statusId}', 'byStatus')->whereNumber('statusId')->middleware('permission:request_classification.view')->name('by-status');

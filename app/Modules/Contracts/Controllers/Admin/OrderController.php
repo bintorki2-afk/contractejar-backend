@@ -62,6 +62,14 @@ class OrderController extends Controller
         }
     }
 
+    /**
+     * GET /api/admin/orders/status-counts — عدّادات التبويبات (نفس نطاق القائمة وفلاترها).
+     */
+    public function statusCounts(Request $request)
+    {
+        return $this->apiResponse($this->orders->statusCounts($request), trans('api.success'));
+    }
+
     public function returnOrders(Request $request)
     {
         try {

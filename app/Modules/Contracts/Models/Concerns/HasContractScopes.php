@@ -86,6 +86,17 @@ trait HasContractScopes
         return $query->where('step', '>=', self::CUSTOMER_VISIBLE_MIN_STEP);
     }
 
+    /**
+     * «مسودة غير مكتملة» (دفعة د — ب5): لم يتجاوز العميل الخطوة 3 ولم يدفع.
+     * تظهر في اللوحة تحت تبويب «غير مكتمل» فقط، ولا تظهر للعميل ولا في عدّادات «جميع الطلبات».
+     */
+    public function scopeIncompleteDraft($query)
+    {
+        return $query->where('is_delete', 0)
+            ->where('step', '<', self::CUSTOMER_VISIBLE_MIN_STEP)
+            ->where('is_completed', 0);
+    }
+
     public function scopeIncomplete($query)
     {
         return $query->where('is_completed', 0);
