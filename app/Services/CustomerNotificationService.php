@@ -11,6 +11,7 @@ use App\Support\ContractFrontendStatus;
 use App\Support\ContractJourney;
 use App\Support\SmartLink;
 use Illuminate\Database\QueryException;
+use App\Services\MessageTemplateService;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -311,11 +312,23 @@ class CustomerNotificationService
         $body = isset(self::STATUS_BODIES[$key])
             ? str_replace('{order}', $order, self::STATUS_BODIES[$key])
             : "طلبك رقم {$order}: ".($label !== '' ? $label : 'تم تحديث حالة طلبك');
+        // ب16: قالب Push من اللوحة (status_<key>) إن وُجد يتقدّم على النص الافتراضي.
+        $title = 'تحديث حالة طلبك';
+        try {
+            $templates = app(MessageTemplateService::class);
+            $rendered = $templates->render('status_'.$key, 'push', $templates->varsFor($contract), $body, $title);
+            if ($rendered !== null) {
+                $body = $rendered['body'];
+                $title = $rendered['title'] ?? $title;
+            }
+        } catch (\Throwable) {
+            // النص الافتراضي
+        }
 
         return $this->notify(
             $user,
             self::KIND_STATUS_CHANGED,
-            'تحديث حالة طلبك',
+            $title,
             $body,
             $firebase,
             contract: $contract,

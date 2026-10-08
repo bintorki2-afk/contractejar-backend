@@ -61,3 +61,16 @@ Route::prefix('settings/app-status')->name('settings.app-status.')
         Route::get('/', 'show')->middleware('permission:settings.view')->name('show');
         Route::match(['put', 'post', 'patch'], '/', 'update')->middleware('permission:settings.edit')->name('update');
     });
+
+// دفعة (د) — ب16: قوالب الرسائل (واتساب/SMS/Push) — صفحة «قوالب الرسائل» تحت الإعدادات.
+Route::prefix('message-templates')->name('message-templates.')
+    ->controller(\App\Modules\Settings\Controllers\Admin\MessageTemplateController::class)
+    ->middleware('auth:sanctum')
+    ->group(function () {
+        Route::get('/', 'index')->middleware('permission:settings.view')->name('index');
+        Route::post('/', 'store')->middleware('permission:settings.edit')->name('store');
+        Route::post('/preview', 'preview')->middleware('permission:settings.view')->name('preview');
+        Route::get('/{id}', 'show')->whereNumber('id')->middleware('permission:settings.view')->name('show');
+        Route::post('/{id}', 'update')->whereNumber('id')->middleware('permission:settings.edit')->name('update');
+        Route::post('/{id}/delete', 'destroy')->whereNumber('id')->middleware('permission:settings.edit')->name('destroy');
+    });
