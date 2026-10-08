@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\Cache;
 
 class GeneralSetting extends Model
 {
+    use \App\Models\Concerns\FlushesPublicCache;
+
     public const WEBSITE_STATUS = 'website_status';
 
     public const MOBILE_STATUS = 'mobile_status';

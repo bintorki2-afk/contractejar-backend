@@ -119,7 +119,8 @@ class CatalogLookupController extends Controller
         $type = (string) $request->contract_type;
         $contractPeriods = $this->rememberCatalog('contract-periods.v2.'.$type, fn () => ContractPeriod::where('contract_type', $type)->where('is_active', true)->orderBy('months')->get());
 
-        return $this->apiResponse(ContractPeriodResource::collection($contractPeriods), trans('api.success'));
+        return $this->apiResponse(ContractPeriodResource::collection($contractPeriods), trans('api.success'))
+            ->header('Cache-Control', \App\Support\PublicCache::CACHE_CONTROL);
     }
 
     /**

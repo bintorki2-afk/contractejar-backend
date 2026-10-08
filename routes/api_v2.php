@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
@@ -64,11 +65,27 @@ Route::get('/health', function () {
 
     $healthy = $databaseOk && count($issues) === 0;
 
+    // نبضة المجدول (schedule:work يكتبها كل دقيقة) — للمراقبة الخارجية.
+    $schedulerLastRun = null;
+    $schedulerStale = null;
+    try {
+        $schedulerLastRun = Cache::get('scheduler.last_run');
+        if (is_string($schedulerLastRun) && $schedulerLastRun !== '') {
+            $schedulerStale = now()->diffInMinutes(\Illuminate\Support\Carbon::parse($schedulerLastRun)) > 20;
+        }
+    } catch (\Throwable $e) {
+        $schedulerLastRun = null;
+    }
+
     return response()->json([
         'status' => $healthy ? 'ok' : 'degraded',
+        'time' => now()->toIso8601String(),
         'checked_at' => now()->toIso8601String(),
+        'db' => $databaseOk ? 'ok' : 'error',
         'database' => $databaseOk ? 'ok' : 'unreachable',
+        'scheduler_last_run' => $schedulerLastRun,
+        'scheduler_stale' => $schedulerStale,
         'issues' => $issues,
         'tables' => $tables,
-    ], $healthy ? 200 : 503);
+    ], $healthy ? 200 : 503)->header('Cache-Control', 'no-store');
 });

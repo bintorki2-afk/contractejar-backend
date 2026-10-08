@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Page extends Model
 {
+    use \App\Models\Concerns\FlushesPublicCache;
     use HasFactory;
 
     /*

@@ -132,19 +132,44 @@ class GeneralController extends Controller
 
     public function settings()
     {
+        $payload = \App\Support\PublicCache::remember(\App\Support\PublicCache::KEY_SETTINGS, fn () => $this->settingsPayload());
+
+        return $this->apiResponse($payload, trans('api.success'))
+            ->header('Cache-Control', \App\Support\PublicCache::CACHE_CONTROL);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function settingsPayload(): array
+    {
         $setting = Setting::query()->first();
         $terms = Page::query()->where('page', 'term_and_condition')->first();
         $privacy = Page::query()->where('page', 'privacy')->first();
 
+        // رقم الدعم (ف18): دولي بالأرقام فقط، مع الرقم الرسمي كقيمة احتياطية.
+        $supportWhatsapp = \App\Support\SupportContact::whatsapp($setting);
+
         $payload = [
-            'whatsapp' => $setting->whatsapp ?? '',
+            'whatsapp' => $supportWhatsapp,
             'instagram' => $setting->instagram ?? '',
             'twitter' => $setting->twitter ?? '',
             'snapchat' => $setting->snapchat ?? '',
             'facebook' => $setting->facebook ?? '',
             'tiktok' => $setting->tiktok ?? '',
             'linkedIn' => $setting->linkedIn ?? '',
-            'whatsapp_contact' => $setting->whatsapp_contact ?? '',
+            'whatsapp_contact' => $supportWhatsapp,
+            'support_phone' => $supportWhatsapp,
+            'support_phone_local' => \App\Support\SupportContact::whatsappLocal($setting),
+            'support_whatsapp_url' => \App\Support\SupportContact::whatsappLink($setting),
+            'social' => [
+                'instagram' => $setting->instagram ?? '',
+                'twitter' => $setting->twitter ?? '',
+                'snapchat' => $setting->snapchat ?? '',
+                'facebook' => $setting->facebook ?? '',
+                'tiktok' => $setting->tiktok ?? '',
+                'linkedin' => $setting->linkedIn ?? '',
+            ],
             'version' => $setting->version ?? null,
             'time_to_documentation_contract' => $setting->time_to_documentation_contract ?? null,
             'open_payment' => $setting->open_payment ?? null,
@@ -178,7 +203,7 @@ class GeneralController extends Controller
             'app_status' => app(AppStatusService::class)->publicPayload(),
         ];
 
-        return $this->apiResponse($payload, trans('api.success'));
+        return $payload;
     }
 
     private function settingImageUrl(?string $path): ?string

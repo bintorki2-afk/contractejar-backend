@@ -252,6 +252,102 @@ class AppStatusService
         };
     }
 
+    /** الحد الأدنى الافتراضي للإصدار عندما لا يضبط المالك قيمة (ف ١٠ / #34-10). */
+    public const DEFAULT_MIN_VERSION = '2.1.0';
+
+    public const DEFAULT_FORCE_UPDATE_MESSAGE = 'يتوفر إصدار جديد من تطبيق عقد إيجار — يرجى التحديث للمتابعة.';
+
+    /** الحقول المسطّحة المقبولة في إعدادات اللوحة (GET/POST /api/admin/settings). */
+    public const FLAT_FIELDS = [
+        'app_ios_min_version', 'app_ios_latest_version', 'app_ios_store_url',
+        'app_android_min_version', 'app_android_latest_version', 'app_android_store_url',
+        'app_force_update_message',
+    ];
+
+    /**
+     * GET /api/v2/app/version — عام. من جدول app_versions (نفس مصدر /app-status).
+     *
+     * @return array{ios: array{min_version: string, latest_version: string|null, store_url: string|null, force_update: bool}, android: array{min_version: string, latest_version: string|null, store_url: string|null, force_update: bool}, force_update_message: string}
+     */
+    public function versionPayload(): array
+    {
+        $this->ensureCatalog();
+
+        $rows = Schema::hasTable('app_versions')
+            ? AppVersion::query()->whereIn('platform', AppVersion::PLATFORMS)->get()->keyBy('platform')
+            : collect();
+
+        $platform = function (string $key) use ($rows): array {
+            $row = $rows->get($key);
+
+            return [
+                'min_version' => $this->normalizeVersion($row?->min_version) ?? self::DEFAULT_MIN_VERSION,
+                'latest_version' => $this->normalizeVersion($row?->latest_version),
+                'store_url' => $row?->store_url ?: null,
+                'force_update' => (bool) ($row?->force_update ?? false),
+            ];
+        };
+
+        $message = $rows->get(AppVersion::PLATFORM_IOS)?->message_ar
+            ?: ($rows->get(AppVersion::PLATFORM_ANDROID)?->message_ar ?: self::DEFAULT_FORCE_UPDATE_MESSAGE);
+
+        return [
+            'ios' => $platform(AppVersion::PLATFORM_IOS),
+            'android' => $platform(AppVersion::PLATFORM_ANDROID),
+            'force_update_message' => (string) $message,
+        ];
+    }
+
+    /**
+     * الحقول المسطّحة لقسم `app_version` في إعدادات اللوحة.
+     *
+     * @return array<string, mixed>
+     */
+    public function flatVersionFields(): array
+    {
+        $payload = $this->versionPayload();
+
+        return [
+            'app_ios_min_version' => $payload['ios']['min_version'],
+            'app_ios_latest_version' => $payload['ios']['latest_version'],
+            'app_ios_store_url' => $payload['ios']['store_url'],
+            'app_android_min_version' => $payload['android']['min_version'],
+            'app_android_latest_version' => $payload['android']['latest_version'],
+            'app_android_store_url' => $payload['android']['store_url'],
+            'app_force_update_message' => $payload['force_update_message'],
+            'ios' => $payload['ios'],
+            'android' => $payload['android'],
+        ];
+    }
+
+    /**
+     * حفظ الحقول المسطّحة (من POST /api/admin/settings) في app_versions.
+     *
+     * @param  array<string, mixed>  $flat
+     */
+    public function updateFromFlat(array $flat): void
+    {
+        $this->ensureCatalog();
+
+        foreach (AppVersion::PLATFORMS as $platform) {
+            $updates = [];
+            foreach (['min_version', 'latest_version', 'store_url'] as $field) {
+                $key = "app_{$platform}_{$field}";
+                if (array_key_exists($key, $flat)) {
+                    $value = is_string($flat[$key]) ? trim($flat[$key]) : $flat[$key];
+                    $updates[$field] = $value === '' || $value === null ? null : (string) $value;
+                }
+            }
+            if (array_key_exists('app_force_update_message', $flat)) {
+                $message = is_string($flat['app_force_update_message']) ? trim($flat['app_force_update_message']) : '';
+                $updates['message_ar'] = $message === '' ? null : $message;
+            }
+            if ($updates !== []) {
+                AppVersion::query()->firstOrCreate(['platform' => $platform])->update($updates);
+            }
+        }
+    }
+
     private function normalizeVersion(?string $version): ?string
     {
         if ($version === null) {

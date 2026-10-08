@@ -22,6 +22,14 @@ final class DocFee
     public static function flushSettingsCache(): void
     {
         self::$settingsCache = null;
+        // كاش النقاط العامة (الأسعار/الإعدادات/...) يتبع نفس دورة الحياة.
+        PublicCache::flush();
+    }
+
+    /** إعادة قراءة الأسعار من الإعدادات في هذه العملية فقط (بدون تفريغ كاش النقاط العامة). */
+    public static function resetRatesCache(): void
+    {
+        self::$settingsCache = null;
     }
 
     /** @return array{housing_first: float, housing_extra: float, commercial_first: float, commercial_extra: float} */

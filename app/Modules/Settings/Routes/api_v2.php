@@ -8,6 +8,7 @@ use App\Modules\Settings\Controllers\Api\V2\SmsSettingController as V2SmsSetting
 use Illuminate\Support\Facades\Route;
 
 Route::get('/app-status', [V2AppStatusController::class, 'show']);
+Route::get('/app/version', [V2AppStatusController::class, 'version']);
 Route::get('/website-status', [V2AppStatusController::class, 'website']);
 
 Route::prefix('setting-contracts')->controller(V2SettingContractController::class)->group(function () {

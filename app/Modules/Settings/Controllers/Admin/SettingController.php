@@ -7,6 +7,7 @@ use App\Http\Resources\Admin\V2\Api\PageContentResource;
 use App\Http\Traits\Responser;
 use App\Models\Page;
 use App\Models\Setting;
+use App\Services\AppStatusService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
@@ -79,15 +80,37 @@ class SettingController extends Controller
                 'working_hours' => ['nullable', 'string', 'max:500'],
                 'image_banner' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
                 'cover' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
+                // إصدارات التطبيق / التحديث الإجباري (تُحفظ في app_versions — نفس مصدر /app-status و /app/version)
+                'app_ios_min_version' => ['nullable', 'string', 'max:50'],
+                'app_ios_latest_version' => ['nullable', 'string', 'max:50'],
+                'app_ios_store_url' => ['nullable', 'string', 'max:500'],
+                'app_android_min_version' => ['nullable', 'string', 'max:50'],
+                'app_android_latest_version' => ['nullable', 'string', 'max:50'],
+                'app_android_store_url' => ['nullable', 'string', 'max:500'],
+                'app_force_update_message' => ['nullable', 'string', 'max:2000'],
             ]);
 
             $setting = $this->resolveSettingRow();
             $this->applyOptionalSettingImages($request, $setting, $validated);
             unset($validated['image_banner']);
 
+            $versionFields = array_intersect_key($validated, array_flip(AppStatusService::FLAT_FIELDS));
+            $validated = array_diff_key($validated, $versionFields);
+
+            // رقم الدعم: يُحفظ بالصيغة الدولية (966XXXXXXXXX) إن كان رقماً سعودياً صالحاً.
+            foreach (['whatsapp', 'whatsapp_contact', 'whatsapp_contract'] as $column) {
+                if (array_key_exists($column, $validated) && is_string($validated[$column]) && $validated[$column] !== '') {
+                    $validated[$column] = \App\Support\SupportContact::normalize($validated[$column]) ?? $validated[$column];
+                }
+            }
+
             // الحقول غير المرسلة لا تُلمس؛ والمرسلة فارغة تُمسح (مثل حذف حساب تواصل).
             $setting->update($validated);
+            if ($versionFields !== []) {
+                app(AppStatusService::class)->updateFromFlat($versionFields);
+            }
             \App\Support\DocFee::flushSettingsCache();
+            \App\Support\PublicCache::flush();
 
             return $this->settingsUpdatedResponse($setting);
         } catch (ValidationException $e) {
@@ -259,6 +282,12 @@ class SettingController extends Controller
                 'whatsapp_contact' => $setting->whatsapp_contact ?? '',
                 'whatsapp_contract' => $setting->whatsapp_contract ?? '',
             ],
+            'support' => [
+                'whatsapp' => \App\Support\SupportContact::whatsapp($setting),
+                'whatsapp_local' => \App\Support\SupportContact::whatsappLocal($setting),
+                'default' => \App\Support\SupportContact::DEFAULT_WHATSAPP,
+            ],
+            'app_version' => app(AppStatusService::class)->flatVersionFields(),
             'terms' => new PageContentResource($terms),
             'privacy' => new PageContentResource($privacy),
             'image_banner' => $this->formatImageField($setting->banner),

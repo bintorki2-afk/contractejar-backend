@@ -37,6 +37,18 @@ class AppStatusController extends Controller
     }
 
     /**
+     * GET /api/v2/app/version — عام (بدون مصادقة).
+     *
+     * { ios: {min_version, latest_version, store_url, force_update}, android: {...}, force_update_message }
+     * التطبيق يقارن إصداره مع min_version ويعرض شاشة تحديث إجباري عند الحاجة.
+     */
+    public function version()
+    {
+        return $this->apiResponse($this->appStatus->versionPayload(), trans('api.success'))
+            ->header('Cache-Control', 'public, max-age=300');
+    }
+
+    /**
      * GET /api/v2/website-status
      * GET /api/website-status
      *
