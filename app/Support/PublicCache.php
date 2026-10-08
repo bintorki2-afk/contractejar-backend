@@ -23,6 +23,9 @@ final class PublicCache
 
     public const KEY_COUPON_AVAILABLE = 'public.coupons.available';
 
+    /** اللغات المدعومة في الـ API (مفتاح الكاش يتضمن اللغة). */
+    public const LOCALES = ['ar', 'en'];
+
     /**
      * @template TValue
      *
@@ -47,16 +50,21 @@ final class PublicCache
         }
     }
 
-    /** تفريغ كل مفاتيح النقاط العامة (يُستدعى من حفظ الإعدادات/المدد/الكوبونات). */
+    /** تفريغ كل مفاتيح النقاط العامة لكل اللغات (يُستدعى من حفظ الإعدادات/المدد/الكوبونات). */
     public static function flush(): void
     {
         foreach ([self::KEY_PRICING, self::KEY_SETTINGS, self::KEY_CONTRACT_PERIODS, self::KEY_COUPON_AVAILABLE] as $key) {
-            self::forget($key);
+            foreach (self::LOCALES as $locale) {
+                try {
+                    Cache::forget($key.'.'.$locale);
+                } catch (\Throwable) {
+                }
+            }
         }
 
         // مدد العقد مخزّنة لكل نوع ولغة في CatalogLookupController.
         foreach (['housing', 'commercial'] as $type) {
-            foreach (['ar', 'en'] as $locale) {
+            foreach (self::LOCALES as $locale) {
                 try {
                     Cache::forget('catalog.lookup.contract-periods.v2.'.$type.'.'.$locale);
                 } catch (\Throwable) {
