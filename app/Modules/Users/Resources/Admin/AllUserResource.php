@@ -23,6 +23,8 @@ class AllUserResource extends JsonResource
         $incomplete = (int) ($this->incomplete_orders_count
             ?? $this->contracts?->where('is_completed', 0)->count()
             ?? 0);
+        $ordersCount = (int) ($this->orders_count ?? ($completed + $incomplete));
+        $incompleteDrafts = (int) ($this->incomplete_drafts_count ?? 0);
         $realEstateCount = (int) ($this->real_estate_count
             ?? $this->realEstate?->count()
             ?? 0);
@@ -55,6 +57,9 @@ class AllUserResource extends JsonResource
             'draft_orders_count' => $draft,
             'uncompleted_orders_count' => $incomplete,
             'incomplete_orders_count' => $incomplete,
+            // ب5: نفس عدّاد «جميع الطلبات?user_id=» + المسودات المبكرة (تبويب «غير مكتمل»).
+            'orders_count' => $ordersCount,
+            'incomplete_drafts_count' => $incompleteDrafts,
             'real_estates' => $realEstateCount,
             'real_estate_count' => $realEstateCount,
             'properties_count' => $realEstateCount,

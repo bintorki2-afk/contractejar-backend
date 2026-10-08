@@ -66,12 +66,19 @@ trait HasContractScopes
     }
 
     /**
-     * Contracts that reached at least the given step (default: 3).
-     * Used by admin order lists and API v2 contract lists.
+     * قاعدة الظهور الموحّدة (دفعة د — ب5): «طلب» = بلغ الخطوة 4 فأكثر (صك + عنوان + مالك مُرسلة).
+     * نفس الحد للعميل (visibleToCustomer) ولقوائم اللوحة وعدّاداتها وملف العميل في اللوحة.
+     * ما دون ذلك «مسودة غير مكتملة» (scopeIncompleteDraft) — تبويب «غير مكتمل» فقط. انظر ARCHITECTURE.md.
      */
-    public function scopeReachedAdminOrderStep($query, int $minStep = 3)
+    public function scopeReachedAdminOrderStep($query, ?int $minStep = null)
     {
-        return $query->where('step', '>=', $minStep);
+        return $query->where('step', '>=', $minStep ?? self::CUSTOMER_VISIBLE_MIN_STEP);
+    }
+
+    /** «طلب» ظاهر في اللوحة: غير محذوف + بلغ الخطوة 4. */
+    public function scopeAdminListed($query)
+    {
+        return $query->where('is_delete', 0)->where('step', '>=', self::CUSTOMER_VISIBLE_MIN_STEP);
     }
 
     /**

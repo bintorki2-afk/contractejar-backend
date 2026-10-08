@@ -80,9 +80,12 @@ class UsersDashboardQuery
     public function applyDashboardRelations($query, bool $withLists = true): void
     {
         $query->withCount([
-            'contracts as completed_orders_count' => fn ($q) => $q->notDeleted()->where('is_completed', 1),
-            'contracts as draft_orders_count' => fn ($q) => $q->notDeleted()->where('is_draft', true),
-            'contracts as incomplete_orders_count' => fn ($q) => $q->notDeleted()->where('is_completed', 0),
+            // دفعة (د) — ب5: نفس نطاق «جميع الطلبات» (الخطوة ≥ 4) حتى تتطابق الأعداد في كل مكان.
+            'contracts as orders_count' => fn ($q) => $q->adminListed(),
+            'contracts as completed_orders_count' => fn ($q) => $q->adminListed()->where('is_completed', 1),
+            'contracts as draft_orders_count' => fn ($q) => $q->adminListed()->where('is_draft', true),
+            'contracts as incomplete_orders_count' => fn ($q) => $q->adminListed()->where('is_completed', 0),
+            'contracts as incomplete_drafts_count' => fn ($q) => $q->incompleteDraft(),
             'realEstate as real_estate_count',
             'unitReal as units_count',
         ]);
@@ -99,7 +102,7 @@ class UsersDashboardQuery
             'realEstate.tenantEntityCity',
             'unitReal.unitType',
             'unitReal.unitUsage',
-            'contracts' => fn ($q) => $q->notDeleted()
+            'contracts' => fn ($q) => $q->adminListed()
                 ->with($this->userContractRelations())
                 ->latest(),
         ]);
