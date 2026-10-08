@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\OfferResource;
 use App\Models\Offer;
 use App\Modules\Users\Actions\DeactivateOwnAccountAction;
+use App\Modules\Users\Actions\DeleteOwnAccountAction;
 use App\Modules\Users\Actions\UpdateOwnPasswordAction;
 use App\Modules\Users\Actions\UpdateOwnProfileAction;
 use App\Modules\Users\Models\User;
@@ -37,6 +38,32 @@ class AccountController extends Controller
 
         if ($outcome['ok']) {
             return $this->successMessage(trans('api.success_remove'));
+        }
+
+        return $this->errorMessage($outcome['message']);
+    }
+
+    /**
+     * POST /api/v2/account/delete — حذف الحساب من داخل التطبيق (App Store 5.1.1(v)).
+     * يتطلب تأكيداً صريحاً (confirm=true). يُجهّل البيانات الشخصية ويحذف الحساب حذفاً ناعماً،
+     * ويُبقي العقود/الفواتير/المدفوعات للأغراض المحاسبية.
+     */
+    public function deleteAccount(Request $request, DeleteOwnAccountAction $action)
+    {
+        $user = $this->authenticatedUser($request);
+
+        if (! $user) {
+            return $this->errorMessage(trans('api.unauthorized'), 401);
+        }
+
+        if (! $request->boolean('confirm')) {
+            return $this->errorMessage(trans('api.confirm_required'), 422);
+        }
+
+        $outcome = $action->execute($user);
+
+        if ($outcome['ok']) {
+            return $this->successMessage($outcome['message']);
         }
 
         return $this->errorMessage($outcome['message']);

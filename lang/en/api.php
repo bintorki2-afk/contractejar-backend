@@ -74,6 +74,8 @@ return [
     'not_accept' => 'Not allowed',
     'success_remove' => 'Profile deleted successfully',
     'profile_not_exist' => 'Profile does not exist',
+    'account_deleted' => 'Your account and personal data have been deleted. Your contracts, invoices and payments are retained for accounting and legal purposes only, detached from your personal data.',
+    'confirm_required' => 'Please confirm this action.',
 
     'error_occurred' => 'An error occurred',
     'created_successfully' => 'Created successfully',
