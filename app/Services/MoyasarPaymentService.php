@@ -1342,6 +1342,16 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
                     'error' => $e->getMessage(),
                 ]);
             }
+
+            // ف8: إشعار العميل باستلام الدفعة (مرة واحدة لكل طلب).
+            try {
+                app(CustomerNotificationService::class)->paymentSucceeded($contract->fresh(['user']));
+            } catch (\Throwable $e) {
+                Log::warning('Failed to notify customer of successful payment', [
+                    'contract_id' => $contract->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
     }
 

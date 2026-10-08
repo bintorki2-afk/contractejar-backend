@@ -4,6 +4,7 @@ namespace App\Modules\LessorChange\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\LessorChangeRequest;
+use App\Services\CustomerNotificationService;
 use App\Shared\Responses\Responser;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -79,7 +80,13 @@ class LessorChangeAdminController extends Controller
         if ($data['status'] === 'paid' && ! $row->paid_at) {
             $payload['paid_at'] = now();
         }
+        $statusChanged = $row->status !== $data['status'];
         $row->update($payload);
+
+        if ($statusChanged) {
+            // ف8: أي تغيير في حالة طلب تغيير المؤجر يصل العميل (صندوق الإشعارات + Push).
+            app(CustomerNotificationService::class)->lessorChangeStatusChanged($row->fresh(['user']));
+        }
 
         return $this->apiResponse($this->adminRow($row->fresh(['user', 'employee']), true), trans('api.updated_successfully'));
     }

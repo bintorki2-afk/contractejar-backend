@@ -96,6 +96,13 @@ class AccountController extends Controller
         return $this->successMessage(trans('api.success'));
     }
 
+    /**
+     * GET /api/v2/notifications?per_page=15&keep_unread=1
+     *
+     * السلوك القديم (متوافق مع التطبيق الحالي): الصفحة المعروضة تُعلَّم مقروءة بعد الرد.
+     * العملاء الجدد يمرّرون `keep_unread=1` ويعلّمون القراءة صراحةً عبر
+     * POST /notifications/{id}/read أو POST /notifications/read-all.
+     */
     public function notifications(Request $request)
     {
         $user = $this->authenticatedUser($request);
@@ -105,40 +112,115 @@ class AccountController extends Controller
         }
 
         $notifications = Offer::query()
-            ->with('contract:id,uuid')
+            ->with(['contract:id,uuid', 'lessorChangeRequest:id,uuid'])
             ->where(function ($query) use ($user) {
                 $query->where('user_id', $user->id)
                     ->orWhereNull('user_id');
             })
-            ->orderByDesc('created_at')
-            ->paginate(15);
+            ->orderByDesc('id')
+            ->paginate($this->perPageFromRequest($request, 15, 50));
 
-        $unreadCount = Offer::query()
-            ->where('user_id', $user->id)
-            ->where('is_read', false)
-            ->count();
+        $unreadCount = $this->unreadCountFor((int) $user->id);
 
-        $notificationIds = $notifications->getCollection()->pluck('id')->all();
+        if (! $request->boolean('keep_unread')) {
+            $notificationIds = $notifications->getCollection()->pluck('id')->all();
 
-        dispatch(function () use ($notificationIds, $user) {
-            if ($notificationIds === []) {
-                return;
-            }
+            dispatch(function () use ($notificationIds, $user) {
+                if ($notificationIds === []) {
+                    return;
+                }
 
-            Offer::query()
-                ->where('user_id', $user->id)
-                ->whereIn('id', $notificationIds)
-                ->where('is_read', false)
-                ->update(['is_read' => true]);
-        })->afterResponse();
+                Offer::query()
+                    ->where('user_id', $user->id)
+                    ->whereIn('id', $notificationIds)
+                    ->where('is_read', false)
+                    ->update(['is_read' => true, 'read_at' => now()]);
+            })->afterResponse();
+        }
 
         $hasItems = $notifications->total() > 0;
 
         return $this->apiResponse([
             'unread_notifications' => $unreadCount,
+            'unread_count' => $unreadCount,
             'data' => $hasItems ? OfferResource::collection($notifications) : null,
             'pagination' => $hasItems ? $this->paginate($notifications) : null,
         ], trans('api.success'));
+    }
+
+    /** GET /api/v2/notifications/unread-count */
+    public function unreadCount(Request $request)
+    {
+        $user = $this->authenticatedUser($request);
+
+        if (! $user) {
+            return $this->errorMessage(trans('api.unauthorized'), 401);
+        }
+
+        return $this->apiResponse([
+            'unread_count' => $this->unreadCountFor((int) $user->id),
+        ], trans('api.success'));
+    }
+
+    /** POST /api/v2/notifications/{id}/read */
+    public function markNotificationRead(Request $request, int $id)
+    {
+        $user = $this->authenticatedUser($request);
+
+        if (! $user) {
+            return $this->errorMessage(trans('api.unauthorized'), 401);
+        }
+
+        $notification = Offer::query()
+            ->whereKey($id)
+            ->where(function ($query) use ($user) {
+                $query->where('user_id', $user->id)->orWhereNull('user_id');
+            })
+            ->first();
+
+        if (! $notification) {
+            return $this->errorMessage(trans('api.not_found'), 404);
+        }
+
+        // الإشعارات العامة (بدون user_id) مشتركة بين الجميع ولا تُعلَّم لمستخدم بعينه.
+        if ((int) $notification->user_id === (int) $user->id) {
+            $notification->markRead();
+        }
+
+        return $this->apiResponse([
+            'id' => $notification->id,
+            'is_read' => true,
+            'read_at' => optional($notification->fresh()->read_at)?->toIso8601String() ?? now()->toIso8601String(),
+            'unread_count' => $this->unreadCountFor((int) $user->id),
+        ], trans('api.success'));
+    }
+
+    /** POST /api/v2/notifications/read-all */
+    public function markAllNotificationsRead(Request $request)
+    {
+        $user = $this->authenticatedUser($request);
+
+        if (! $user) {
+            return $this->errorMessage(trans('api.unauthorized'), 401);
+        }
+
+        $updated = Offer::query()
+            ->where('user_id', $user->id)
+            ->where('is_read', false)
+            ->update(['is_read' => true, 'read_at' => now()]);
+
+        return $this->apiResponse([
+            'updated' => $updated,
+            'unread_count' => 0,
+        ], trans('api.success'));
+    }
+
+    private function unreadCountFor(int $userId): int
+    {
+        return Offer::query()
+            ->where('user_id', $userId)
+            ->where('is_read', false)
+            ->count();
     }
 
     /**

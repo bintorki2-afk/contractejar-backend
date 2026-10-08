@@ -17,6 +17,11 @@ Route::prefix('notifications')->name('notifications.')->controller(NotificationC
         Route::post('/all-employees', 'sendToAllEmployees')->name('all-employees');
     });
 
+// سجل إرسال إشعارات العملاء (ف8) — المجدولة والفورية واليدوية
+Route::get('/notification-dispatches', [NotificationController::class, 'dispatches'])
+    ->middleware(['auth:sanctum', 'permission:notifications.view'])
+    ->name('notifications.dispatches');
+
 // Manual SMS send (Taqnyat) — employee token
 Route::prefix('sms')->name('sms.')->controller(SmsController::class)->middleware(['auth:sanctum', 'permission:sms.create'])->group(function () {
     Route::post('/message', 'sendMessage')->name('message');
