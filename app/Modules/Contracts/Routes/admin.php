@@ -73,6 +73,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/complete/list', 'complete')->middleware('permission:completed_request.view')->name('complete');
         Route::get('/{id}', 'show')->whereNumber('id')->middleware('permission:all_requests.view')->name('show');
         Route::post('/{id}', 'update')->whereNumber('id')->middleware('permission:all_requests.edit')->name('update');
+        // دفعة (د) — ب14: أزرار المراحل «استلمت» → «أرسلت المسودة» → «وثّقت».
+        Route::post('/{id}/stage/{stage}', 'stage')->whereNumber('id')->whereIn('stage', ['received', 'draft_sent', 'notarized'])->middleware('permission:all_requests.edit')->name('stage');
+        Route::get('/{id}/stages', 'stages')->whereNumber('id')->middleware('permission:all_requests.view')->name('stages');
         // دفعة (د) — ب10: إشعار العميل من تفاصيل الطلب (بيانات ناقصة / إعادة إرسال آخر حالة).
         Route::post('/{id}/notify', 'notifyCustomer')->whereNumber('id')->middleware('permission:all_requests.edit')->name('notify');
         Route::post('/{id}/status', 'updateStatus')->whereNumber('id')->middleware('permission:all_requests.edit')->name('update-status');

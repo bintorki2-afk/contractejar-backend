@@ -71,6 +71,63 @@ class OrderController extends Controller
     }
 
     /**
+     * POST /api/admin/orders/{id}/stage/{received|draft_sent|notarized}
+     */
+    public function stage(Request $request, int $id, string $stage)
+    {
+        $employee = $request->user();
+        if (! $employee instanceof \App\Models\Employee) {
+            return $this->errorMessage(trans('api.unauthorized'), 403);
+        }
+
+        try {
+            $result = app(\App\Services\Orders\OrderStageService::class)
+                ->run($request, Contract::query()->where('is_delete', 0)->findOrFail($id), $stage, $employee);
+
+            return $this->apiResponse($result, trans('api.success'));
+        } catch (ValidationException $e) {
+            return response()->json([
+                'message' => collect($e->errors())->flatten()->first() ?? $e->getMessage(),
+                'errors' => $e->errors(),
+                'code' => 422,
+                'success' => false,
+            ], 422);
+        } catch (ModelNotFoundException) {
+            return $this->errorMessage(trans('api.contract_not_found'), 404);
+        }
+    }
+
+    /**
+     * GET /api/admin/orders/{id}/stages — المرحلة الحالية والتالية وحقولها (لأزرار المراحل في اللوحة).
+     */
+    public function stages(int $id)
+    {
+        $contract = Contract::query()->findOrFail($id);
+        $service = app(\App\Services\Orders\OrderStageService::class);
+        $key = \App\Models\ContractStatus::keyForId((int) $contract->contract_status_id);
+        $received = $contract->receivedContract()->exists();
+        $current = match (true) {
+            in_array($key, ['ejar_authenticated', 'completed'], true) => 'notarized',
+            $key === 'whatsapp_draft' => 'draft_sent',
+            $received => 'received',
+            default => null,
+        };
+        $next = $current === null ? 'received' : \App\Services\Orders\OrderStageService::NEXT[$current];
+
+        return $this->apiResponse([
+            'current_stage' => $current,
+            'next_stage' => $next,
+            'next_stage_label' => $next ? \App\Services\Orders\OrderStageService::LABELS[$next] : null,
+            'next_stage_required_fields' => $service->requiredFields($next),
+            'stages' => collect(\App\Services\Orders\OrderStageService::STAGES)->map(fn ($s) => [
+                'key' => $s, 'label' => \App\Services\Orders\OrderStageService::LABELS[$s],
+                'done' => $current !== null && array_search($s, \App\Services\Orders\OrderStageService::STAGES, true) <= array_search($current, \App\Services\Orders\OrderStageService::STAGES, true),
+            ])->values(),
+            'customer_phone' => $service->customerPhone($contract),
+        ], trans('api.success'));
+    }
+
+    /**
      * POST /api/admin/orders/{id}/notify { kind: data_missing|status_changed, message?, step? }
      */
     public function notifyCustomer(Request $request, int $id)
