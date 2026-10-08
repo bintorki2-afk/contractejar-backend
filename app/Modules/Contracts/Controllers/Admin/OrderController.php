@@ -146,6 +146,31 @@ class OrderController extends Controller
     }
 
     /**
+     * PATCH /api/admin/orders/{id} — تعديل حقول صغيرة (هويات، أسماء، تواريخ، مبالغ) مع سجل قبل/بعد.
+     */
+    public function patchFields(Request $request, int $id)
+    {
+        try {
+            $result = app(\App\Services\Orders\AdminOrderPatchService::class)->patch(
+                Contract::query()->findOrFail($id),
+                $request->except(['_method']),
+                $request->user() instanceof \App\Models\Employee ? $request->user() : null,
+            );
+
+            return $this->apiResponse($result, $result['changed'] === [] ? 'لا توجد تغييرات.' : trans('api.success'));
+        } catch (ValidationException $e) {
+            return response()->json(['message' => collect($e->errors())->flatten()->first(), 'errors' => $e->errors(), 'code' => 422, 'success' => false], 422);
+        }
+    }
+
+    /** GET /api/admin/orders/editable-fields — الحقول المسموح تعديلها مضمّنة (PATCH). */
+    public function editableFields()
+    {
+        return $this->apiResponse(collect(\App\Services\Orders\AdminOrderPatchService::FIELDS)
+            ->map(fn ($f, $k) => ['key' => $k, 'label' => $f['label'], 'rules' => $f['rules']])->values(), trans('api.success'));
+    }
+
+    /**
      * GET /api/admin/orders/{id}/ejar-copy[?format=text] — كتل بترتيب إدخال إيجار.
      */
     public function ejarCopy(Request $request, int $id)

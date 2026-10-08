@@ -75,6 +75,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/complete/list', 'complete')->middleware('permission:completed_request.view')->name('complete');
         Route::get('/{id}', 'show')->whereNumber('id')->middleware('permission:all_requests.view')->name('show');
         Route::post('/{id}', 'update')->whereNumber('id')->middleware('permission:all_requests.edit')->name('update');
+        // دفعة (د) — ب17: تعديل الحقول الصغيرة مع التدقيق.
+        Route::patch('/{id}', 'patchFields')->whereNumber('id')->middleware('permission:all_requests.edit')->name('patch');
+        Route::get('/editable-fields', 'editableFields')->middleware('permission:all_requests.view')->name('editable-fields');
         // دفعة (د) — ب14: أزرار المراحل «استلمت» → «أرسلت المسودة» → «وثّقت».
         Route::post('/{id}/stage/{stage}', 'stage')->whereNumber('id')->whereIn('stage', ['received', 'draft_sent', 'notarized'])->middleware('permission:all_requests.edit')->name('stage');
         // دفعة (د) — ب15: «نسخ بيانات إيجار».
