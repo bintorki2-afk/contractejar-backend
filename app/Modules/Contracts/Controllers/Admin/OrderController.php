@@ -146,6 +146,20 @@ class OrderController extends Controller
     }
 
     /**
+     * GET /api/admin/orders/{id}/ejar-copy[?format=text] — كتل بترتيب إدخال إيجار.
+     */
+    public function ejarCopy(Request $request, int $id)
+    {
+        $payload = app(\App\Services\Orders\EjarCopyService::class)->build(Contract::query()->findOrFail($id));
+
+        if ($request->query('format') === 'text') {
+            return response($payload['text'], 200, ['Content-Type' => 'text/plain; charset=UTF-8']);
+        }
+
+        return $this->apiResponse($payload, trans('api.success'));
+    }
+
+    /**
      * GET /api/admin/orders/{id}/stages — المرحلة الحالية والتالية وحقولها (لأزرار المراحل في اللوحة).
      */
     public function stages(int $id)

@@ -77,6 +77,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{id}', 'update')->whereNumber('id')->middleware('permission:all_requests.edit')->name('update');
         // دفعة (د) — ب14: أزرار المراحل «استلمت» → «أرسلت المسودة» → «وثّقت».
         Route::post('/{id}/stage/{stage}', 'stage')->whereNumber('id')->whereIn('stage', ['received', 'draft_sent', 'notarized'])->middleware('permission:all_requests.edit')->name('stage');
+        // دفعة (د) — ب15: «نسخ بيانات إيجار».
+        Route::get('/{id}/ejar-copy', 'ejarCopy')->whereNumber('id')->middleware('permission:all_requests.view')->name('ejar-copy');
         Route::get('/{id}/stages', 'stages')->whereNumber('id')->middleware('permission:all_requests.view')->name('stages');
         // دفعة (د) — ب10: إشعار العميل من تفاصيل الطلب (بيانات ناقصة / إعادة إرسال آخر حالة).
         Route::post('/{id}/notify', 'notifyCustomer')->whereNumber('id')->middleware('permission:all_requests.edit')->name('notify');

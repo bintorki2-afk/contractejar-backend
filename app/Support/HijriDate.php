@@ -93,4 +93,31 @@ final class HijriDate
 
         return [$year, $month, $day];
     }
+
+    /**
+     * ميلادي → هجري (حسابي، ± يوم). دفعة (د) — ب15.
+     *
+     * @return array{0: int, 1: int, 2: int}  [year, month, day] هجري
+     */
+    public static function fromGregorian(Carbon $date): array
+    {
+        $y = (int) $date->year;
+        $m = (int) $date->month;
+        $d = (int) $date->day;
+        $a = intdiv(14 - $m, 12);
+        $y2 = $y + 4800 - $a;
+        $m2 = $m + 12 * $a - 3;
+        $jd = $d + intdiv(153 * $m2 + 2, 5) + 365 * $y2 + intdiv($y2, 4) - intdiv($y2, 100) + intdiv($y2, 400) - 32045;
+
+        $l = $jd - 1948440 + 10632;
+        $n = intdiv($l - 1, 10631);
+        $l = $l - 10631 * $n + 354;
+        $j = intdiv(10985 - $l, 5316) * intdiv(50 * $l, 17719) + intdiv($l, 5670) * intdiv(43 * $l, 15238);
+        $l = $l - intdiv(30 - $j, 15) * intdiv(17719 * $j, 50) - intdiv($j, 16) * intdiv(15238 * $j, 43) + 29;
+        $hm = intdiv(24 * $l, 709);
+        $hd = $l - intdiv(709 * $hm, 24);
+        $hy = 30 * $n + $j - 30;
+
+        return [$hy, $hm, $hd];
+    }
 }
