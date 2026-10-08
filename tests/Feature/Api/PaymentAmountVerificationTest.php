@@ -127,4 +127,17 @@ class PaymentAmountVerificationTest extends TestCase
         app(MoyasarPaymentService::class)->processIpn(new Request(['id' => 'pay_lc_ok', 'status' => 'paid']), (string) $request->uuid);
         $this->assertSame('paid', $request->fresh()->status);
     }
+
+    /** WEBSITE-4: تعذّر الاتصال بالبوابة ⇒ 503 برسالة عربية بلا تفاصيل cURL. */
+    public function test_gateway_outage_returns_503_without_internal_details(): void
+    {
+        $contract = $this->housingContract();
+        Http::fake(['https://api.moyasar.com/*' => fn () => throw new \Illuminate\Http\Client\ConnectionException('cURL error 56: CONNECT tunnel failed https://api.moyasar.com/v1/invoices')]);
+
+        $response = $this->getJson('/api/v2/payment/'.$contract->uuid.'?platform=web', ['Accept-Language' => 'ar']);
+
+        $response->assertStatus(503)->assertJsonPath('message', 'تعذّر الاتصال ببوابة الدفع حالياً، حاول مرة أخرى بعد دقائق.');
+        $this->assertStringNotContainsString('cURL', $response->getContent());
+        $this->assertStringNotContainsString('gateway_error', $response->getContent());
+    }
 }

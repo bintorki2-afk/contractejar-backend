@@ -155,7 +155,13 @@ class LessorChangeController extends Controller
         } catch (\InvalidArgumentException $e) {
             return $this->errorMessage($e->getMessage(), 422);
         } catch (\Throwable $e) {
-            return $this->errorMessage(trans('api.not_accept'), 400);
+            \Illuminate\Support\Facades\Log::warning('Lessor change payment link failed', ['uuid' => $row->uuid, 'error' => $e->getMessage()]);
+            $unavailable = (int) $e->getCode() >= 500 || (int) $e->getCode() === 0;
+
+            return $this->errorMessage(
+                $unavailable ? trans('api.payment_gateway_unavailable') : trans('api.not_accept'),
+                $unavailable ? 503 : 400
+            );
         }
 
         return $this->apiResponse([

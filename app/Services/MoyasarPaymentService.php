@@ -191,10 +191,12 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
                     'gateway_error' => $e->getMessage(),
                 ]);
 
+                $unavailable = (int) $e->getCode() >= 500 || (int) $e->getCode() === 0;
+
                 return response()->json([
-                    'message' => trans('api.not_accept'),
+                    'message' => $unavailable ? trans('api.payment_gateway_unavailable') : trans('api.not_accept'),
                     'success' => false,
-                ], 400);
+                ], $unavailable ? 503 : 400);
             }
 
             return $this->jsonPaymentRedirectResponse($payment, $amount, $client);
@@ -248,9 +250,13 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             ]);
 
             // خطأ البوابة الداخلي يبقى في اللوق أعلاه ولا يُكشف في الرد العام (DASHBOARD-7).
+            // تعذّر الاتصال بالبوابة/عطلها ⇒ 503 برسالة عربية واضحة. (WEBSITE-4)
+            $unavailable = (int) ($invoice['status'] ?? 0) >= 500 || (int) ($invoice['status'] ?? 0) === 0;
+
             return response()->json([
-                'message' => trans('api.not_accept'),
-            ], 400);
+                'message' => $unavailable ? trans('api.payment_gateway_unavailable') : trans('api.not_accept'),
+                'success' => false,
+            ], $unavailable ? 503 : 400);
         }
 
         $redirectUrls = $this->paymentFrontendRedirectUrls((string) $contract->uuid, $client);
@@ -702,7 +708,8 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
                 'gateway_error' => $invoice['message'],
             ]);
 
-            throw new \RuntimeException($invoice['message'] ?? trans('api.not_accept'));
+            // الكود = حالة HTTP من البوابة (500 عند تعذّر الاتصال) ليُميّز المستدعي العطل. (WEBSITE-4)
+            throw new \RuntimeException($invoice['message'] ?? trans('api.not_accept'), (int) ($invoice['status'] ?? 0));
         }
 
         $redirectUrls = $this->paymentFrontendRedirectUrls($contractUuid, $client);
