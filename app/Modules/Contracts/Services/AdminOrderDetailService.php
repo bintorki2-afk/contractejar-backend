@@ -319,10 +319,13 @@ class AdminOrderDetailService
         $ids = array_values(array_unique(array_filter(array_map(static fn ($v) => (int) $v, $ids))));
 
         if ($ids !== []) {
-            $names = TenantRole::query()
+            // الترتيب حسب ترتيب المعرّفات المختارة — في PHP (FIELD() خاصة بـ MySQL وتكسر sqlite محلياً).
+            $byId = TenantRole::query()
                 ->whereIn('id', $ids)
-                ->orderByRaw('FIELD(id,'.implode(',', $ids).')')
-                ->pluck('text_of_reason')
+                ->pluck('text_of_reason', 'id');
+
+            $names = collect($ids)
+                ->map(static fn (int $id) => $byId->get($id))
                 ->filter(static fn ($v) => is_string($v) && trim($v) !== '')
                 ->map(static fn ($v) => trim((string) $v))
                 ->values()
