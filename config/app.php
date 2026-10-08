@@ -64,6 +64,12 @@ return [
     // verification links that land on the site rather than the backend.
     'frontend_url' => env('FRONTEND_URL', 'https://contractejar.com'),
 
+    // قفزات الوكيل الموثوقة (IP/CIDR مفصولة بفواصل، أو *). فارغ = الشبكات الخاصة فقط. (WEBSITE-1)
+    'trusted_proxies' => env('TRUSTED_PROXIES', ''),
+
+    // سرّ مشترك مع خادم الموقع: يُقبل IP الزائر الذي يمرّره الموقع فقط مع هذا السر.
+    'trusted_forwarder_secret' => env('TRUSTED_FORWARDER_SECRET', ''),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone
