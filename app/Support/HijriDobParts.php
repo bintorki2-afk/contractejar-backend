@@ -28,6 +28,15 @@ final class HijriDobParts
             return ['day' => null, 'month' => null, 'year' => null];
         }
 
+        // دفعة (د): التاريخ الميلادي يُخزَّن YYYY-MM-DD (تاريخ بداية العقد) — كان يُقسم بالعكس (اليوم = 2026).
+        if (strlen(preg_replace('/\D/', '', $parts[0]) ?? '') === 4) {
+            return [
+                'day' => str_pad((string) (int) $parts[2], 2, '0', STR_PAD_LEFT),
+                'month' => str_pad((string) (int) $parts[1], 2, '0', STR_PAD_LEFT),
+                'year' => (string) preg_replace('/\D/', '', $parts[0]),
+            ];
+        }
+
         return [
             'day' => str_pad((string) (int) $parts[0], 2, '0', STR_PAD_LEFT),
             'month' => str_pad((string) (int) $parts[1], 2, '0', STR_PAD_LEFT),
