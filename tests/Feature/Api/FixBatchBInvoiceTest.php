@@ -283,6 +283,29 @@ class FixBatchBInvoiceTest extends TestCase
         $this->assertSame(0.0, (float) $data['services_total']);
     }
 
+    /**
+     * APP-3: البحث يطابق رقم الطلب (uuid) حتى يفتح الرابط الذكي الطلب الصحيح،
+     * ويرجع مصفوفة فارغة (لا null) عند عدم وجود نتائج.
+     */
+    public function test_search_matches_order_uuid_and_returns_array_when_empty(): void
+    {
+        $user = $this->customer();
+        $contract = $this->paidHousingContract($user, ['instrument_type' => 'electronic']);
+        $order = (string) $contract->uuid; // رقم الطلب الفعلي (يُولَّد عند الإنشاء)
+
+        $hit = $this->getJson('/api/v2/search/'.$order)->assertOk()->json('data');
+        $this->assertNotEmpty($hit);
+
+        // مع سابقة #
+        $this->getJson('/api/v2/search/'.urlencode('#'.$order))->assertOk()
+            ->assertJsonCount(1, 'data');
+
+        // رقم غير موجود → مصفوفة فارغة لا null.
+        $this->getJson('/api/v2/search/000000')->assertOk()->assertExactJson([
+            'message' => trans('api.success'), 'code' => 200, 'success' => true, 'data' => [],
+        ]);
+    }
+
     public function test_duration_labels(): void
     {
         $this->assertSame('سنة', ContractInvoiceService::durationLabel(12));
