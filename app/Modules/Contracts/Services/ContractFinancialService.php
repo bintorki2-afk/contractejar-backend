@@ -122,6 +122,8 @@ class ContractFinancialService
             'meter_fees_total' => $pricing['meter_fees_total'],
             'shared_meters' => $meterFees['shared_meters'] ?? null,
             'total_price' => $pricing['total'],
+            // التطبيق يقرأ ملخص الدفع من هنا: حالة «حفظ بيانات العقار».
+            'saved_property' => \App\Support\SavedPropertyState::forContract($contract),
         ];
 
         if ($docFeeSummary) {
