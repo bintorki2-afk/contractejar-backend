@@ -420,7 +420,8 @@ class EmployeeKpiService
                         'key' => 'receive_sla_within_5m',
                         'label_ar' => 'التزام الاستلام ≤'.$slaMinutes.'د',
                         'percent' => $receiveStats['sla_percent'],
-                        'tone' => $receiveStats['sla_percent'] >= 90 ? 'success' : ($receiveStats['sla_percent'] >= 50 ? 'warning' : 'danger'),
+                        'value_label' => $receiveStats['sla_percent'] === null ? '—' : $receiveStats['sla_percent'].'%',
+                        'tone' => $receiveStats['sla_percent'] === null ? null : ($receiveStats['sla_percent'] >= 90 ? 'success' : ($receiveStats['sla_percent'] >= 50 ? 'warning' : 'danger')),
                     ],
                     [
                         'key' => 'avg_process_minutes',
@@ -805,7 +806,7 @@ class EmployeeKpiService
 
     /**
      * @param  Collection<int, object>  $rows
-     * @return array{avg: float|null, sla_percent: int, sla_met: int, sla_total: int}
+     * @return array{avg: float|null, sla_percent: int|null, sla_met: int, sla_total: int}
      */
     private function receiveWorkStats(Employee $employee, Collection $rows): array
     {
@@ -836,7 +837,8 @@ class EmployeeKpiService
 
         return [
             'avg' => $avg,
-            'sla_percent' => $total === 0 ? 100 : (int) round(($slaMet / $total) * 100),
+            // دفعة (د) — ب6: موظف بلا طلبات ⇒ null (تعرضه اللوحة «—») وليس 100%.
+            'sla_percent' => $total === 0 ? null : (int) round(($slaMet / $total) * 100),
             'sla_met' => $slaMet,
             'sla_total' => $total,
         ];

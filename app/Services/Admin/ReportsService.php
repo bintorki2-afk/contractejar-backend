@@ -283,22 +283,27 @@ class ReportsService
         $periodContracts = $this->ordersBaseQuery($range, $contractType, $employeeId);
 
         $customerIds = (clone $periodContracts)->pluck('user_id')->filter()->unique();
-        $total = $customerIds->count();
+        $active = $customerIds->count();
 
-        $newCustomers = 0;
-        if ($customerIds->isNotEmpty()) {
-            $firstContractAtByUser = Contract::query()
+        // دفعة (د) — ب6: إجمالي العملاء والعملاء الجدد بنفس نطاق صفحة العملاء (User::customers()).
+        $total = \App\Modules\Users\Models\User::query()->customers()->count();
+        $newQuery = \App\Modules\Users\Models\User::query()->customers();
+        if ($range !== null) {
+            $newQuery->whereBetween('users.created_at', [$range[0]->toDateTimeString(), $range[1]->toDateTimeString()]);
+        }
+        $newCustomers = $newQuery->count();
+
+        // العملاء الذين طلبوا في الفترة وكان أول طلب لهم قبلها = عائدون.
+        $returning = 0;
+        if ($customerIds->isNotEmpty() && $range !== null) {
+            $returning = Contract::query()
                 ->whereIn('user_id', $customerIds)
                 ->notDeleted()
                 ->groupBy('user_id')
                 ->selectRaw('user_id, MIN(created_at) as first_created_at')
-                ->pluck('first_created_at', 'user_id');
-
-            $newCustomers = $range === null
-                ? $firstContractAtByUser->count()
-                : $firstContractAtByUser->filter(
-                    fn ($firstCreatedAt) => Carbon::parse($firstCreatedAt)->between($range[0], $range[1])
-                )->count();
+                ->pluck('first_created_at', 'user_id')
+                ->filter(fn ($first) => Carbon::parse($first)->lt($range[0]))
+                ->count();
         }
 
         $incompleteCustomers = (clone $periodContracts)->where('is_completed', 0)->pluck('user_id')->filter()->unique()->count();
@@ -310,13 +315,14 @@ class ReportsService
             'kpis' => new CustomersKpisResource([
                 'total' => $total,
                 'new' => $newCustomers,
-                'returning' => max(0, $total - $newCustomers),
-                'avg_contracts_per_customer' => $total > 0 ? round($totalContracts / $total, 1) : 0,
+                'active' => $active,
+                'returning' => $returning,
+                'avg_contracts_per_customer' => $active > 0 ? round($totalContracts / $active, 1) : 0,
                 'incomplete' => $incompleteCustomers,
             ]),
             'segments' => ReportLabeledValueResource::collection([
                 ['label' => 'عملاء جدد', 'value' => $newCustomers],
-                ['label' => 'عملاء عائدون', 'value' => max(0, $total - $newCustomers)],
+                ['label' => 'عملاء عائدون', 'value' => $returning],
             ]),
             'top_customers' => ReportTopCustomerResource::collection($topCustomers),
         ]);
@@ -384,6 +390,21 @@ class ReportsService
                 'count' => $leakageCount,
                 'percent' => $this->percentOf($leakageCount, $startedCount),
             ]),
+            // دفعة (د) — ب6: أرقام القمع الصريحة (التسرّب = البداية − المكتمل الدفع؛ مثال 16 − 3 = 13 = 81%).
+            'funnel_summary' => [
+                'started' => $startedCount,
+                'completed' => $paidCount,
+                'drop_off' => $leakageCount,
+                'drop_off_percent' => $this->percentOf($leakageCount, $startedCount),
+                'cancelled' => $canceledCount,
+                'cancellation_rate' => $this->percentOf($canceledCount, $startedCount),
+                'definitions' => [
+                    'started' => 'كل طلب بدأه العميل في الفترة (غير محذوف، أي خطوة)',
+                    'completed' => 'الطلبات المدفوعة (is_completed = 1)',
+                    'drop_off' => 'started − completed',
+                    'cancellation_rate' => 'cancelled ÷ started',
+                ],
+            ],
             'conversion_rates' => ReportLabeledValueResource::collection([
                 [
                     'label' => 'نسبة عدم الإكمال (تسرّب)',
@@ -407,7 +428,7 @@ class ReportsService
                 ],
                 [
                     'label' => 'نسبة الإلغاء',
-                    'value' => $this->percentOf($canceledCount, $totalCount + $canceledCount),
+                    'value' => $this->percentOf($canceledCount, $startedCount),
                     'tone' => 'red',
                 ],
                 [
@@ -495,7 +516,9 @@ class ReportsService
      */
     private function canceledContractsQuery(?array $range, ?string $contractType, ?int $employeeId)
     {
-        $query = Contract::query()->where('is_delete', 1);
+        // دفعة (د) — ب6: «ملغى» = حالة الطلب cancelled (لا الطلبات المحذوفة is_delete).
+        $query = Contract::query()->notDeleted()
+            ->whereIn('contract_status_id', ContractStatus::idsFor([ContractStatus::KEY_CANCELLED]) ?: [-1]);
         $this->applyDateRange($query, 'created_at', $range);
 
         if ($contractType !== null) {
@@ -1806,7 +1829,8 @@ class ReportsService
 
         $received = count($seconds);
         $avgWait = $received > 0 ? (int) round(array_sum($seconds) / $received) : 0;
-        $slaPercent = $received > 0 ? (int) round(($slaMet / $received) * 100) : 100;
+        // دفعة (د) — ب6: لا طلبات مستلمة ⇒ null («—») بدل 100%.
+        $slaPercent = $received > 0 ? (int) round(($slaMet / $received) * 100) : null;
 
         $waiting = $this->waitingQueueSeconds($range, $contractType, $employeeId);
 

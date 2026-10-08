@@ -218,6 +218,27 @@ class User extends Authenticatable implements MustVerifyEmail
         };
     }
 
+    /**
+     * «عميل» (دفعة د — ب6) — نطاق واحد لصفحة العملاء والتقارير والرئيسية:
+     * حساب غير مدموج في حساب آخر، وإما مسجّل (ليس زائراً) أو زائر لديه طلب (الخطوة ≥ 4).
+     * جلسات الزوار الفارغة ليست عملاء.
+     */
+    public function scopeCustomers($query)
+    {
+        if (\App\Support\SchemaCache::hasColumn('users', 'merged_into_user_id')) {
+            $query->whereNull('users.merged_into_user_id');
+        }
+        if (! \App\Support\SchemaCache::hasColumn('users', 'is_guest')) {
+            return $query;
+        }
+
+        return $query->where(function ($q) {
+            $q->where('users.is_guest', false)
+                ->orWhereNull('users.is_guest')
+                ->orWhereHas('contracts', fn ($c) => $c->where('is_delete', 0)->where('step', '>=', \App\Models\Contract::CUSTOMER_VISIBLE_MIN_STEP));
+        });
+    }
+
     public function contracts()
     {
         return $this->hasMany(Contract::class);

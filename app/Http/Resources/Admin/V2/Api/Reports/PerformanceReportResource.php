@@ -13,6 +13,7 @@ class PerformanceReportResource extends ReportJsonResource
             'kpis' => $this->resolveItem($this->resource['kpis'] ?? [], PerformanceKpisResource::class),
             'conversion_funnel' => $this->resolveList($this->resource['conversion_funnel'] ?? [], ReportLabeledValueResource::class),
             'conversion_leakage' => $this->resolveItem($this->resource['conversion_leakage'] ?? [], PerformanceConversionLeakageResource::class),
+            'funnel_summary' => $this->resource['funnel_summary'] ?? null,
             'conversion_rates' => $this->resolveList($this->resource['conversion_rates'] ?? [], ReportLabeledValueResource::class),
             'daily_orders' => $this->resolveList($this->resource['daily_orders'] ?? [], ReportLabeledValueResource::class),
             'orders_by_status' => $this->resolveList($this->resource['orders_by_status'] ?? [], ReportLabeledValueResource::class),

@@ -14,7 +14,8 @@ class UsersDashboardQuery
      */
     public function make(Request $request, bool $withLists = true)
     {
-        $query = $this->withTotals();
+        // دفعة (د) — ب6: صفحة العملاء = نطاق «عميل» الموحّد (بلا جلسات الزوار الفارغة والحسابات المدموجة).
+        $query = $this->withTotals()->customers();
         $this->applyDashboardRelations($query, $withLists);
 
         if ($request->filled('platform')) {
@@ -113,11 +114,11 @@ class UsersDashboardQuery
      */
     public function summary(): array
     {
-        $total = User::query()->count();
-        $banned = User::query()->where('is_active', 0)->count();
-        $apple = User::query()->where('platform', User::PLATFORM_APPLE_STORE)->count();
-        $google = User::query()->where('platform', User::PLATFORM_GOOGLE_PLAY)->count();
-        $website = User::query()
+        $total = User::query()->customers()->count();
+        $banned = User::query()->customers()->where('is_active', 0)->count();
+        $apple = User::query()->customers()->where('platform', User::PLATFORM_APPLE_STORE)->count();
+        $google = User::query()->customers()->where('platform', User::PLATFORM_GOOGLE_PLAY)->count();
+        $website = User::query()->customers()
             ->where(function ($q) {
                 $q->where('platform', User::PLATFORM_WEBSITE)
                     ->orWhereNull('platform')
@@ -125,8 +126,12 @@ class UsersDashboardQuery
             })
             ->count();
 
+        $weekStart = now()->startOfWeek();
+
         return [
             'total_customers' => $total,
+            'new_this_week' => User::query()->customers()->where('users.created_at', '>=', $weekStart)->count(),
+            'new_this_week_label' => 'عملاء جدد هذا الأسبوع',
             'total_customers_label' => 'إجمالي العملاء',
             'banned' => $banned,
             'banned_label' => 'المحظورون',
