@@ -210,6 +210,64 @@ class FixBatchBInvoiceTest extends TestCase
         $this->getJson('/api/v2/invoices/'.$contract->id)->assertStatus(404);
     }
 
+    /**
+     * فحص (ج): طلب مدفوع لكن السعر المحسوب 0 (مدة غير مضبوطة مثلاً) →
+     * الفاتورة تعرض مبلغ الدفعة الناجحة وترفع علم عدم التطابق، ولا تظهر 0 أبداً.
+     */
+    public function test_invoice_never_shows_zero_when_a_successful_payment_exists(): void
+    {
+        $user = $this->customer();
+
+        // عقد تجاري بلا مدة/أداة → ContractPricing يحسب 0.
+        $contract = Contract::query()->create([
+            'uuid' => '700010', 'user_id' => $user->id, 'contract_type' => 'commercial',
+            'step' => 7, 'is_completed' => 1,
+        ]);
+        Payment::query()->create([
+            'payment_date' => now()->toDateString(), 'contract_uuid' => $contract->uuid,
+            'payment_method' => 'moyasar', 'payment_brand' => 'mada', 'tran_currency' => 'SAR',
+            'name' => 'pay_700010', 'amount' => 895, 'status' => 'success',
+        ]);
+
+        $data = $this->getJson('/api/v2/invoices/'.$contract->id)->assertOk()->json('data');
+
+        $this->assertSame(895.0, (float) $data['total_amount']);
+        $this->assertTrue($data['amount_mismatch']);
+        $this->assertSame(0.0, (float) $data['computed_total']);
+        $this->assertNotSame(0.0, (float) $data['total_amount']);
+    }
+
+    /**
+     * فحص (ج): طلب مدفوع عبر موظف (ContractPaidByEmployee) بلا صف payment ناجح →
+     * الفاتورة تعرض المبلغ المدفوع لا 0.
+     */
+    public function test_invoice_uses_employee_paid_amount_when_no_payment_row(): void
+    {
+        $user = $this->customer();
+
+        $employeeId = DB::table('employees')->insertGetId([
+            'name' => 'موظف', 'email' => 'emp'.uniqid().'@test.local',
+            'password' => bcrypt('x'), 'is_active' => 1,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $contract = Contract::query()->create([
+            'uuid' => '700011', 'user_id' => $user->id, 'contract_type' => 'commercial',
+            'step' => 7, 'is_completed' => 1,
+        ]);
+
+        DB::table('contract_paid_by_employees')->insert([
+            'contract_uuid' => $contract->uuid, 'employee_id' => $employeeId,
+            'customer_mobile' => '0551234567', 'amount' => 349, 'is_paid' => 1,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $data = $this->getJson('/api/v2/invoices/'.$contract->id)->assertOk()->json('data');
+
+        $this->assertSame(349.0, (float) $data['total_amount']);
+        $this->assertTrue($data['amount_mismatch']);
+    }
+
     public function test_duration_labels(): void
     {
         $this->assertSame('سنة', ContractInvoiceService::durationLabel(12));

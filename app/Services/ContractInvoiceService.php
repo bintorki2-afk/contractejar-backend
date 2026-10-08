@@ -512,7 +512,33 @@ class ContractInvoiceService
             return null;
         }
 
-        return $this->resolveSuccessfulPaymentByUuid((string) $contract->uuid);
+        $payment = $this->resolveSuccessfulPaymentByUuid((string) $contract->uuid);
+        if ($payment !== null) {
+            return $payment;
+        }
+
+        // لا توجد دفعة ناجحة في جدول payments، لكن قد يكون الطلب مدفوعاً عبر موظف
+        // (ContractPaidByEmployee.is_paid) بلا صف payment. نُنشئ كائن دفعة غير محفوظ
+        // بالمبلغ الفعلي حتى لا تظهر الفاتورة بإجمالي 0 لطلب مدفوع، ويُرفع علم عدم التطابق
+        // عند اختلافه عن السعر المحسوب. (لا نعتبر الدفعات الفاشلة دفعاً أبداً.)
+        $employeePaid = \App\Models\ContractPaidByEmployee::query()
+            ->where('contract_uuid', (string) $contract->uuid)
+            ->where('is_paid', true)
+            ->whereNotNull('amount')
+            ->where('amount', '>', 0)
+            ->latest('id')
+            ->first();
+
+        if ($employeePaid === null) {
+            return null;
+        }
+
+        return new Payment([
+            'contract_uuid' => (string) $contract->uuid,
+            'amount' => (float) $employeePaid->amount,
+            'status' => 'success',
+            'payment_method' => 'employee',
+        ]);
     }
 
     private function resolveSuccessfulPaymentByUuid(string $uuid): ?Payment
