@@ -15,6 +15,8 @@ Route::prefix('notifications')->name('notifications.')->controller(NotificationC
         Route::post('/custom-employee', 'sendToCustomEmployee')->name('custom-employee');
         Route::post('/all-users', 'sendToAllUsers')->name('all-users');
         Route::post('/all-employees', 'sendToAllEmployees')->name('all-employees');
+        // دفعة (د) — ب10: معاينة الإرسال الجماعي (عدد المستلمين للشريحة).
+        Route::post('/broadcast/preview', 'broadcastPreview')->name('broadcast.preview');
     });
 
 // سجل إرسال إشعارات العملاء (ف8) — المجدولة والفورية واليدوية

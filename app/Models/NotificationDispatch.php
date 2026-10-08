@@ -15,6 +15,7 @@ class NotificationDispatch extends Model
         'contract_id',
         'lessor_change_request_id',
         'kind',
+        'channel',
         'dedupe_key',
         'title',
         'body',

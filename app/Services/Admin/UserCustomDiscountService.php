@@ -91,7 +91,7 @@ class UserCustomDiscountService
             }
         }
 
-        return DB::transaction(function () use ($user, $contract, $uuid, $type, $value, $discountAmount, $totalBefore, $totalAfter, $payload, $employeeId, $existingUsage) {
+        $discount = DB::transaction(function () use ($user, $contract, $uuid, $type, $value, $discountAmount, $totalBefore, $totalAfter, $payload, $employeeId, $existingUsage) {
             if ($existingUsage) {
                 CustomDiscount::query()->where('coupon_usage_id', $existingUsage->id)->delete();
                 $oldCouponId = $existingUsage->coupon_id;
@@ -141,5 +141,70 @@ class UserCustomDiscountService
                 'reason' => $payload['reason'],
             ]);
         });
+
+        // دفعة (د) — ب9/ب10: سجل النشاط + إشعار العميل بالخصم.
+        $employee = $employeeId ? \App\Models\Employee::query()->find($employeeId) : null;
+        app(\App\Services\Orders\OrderFlowService::class)->activity(
+            $contract, 'discount_applied', $employee,
+            ['total' => $totalBefore],
+            ['total' => $totalAfter, 'discount_amount' => $discountAmount, 'type' => $type, 'value' => $value, 'coupon_code' => $discount->coupon?->code_coupon],
+            $employee ? 'employee' : 'system',
+            (string) ($payload['reason'] ?? ''),
+        );
+        try {
+            app(\App\Services\CustomerNotificationService::class)->discountApplied($contract, (float) $discountAmount, null, (float) $totalAfter);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        return $discount;
+    }
+
+    /**
+     * الخصم المطبّق على الطلب (للّوحة): خصم مخصص من اللوحة أو كوبون استخدمه العميل.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function appliedFor(Contract $contract): ?array
+    {
+        $custom = CustomDiscount::query()->where('contract_id', $contract->id)->latest('id')->first();
+        if ($custom) {
+            return [
+                'source' => 'custom_discount',
+                'source_label' => 'خصم من اللوحة',
+                'type' => $custom->type,
+                'value' => (float) $custom->value,
+                'amount' => (float) $custom->discount_amount,
+                'total_before' => (float) $custom->total_before,
+                'total_after' => (float) $custom->total_after,
+                'coupon_code' => Coupon::query()->whereKey($custom->coupon_id)->value('code_coupon'),
+                'reason' => $custom->reason,
+                'employee_id' => $custom->employee_id,
+                'employee_name' => $custom->employee_id ? \App\Models\Employee::query()->whereKey($custom->employee_id)->value('name') : null,
+                'applied_at' => optional($custom->created_at)?->toIso8601String(),
+            ];
+        }
+
+        if (! filled($contract->uuid)) {
+            return null;
+        }
+        $usage = CouponUsage::query()->where('contract_uuid', (string) $contract->uuid)->latest('id')->first();
+        if (! $usage) {
+            return null;
+        }
+        $coupon = Coupon::query()->find($usage->coupon_id);
+
+        return [
+            'source' => 'coupon',
+            'source_label' => 'كوبون العميل',
+            'type' => $coupon?->type_coupon,
+            'value' => $coupon ? (float) $coupon->value_coupon : null,
+            'amount' => (float) (\App\Support\ContractPricing::for($contract)['coupon'] ?? 0),
+            'coupon_code' => $coupon?->code_coupon,
+            'reason' => null,
+            'employee_id' => null,
+            'employee_name' => null,
+            'applied_at' => optional($usage->used_at ?? $usage->created_at)?->toIso8601String(),
+        ];
     }
 }

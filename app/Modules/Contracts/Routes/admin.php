@@ -73,6 +73,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/complete/list', 'complete')->middleware('permission:completed_request.view')->name('complete');
         Route::get('/{id}', 'show')->whereNumber('id')->middleware('permission:all_requests.view')->name('show');
         Route::post('/{id}', 'update')->whereNumber('id')->middleware('permission:all_requests.edit')->name('update');
+        // دفعة (د) — ب10: إشعار العميل من تفاصيل الطلب (بيانات ناقصة / إعادة إرسال آخر حالة).
+        Route::post('/{id}/notify', 'notifyCustomer')->whereNumber('id')->middleware('permission:all_requests.edit')->name('notify');
         Route::post('/{id}/status', 'updateStatus')->whereNumber('id')->middleware('permission:all_requests.edit')->name('update-status');
         Route::post('/{id}/contract-status', 'updateContractStatus')->whereNumber('id')->middleware('permission:all_requests.edit')->name('update-contract-status');
         Route::post('/{id}/draft-contract-status', 'updateDraftContractStatus')->whereNumber('id')->middleware('permission:all_requests.edit')->name('update-draft-contract-status');

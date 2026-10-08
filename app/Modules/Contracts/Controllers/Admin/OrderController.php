@@ -70,6 +70,43 @@ class OrderController extends Controller
         return $this->apiResponse($this->orders->statusCounts($request), trans('api.success'));
     }
 
+    /**
+     * POST /api/admin/orders/{id}/notify { kind: data_missing|status_changed, message?, step? }
+     */
+    public function notifyCustomer(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'kind' => ['required', 'in:data_missing,status_changed'],
+            'message' => ['nullable', 'string', 'max:1000'],
+            'step' => ['nullable', 'integer', 'min:1', 'max:7'],
+        ]);
+
+        $contract = Contract::query()->findOrFail($id);
+        $customers = app(\App\Services\CustomerNotificationService::class);
+        $offer = $validated['kind'] === 'data_missing'
+            ? $customers->dataMissing($contract, $validated['message'] ?? null, isset($validated['step']) ? (int) $validated['step'] : null)
+            : $customers->notify(
+                $contract->user ?? throw new InvalidArgumentException('لا يوجد عميل مرتبط بالطلب.'),
+                \App\Services\CustomerNotificationService::KIND_STATUS_CHANGED,
+                'تحديث حالة طلبك',
+                'طلبك رقم '.$contract->uuid.': '.(\App\Support\ContractFrontendStatus::for($contract)['status_label'] ?? ''),
+                [],
+                $contract,
+                dedupe: false,
+            );
+
+        app(\App\Services\Orders\OrderFlowService::class)->activity(
+            $contract, 'notification_sent', $request->user() instanceof \App\Models\Employee ? $request->user() : null,
+            null, ['kind' => $validated['kind'], 'step' => $validated['step'] ?? null], 'employee', $validated['message'] ?? null,
+        );
+
+        return $this->apiResponse([
+            'stored' => $offer !== null,
+            'notification_id' => $offer?->id,
+            'notifications_sent' => $customers->sentForContract($contract),
+        ], trans('api.success'));
+    }
+
     public function returnOrders(Request $request)
     {
         try {

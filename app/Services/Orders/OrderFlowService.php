@@ -127,6 +127,16 @@ class OrderFlowService
             report($e);
         }
 
+        // ب10: إشعار العميل (صندوق + Push + سجل الإرسال).
+        try {
+            $customers = app(\App\Services\CustomerNotificationService::class);
+            $source === 'auto_assign'
+                ? $customers->assigned($contract, $employee->name)
+                : $customers->contractStatusChanged($contract);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
         $this->activity(
             $contract,
             $source === 'auto_assign' ? 'assigned' : 'received',

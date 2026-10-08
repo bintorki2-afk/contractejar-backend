@@ -68,17 +68,8 @@ class FirebaseNotificationService
 
         $this->sendToAllEmployees($title, $body, $data);
 
-        if ((int) $contract->user_id > 0) {
-            try {
-                $this->sendToUser((int) $contract->user_id, $title, $body, $data);
-            } catch (\Throwable $e) {
-                Log::warning('Firebase notify contract owner on receive failed', [
-                    'contract_id' => $contract->id,
-                    'user_id' => $contract->user_id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
+        // دفعة (د) — ب10: إشعار العميل بالاستلام يمر عبر CustomerNotificationService (صندوق + Push + سجل)
+        // من OrderFlowService::receive — لا push مباشر مكرر هنا.
     }
 
     /**

@@ -97,6 +97,9 @@ class AdminContractDetailResource extends JsonResource
             'invoice' => $this->invoiceSummary($c),
             // دفعة (د) — ب9: سجل النشاط (من/ماذا/متى + قبل/بعد).
             'activities' => app(\App\Services\Orders\ContractActivityLogger::class)->forAdmin($c),
+            // دفعة (د) — ب10: الإشعارات المرسلة + الخصم المطبّق.
+            'notifications_sent' => app(\App\Services\CustomerNotificationService::class)->sentForContract($c),
+            'applied_discount' => \App\Services\Admin\UserCustomDiscountService::appliedFor($c),
         ]);
     }
 
