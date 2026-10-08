@@ -95,6 +95,8 @@ return [
         'driver' => env('PAYMENTS_DRIVER'),
         // Force simulation even when a secret key exists (e.g. staging smoke tests).
         'test_mode' => env('MOYASAR_TEST_MODE'),
+        // الحد الأعلى لمبلغ «رابط الدفع من الموظف» (ر.س) — حماية من خطأ إدخال/إساءة. (CROSS-7)
+        'employee_link_max_amount' => (float) env('EMPLOYEE_PAYMENT_LINK_MAX_AMOUNT', 10000),
         'payment_frontend_url' => rtrim((string) env('PAYMENT_FRONTEND_URL', 'http://localhost:3000'), '/'),
         'payment_success_url_template' => env('PAYMENT_SUCCESS_URL_TEMPLATE'),
         'payment_error_url_template' => env('PAYMENT_ERROR_URL_TEMPLATE'),
