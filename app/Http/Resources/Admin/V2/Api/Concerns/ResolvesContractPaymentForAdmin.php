@@ -45,14 +45,12 @@ trait ResolvesContractPaymentForAdmin
     private function resolveSuccessfulPayment(): ?Payment
     {
         if ($this->relationLoaded('contractPayments')) {
-            $payment = $this->contractPayments
+            // القوائم تحمّل الدفعات الناجحة مسبقاً (+ المبلغ عبر successful_payment_amount):
+            // لا استعلام إضافي لكل صف غير مدفوع (كان N+1 في قائمة الطلبات).
+            return $this->contractPayments
                 ->filter(fn (Payment $payment) => $this->paymentContractUuidMatches($payment->contract_uuid))
                 ->sortByDesc('id')
                 ->first();
-
-            if ($payment !== null) {
-                return $payment;
-            }
         }
 
         return Payment::query()
