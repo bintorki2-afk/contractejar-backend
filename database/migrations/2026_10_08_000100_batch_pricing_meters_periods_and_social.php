@@ -19,13 +19,22 @@ return new class extends Migration
     public function up(): void
     {
         // ── settings: pricing ──
+        // حراسات hasColumn: الترحيل قابل لإعادة التشغيل بعد فشل جزئي على MySQL (DDL لا يتراجع). (CROSS-11)
         Schema::table('settings', function (Blueprint $table) {
-            $table->decimal('doc_fee_housing_first_year', 10, 2)->default(249)->after('water_meter_fee_housing_tenant');
-            $table->decimal('doc_fee_housing_extra_year', 10, 2)->default(150)->after('doc_fee_housing_first_year');
-            $table->decimal('doc_fee_commercial_first_year', 10, 2)->default(349)->after('doc_fee_housing_extra_year');
-            $table->decimal('doc_fee_commercial_extra_year', 10, 2)->default(250)->after('doc_fee_commercial_first_year');
-            $table->decimal('document_surcharge_fee', 10, 2)->default(75)->after('doc_fee_commercial_extra_year');
-            $table->decimal('lessor_change_fee', 10, 2)->default(400)->after('document_surcharge_fee');
+            $after = 'water_meter_fee_housing_tenant';
+            foreach ([
+                'doc_fee_housing_first_year' => 249,
+                'doc_fee_housing_extra_year' => 150,
+                'doc_fee_commercial_first_year' => 349,
+                'doc_fee_commercial_extra_year' => 250,
+                'document_surcharge_fee' => 75,
+                'lessor_change_fee' => 400,
+            ] as $column => $default) {
+                if (! Schema::hasColumn('settings', $column)) {
+                    $table->decimal($column, 10, 2)->default($default)->after($after);
+                }
+                $after = $column;
+            }
         });
 
         // رسوم نقل العداد (لكل عداد): سكني 15 / تجاري 25 — تُضبط فقط إذا كانت فارغة أو صفر.
@@ -55,8 +64,12 @@ return new class extends Migration
 
         // ── contract periods: months + is_active ──
         Schema::table('contract_periods', function (Blueprint $table) {
-            $table->unsignedSmallInteger('months')->nullable()->after('period');
-            $table->boolean('is_active')->default(true)->after('price');
+            if (! Schema::hasColumn('contract_periods', 'months')) {
+                $table->unsignedSmallInteger('months')->nullable()->after('period');
+            }
+            if (! Schema::hasColumn('contract_periods', 'is_active')) {
+                $table->boolean('is_active')->default(true)->after('price');
+            }
         });
 
         $monthsByLabel = ['شهري' => 1, 'ربع سنوي' => 3, 'نصف سنوي' => 6, 'سنوي' => 12, 'سنتين' => 24];
@@ -92,14 +105,20 @@ return new class extends Migration
         $this->widenOwnershipEnum('real_estates');
 
         Schema::table('real_units', function (Blueprint $table) {
-            $table->decimal('electricity_shared_monthly_fee', 10, 2)->nullable()->after('electricity_meter_ownership');
-            $table->decimal('water_shared_monthly_fee', 10, 2)->nullable()->after('water_meter_ownership');
+            if (! Schema::hasColumn('real_units', 'electricity_shared_monthly_fee')) {
+                $table->decimal('electricity_shared_monthly_fee', 10, 2)->nullable()->after('electricity_meter_ownership');
+            }
+            if (! Schema::hasColumn('real_units', 'water_shared_monthly_fee')) {
+                $table->decimal('water_shared_monthly_fee', 10, 2)->nullable()->after('water_meter_ownership');
+            }
         });
 
         // ── saved property: source contract ──
-        Schema::table('real_estates', function (Blueprint $table) {
-            $table->unsignedBigInteger('source_contract_id')->nullable()->after('user_id')->index();
-        });
+        if (! Schema::hasColumn('real_estates', 'source_contract_id')) {
+            Schema::table('real_estates', function (Blueprint $table) {
+                $table->unsignedBigInteger('source_contract_id')->nullable()->after('user_id')->index();
+            });
+        }
     }
 
     public function down(): void

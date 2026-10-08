@@ -23,7 +23,15 @@ if [ "$APP_ENV" != "production" ] && [ "$ALLOW_DB_RESET" = "true" ]; then
   php artisan db:seed --force || echo "[railway-start] seed reported an error (continuing to serve)"
 else
   echo "[railway-start] SAFE MODE: forward migrations only (no wipe)"
-  php artisan migrate --force || echo "[railway-start] migrate reported an error (continuing to serve)"
+  if ! php artisan migrate --force; then
+    if [ "$APP_ENV" = "production" ]; then
+      # لا نخدم بمخطط ناقص في الإنتاج: نخرج بخطأ فيبقى Railway على النشر السابق السليم
+      # (مع healthcheckPath في railway.json). (CROSS-11)
+      echo "[railway-start] FATAL: migrate failed in production — refusing to serve (old deployment stays live)" >&2
+      exit 1
+    fi
+    echo "[railway-start] migrate reported an error (non-production: continuing to serve)"
+  fi
 fi
 
 echo "[railway-start] linking storage"
