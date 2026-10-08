@@ -128,7 +128,7 @@ class UpdateContractRequest extends FormRequest
      * Server-side format rules for Saudi identifiers, enforced on any of these
      * columns that are present in the update payload.
      *
-     * - Saudi national id / iqama: ^[12]\d{9}$
+     * - Saudi national id / iqama: ^[12]\d{9}$ — owner may also be an establishment (700…): ^[127]\d{9}$
      * - Saudi mobile:              ^05\d{8}$
      * - Commercial register (CR):  ^7\d{9}$
      *
@@ -136,7 +136,7 @@ class UpdateContractRequest extends FormRequest
      */
     public const FORMAT_RULES = [
         // National id / iqama
-        'property_owner_id_num' => 'regex:/^[12]\d{9}$/',
+        'property_owner_id_num' => 'regex:/^[127]\d{9}$/',
         'tenant_id_num' => 'regex:/^[12]\d{9}$/',
         'id_num_of_property_owner_agent' => 'regex:/^[12]\d{9}$/',
         'id_num_of_property_tenant_agent' => 'regex:/^[12]\d{9}$/',
