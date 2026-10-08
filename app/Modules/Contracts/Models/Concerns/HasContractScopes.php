@@ -72,13 +72,24 @@ trait HasContractScopes
      */
     public function scopeReachedAdminOrderStep($query, ?int $minStep = null)
     {
-        return $query->where('step', '>=', $minStep ?? self::CUSTOMER_VISIBLE_MIN_STEP);
+        return $query->where('step', '>=', $minStep ?? self::CUSTOMER_VISIBLE_MIN_STEP)->notSynthetic();
     }
 
-    /** «طلب» ظاهر في اللوحة: غير محذوف + بلغ الخطوة 4. */
+    /** «طلب» ظاهر في اللوحة: غير محذوف + بلغ الخطوة 4 (وليس بيانات فحص اصطناعية). */
     public function scopeAdminListed($query)
     {
-        return $query->where('is_delete', 0)->where('step', '>=', self::CUSTOMER_VISIBLE_MIN_STEP);
+        return $query->where('is_delete', 0)->where('step', '>=', self::CUSTOMER_VISIBLE_MIN_STEP)->notSynthetic();
+    }
+
+    /** ب19: استبعاد طلبات الفحص اليومي الاصطناعية. */
+    public function scopeNotSynthetic($query)
+    {
+        if (! \App\Support\SchemaCache::hasColumn('contracts', 'is_synthetic')) {
+            return $query;
+        }
+        $table = $query->getModel()->getTable();
+
+        return $query->where(fn ($q) => $q->whereNull($table.'.is_synthetic')->orWhere($table.'.is_synthetic', false));
     }
 
     /**
@@ -101,7 +112,8 @@ trait HasContractScopes
     {
         return $query->where('is_delete', 0)
             ->where('step', '<', self::CUSTOMER_VISIBLE_MIN_STEP)
-            ->where('is_completed', 0);
+            ->where('is_completed', 0)
+            ->notSynthetic();
     }
 
     public function scopeIncomplete($query)

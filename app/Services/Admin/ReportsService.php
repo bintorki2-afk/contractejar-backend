@@ -497,7 +497,7 @@ class ReportsService
      */
     private function startedOrdersQuery(?array $range, ?string $contractType, ?int $employeeId)
     {
-        $query = Contract::query()->notDeleted();
+        $query = Contract::query()->notDeleted()->notSynthetic();
         $this->applyDateRange($query, 'created_at', $range);
 
         if ($contractType !== null) {
@@ -517,7 +517,7 @@ class ReportsService
     private function canceledContractsQuery(?array $range, ?string $contractType, ?int $employeeId)
     {
         // دفعة (د) — ب6: «ملغى» = حالة الطلب cancelled (لا الطلبات المحذوفة is_delete).
-        $query = Contract::query()->notDeleted()
+        $query = Contract::query()->notDeleted()->notSynthetic()
             ->whereIn('contract_status_id', ContractStatus::idsFor([ContractStatus::KEY_CANCELLED]) ?: [-1]);
         $this->applyDateRange($query, 'created_at', $range);
 

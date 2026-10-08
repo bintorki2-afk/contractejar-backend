@@ -228,6 +228,9 @@ class User extends Authenticatable implements MustVerifyEmail
         if (\App\Support\SchemaCache::hasColumn('users', 'merged_into_user_id')) {
             $query->whereNull('users.merged_into_user_id');
         }
+        if (\App\Support\SchemaCache::hasColumn('users', 'is_synthetic')) {
+            $query->where(fn ($q) => $q->whereNull('users.is_synthetic')->orWhere('users.is_synthetic', false));
+        }
         if (! \App\Support\SchemaCache::hasColumn('users', 'is_guest')) {
             return $query;
         }
