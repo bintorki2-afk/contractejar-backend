@@ -31,13 +31,10 @@ class ContractFinancialService
             'water_meter_fee' => $meterFees['water_meter_fee'],
         ];
 
-        $services = ServicesPricing::where('contract_type', $contract->contract_type)->get()
-            ->map(function ($service) {
-                return [
-                    'service_name' => $service->name_ar,
-                    'service_price' => $service->price,
-                ];
-            })->toArray();
+        // الفاتورة الرسمية لها بنودها في `items[]` (ContractInvoiceService). جدول
+        // services_pricings مزروع ببيانات تجريبية لا علاقة لها بالمبلغ المحصّل، فكانت
+        // تظهر للعميل كبنود فاتورة وهمية — نُفرّغها مع إبقاء المفتاح للتوافق. (CROSS-1)
+        $services = [];
 
         $responseData = [
             'price_details' => $priceDetails,
@@ -94,25 +91,15 @@ class ContractFinancialService
             $priceDetails['duration_months'] = $docFeeSummary['duration_months'];
         }
 
-        $pricingRows = ServicesPricing::where('contract_type', $contract->contract_type)->get();
-        $services = $pricingRows->map(function ($service) {
-            return [
-                'id' => $service->id,
-                'name_ar' => $service->name_ar,
-                'name_en' => $service->name_en,
-                'name' => $service->name_trans ?? $service->name_ar,
-                'service_name' => $service->name_ar,
-                'price' => (float) $service->price,
-                'service_price' => (float) $service->price,
-                'contract_type' => $service->contract_type,
-            ];
-        })->values()->all();
+        // بنود الفاتورة الرسمية في `items[]` (ContractInvoiceService). لا نُعيد بنود
+        // services_pricings التجريبية (كانت تظهر كبنود/إجمالي خدمات وهمية). (CROSS-1)
+        $services = [];
 
         $responseData = [
             'price_details' => $priceDetails,
             'services' => $services,
             'additional_services' => $services,
-            'services_total' => (float) $pricingRows->sum(fn ($service) => (float) $service->price),
+            'services_total' => 0.0,
             'fee' => $pricing['fee'],
             'document_surcharge' => $pricing['document_surcharge'],
             'document_surcharge_applies' => $pricing['document_surcharge_applies'],

@@ -268,6 +268,21 @@ class FixBatchBInvoiceTest extends TestCase
         $this->assertTrue($data['amount_mismatch']);
     }
 
+    /**
+     * CROSS-1: الملخص المالي لا يعيد بنود «خدمات» تجريبية (كانت تظهر كبنود فاتورة وهمية).
+     */
+    public function test_financial_summary_does_not_return_phantom_services(): void
+    {
+        $user = $this->customer();
+        $contract = $this->paidHousingContract($user, ['uuid' => '700020', 'instrument_type' => 'electronic']);
+
+        $data = $this->getJson('/api/v2/financial/'.$contract->uuid)->assertOk()->json('data');
+
+        $this->assertSame([], $data['services']);
+        $this->assertSame([], $data['additional_services']);
+        $this->assertSame(0.0, (float) $data['services_total']);
+    }
+
     public function test_duration_labels(): void
     {
         $this->assertSame('سنة', ContractInvoiceService::durationLabel(12));
