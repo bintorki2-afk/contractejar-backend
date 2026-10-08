@@ -40,7 +40,9 @@ class InstructionImageController extends Controller
                 'images' => InstructionSectionImageClientResource::collection($section->images),
             ], trans('api.success'));
         } catch (\Throwable $e) {
-            return $this->errorMessage(trans('api.error_occurred').': '.$e->getMessage(), 500);
+            report($e);
+
+            return $this->errorMessage(trans('api.error_occurred'), 500);
         }
     }
 
@@ -74,7 +76,9 @@ class InstructionImageController extends Controller
 
             return $this->apiResponse(['items' => $items], trans('api.success'));
         } catch (\Throwable $e) {
-            return $this->errorMessage(trans('api.error_occurred').': '.$e->getMessage(), 500);
+            report($e);
+
+            return $this->errorMessage(trans('api.error_occurred'), 500);
         }
     }
 }
