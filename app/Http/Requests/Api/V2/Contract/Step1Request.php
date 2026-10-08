@@ -23,6 +23,16 @@ class Step1Request extends BaseApiV2Request
     protected function prepareForValidation(): void
     {
         parent::prepareForValidation();
+
+        // التطبيق يرسل القيم المنطقية كنصوص 'true'/'false' في multipart — قاعدة boolean لا تقبلها.
+        foreach (['is_multiple_trusteeship_deed_copy'] as $boolKey) {
+            if ($this->has($boolKey) && is_string($this->input($boolKey))) {
+                $normalized = filter_var($this->input($boolKey), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                if ($normalized !== null) {
+                    $this->merge([$boolKey => $normalized ? 1 : 0]);
+                }
+            }
+        }
         $this->resolveContractIdInput();
         $this->normalizeCoordinateInputs();
 

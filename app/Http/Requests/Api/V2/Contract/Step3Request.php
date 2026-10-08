@@ -19,6 +19,16 @@ class Step3Request extends BaseApiV2Request
     protected function prepareForValidation(): void
     {
         parent::prepareForValidation();
+
+        // التطبيق يرسل القيم المنطقية كنصوص 'true'/'false' في multipart — قاعدة boolean لا تقبلها.
+        foreach (['property_owner_is_deceased', 'add_legal_agent_of_owner'] as $boolKey) {
+            if ($this->has($boolKey) && is_string($this->input($boolKey))) {
+                $normalized = filter_var($this->input($boolKey), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                if ($normalized !== null) {
+                    $this->merge([$boolKey => $normalized ? 1 : 0]);
+                }
+            }
+        }
         $this->resolveContractIdInput();
         $this->normalizeSaudiMobileFields([
             'property_owner_mobile',
