@@ -561,7 +561,10 @@ class AdminContractDetailResource extends JsonResource
             'id' => $u->id,
             'name' => $u->name ?? null,
             'email' => $u->email ?? null,
-            'mobile' => $u->mobile ?? null,
+            // زائر الموقع: جوال الواتساب الذي كتبه في contact_mobile (mobile فارغ). (DASHBOARD-8)
+            'mobile' => $u->mobile ?: ($u->contact_mobile ?? null),
+            'contact_mobile' => $u->contact_mobile ?? null,
+            'is_guest' => (bool) ($u->is_guest ?? false),
         ];
     }
 
