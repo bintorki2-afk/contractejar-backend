@@ -62,6 +62,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/', 'orders')->middleware('permission:all_requests.view')->name('index');
         // دفعة (د) — ب3: عدّادات تبويبات «جميع الطلبات».
         Route::get('/status-counts', 'statusCounts')->middleware('permission:all_requests.view')->name('status-counts');
+        // دفعة (د) — ب11: لوحة «عليك الحين» (بانتظار الاستلام/المسودة/التوثيق + المتأخرة).
+        Route::get('/attention', 'attention')->middleware('permission:all_requests.view')->name('attention');
         Route::get('/return', 'returnOrders')->middleware('permission:returned_request.view')->name('return');
         Route::get('/received', 'receivedOrders')->middleware('permission:request_classification.view')->name('received');
         Route::get('/status/{statusId}', 'byStatus')->whereNumber('statusId')->middleware('permission:request_classification.view')->name('by-status');

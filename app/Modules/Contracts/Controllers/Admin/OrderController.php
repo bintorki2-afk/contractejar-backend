@@ -71,6 +71,16 @@ class OrderController extends Controller
     }
 
     /**
+     * GET /api/admin/orders/attention — «عليك الحين» (الأقدم أولاً).
+     */
+    public function attention(Request $request)
+    {
+        $limit = min(max((int) $request->input('limit', 50), 1), 200);
+
+        return $this->apiResponse(app(\App\Services\Orders\OrderAttentionService::class)->board($limit), trans('api.success'));
+    }
+
+    /**
      * POST /api/admin/orders/{id}/stage/{received|draft_sent|notarized}
      */
     public function stage(Request $request, int $id, string $stage)

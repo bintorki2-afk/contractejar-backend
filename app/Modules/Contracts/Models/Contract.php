@@ -195,6 +195,8 @@ class Contract extends Model
         'accept_retrun_contract' => 'boolean',
         'is_draft' => 'boolean',
         'attributed_at' => 'datetime',
+        'delay_flags' => 'array',
+        'delay_flagged_at' => 'datetime',
     ];
 
     protected $appends = [

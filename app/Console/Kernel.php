@@ -28,6 +28,12 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/notifications-dispatch.log'));
 
+        // دفعة (د) — ب11: علامات تأخير الطلبات + إشعار الموظفين بالتأخير الجديد.
+        $schedule->command('orders:flag-delays')
+            ->everyFifteenMinutes()
+            ->withoutOverlapping(30)
+            ->appendOutputTo(storage_path('logs/orders-flag-delays.log'));
+
         // ف21: نسخة احتياطية يومية لقاعدة البيانات 03:10 بتوقيت الرياض.
         $schedule->command('aqdi:db-backup')
             ->dailyAt('03:10')

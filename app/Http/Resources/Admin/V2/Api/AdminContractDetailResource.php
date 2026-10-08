@@ -100,6 +100,9 @@ class AdminContractDetailResource extends JsonResource
             // دفعة (د) — ب10: الإشعارات المرسلة + الخصم المطبّق.
             'notifications_sent' => app(\App\Services\CustomerNotificationService::class)->sentForContract($c),
             'applied_discount' => \App\Services\Admin\UserCustomDiscountService::appliedFor($c),
+            // ب11: علامات التأخير (محسوبة الآن، لا تنتظر المجدول).
+            'delay_flags' => app(\App\Services\Orders\OrderAttentionService::class)->flagsFor($c),
+            'status_key' => \App\Models\ContractStatus::keyForId($c->contract_status_id ? (int) $c->contract_status_id : null),
         ]);
     }
 
