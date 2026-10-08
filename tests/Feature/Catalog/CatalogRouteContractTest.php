@@ -48,20 +48,30 @@ class CatalogRouteContractTest extends TestCase
         }
     }
 
-    public function test_v2_tenant_role_routes_remain_registered_once(): void
+    public function test_v2_tenant_roles_are_read_only_on_the_public_api(): void
     {
+        // الواجهة العامة للقراءة فقط: الكتابة/التعديل/الحذف في لوحة الإدارة فقط.
+        // كانت المسارات العامة للكتابة تشير لدوال غير موجودة وتُرجع 500 (APP-2) فحُذفت.
         $tenantRoleRoutes = collect(Route::getRoutes())
             ->filter(fn ($route) => str_starts_with($route->uri(), 'api/v2/tenant-roles'))
             ->values();
 
-        $this->assertCount(5, $tenantRoleRoutes);
+        $this->assertCount(1, $tenantRoleRoutes);
 
         $index = $this->routeByUriAndMethod('api/v2/tenant-roles', 'GET');
         $this->assertSame(TenantRoleController::class, $index->getControllerClass());
+        $this->assertSame('index', $index->getActionMethod());
 
-        $update = $this->routeByUriAndMethod('api/v2/tenant-roles/{id}', 'PUT');
-        $this->assertContains('PATCH', $update->methods());
-        $this->assertSame('update', $update->getActionMethod());
+        foreach (['POST', 'PUT', 'PATCH', 'DELETE'] as $method) {
+            $this->assertNull(
+                $this->routeByUriAndMethodOrNull('api/v2/tenant-roles', $method),
+                "api/v2/tenant-roles must not expose {$method}"
+            );
+            $this->assertNull(
+                $this->routeByUriAndMethodOrNull('api/v2/tenant-roles/{id}', $method),
+                "api/v2/tenant-roles/{id} must not expose {$method}"
+            );
+        }
     }
 
     public function test_admin_catalog_routes_are_registered_once_with_sanctum_and_permissions(): void
@@ -128,6 +138,17 @@ class CatalogRouteContractTest extends TestCase
         }
 
         $this->fail("Route {$method} {$uri} is not registered.");
+    }
+
+    private function routeByUriAndMethodOrNull(string $uri, string $method)
+    {
+        foreach (Route::getRoutes() as $route) {
+            if ($route->uri() === $uri && in_array($method, $route->methods(), true)) {
+                return $route;
+            }
+        }
+
+        return null;
     }
 
     private function routeByKey(string $key)

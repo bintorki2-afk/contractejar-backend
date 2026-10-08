@@ -18,10 +18,9 @@ Route::controller(CatalogLookupController::class)->group(function () {
     Route::get('/contract-periods', 'contractPeriods');
 });
 
+// أدوار المستأجر للقراءة فقط على الواجهة العامة (القائمة تُعرض في معالج العقد).
+// الكتابة/التعديل/الحذف في لوحة الإدارة فقط (auth + policy). المسارات العامة للكتابة
+// حُذفت لأنها كانت تشير لدوال غير موجودة وتُرجع 500 (APP-2).
 Route::prefix('tenant-roles')->controller(TenantRoleController::class)->group(function () {
     Route::get('/', 'index');
-    Route::post('/', 'store');
-    Route::get('/{id}', 'show');
-    Route::match(['put', 'patch'], '/{id}', 'update');
-    Route::delete('/{id}', 'destroy');
 });
