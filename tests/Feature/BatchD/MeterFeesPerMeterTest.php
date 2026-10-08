@@ -103,4 +103,32 @@ class MeterFeesPerMeterTest extends BatchDTestCase
             ->assertJsonPath('data.meter_transfer_fee.housing.electricity', 15);
         $this->assertStringContainsString('لكل عداد', (string) $this->getJson('/api/v2/pricing')->json('data.meter_transfer_fee.label'));
     }
+
+    public function test_shared_meter_months_follow_yearly_preset(): void
+    {
+        $contract = $this->withUnits($this->contract(['duration_preset' => 'yearly', 'total_months' => null]), [
+            ['electricity_meter_ownership' => 'shared', 'electricity_shared_monthly_fee' => 100],
+        ]);
+
+        $shared = MeterFees::sharedMetersForContract($contract);
+        $this->assertSame(12, $shared['electricity']['months']);
+        $this->assertSame(1200.0, $shared['electricity']['total']);
+        $this->assertSame(1200.0, $shared['total']);
+        $this->assertSame(249.0, (float) DocFee::forContract($contract)['doc_fee']);
+    }
+
+    public function test_shared_meter_months_from_period_or_default_year(): void
+    {
+        $periodId = DB::table('contract_periods')->insertGetId(['period' => 'سنتين', 'note_ar' => 'سنتين', 'contract_type' => 'housing', 'months' => 24, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        $two = $this->withUnits($this->contract(['duration_preset' => null, 'total_months' => null, 'contract_term_in_years' => $periodId]), [
+            ['water_meter_ownership' => 'shared', 'water_shared_monthly_fee' => 40],
+        ]);
+        $this->assertSame(24, MeterFees::sharedMetersForContract($two)['water']['months']);
+        $this->assertSame(960.0, MeterFees::sharedMetersForContract($two)['water']['total']);
+
+        $none = $this->withUnits($this->contract(['duration_preset' => null, 'total_months' => null]), [
+            ['water_meter_ownership' => 'shared', 'water_shared_monthly_fee' => 40],
+        ]);
+        $this->assertSame(12, MeterFees::sharedMetersForContract($none)['water']['months']);
+    }
 }

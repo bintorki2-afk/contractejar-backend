@@ -99,11 +99,11 @@ final class MeterFees
      */
     public static function sharedMetersForContract(Contract $contract): array
     {
-        $months = 0;
+        // دفعة (د) — ب7: الأشهر = مدة العقد كاملة (سنوي = 12) — لا ×0 عند yearly أو total_months الفارغ.
         try {
-            $months = (int) ($contract->total_months ?: (DocFee::forContract($contract)['total_months'] ?? 0));
+            $months = DocFee::contractMonths($contract);
         } catch (\Throwable) {
-            $months = 0;
+            $months = 12;
         }
 
         $result = ['electricity' => null, 'water' => null, 'total' => 0.0];

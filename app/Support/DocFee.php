@@ -88,10 +88,48 @@ final class DocFee
         return max(0, $years) * 12 + max(0, $months);
     }
 
+    /** مرادفات قديمة/من التطبيق للأزرار الجاهزة (دفعة د — ب7: yearly كان يعطي 0 شهر). */
+    public const PRESET_ALIASES = [
+        'yearly' => 12, 'annual' => 12, 'annually' => 12, 'year' => 12, '1_years' => 12, 'one_year' => 12, 'سنوي' => 12, 'سنة' => 12,
+        'two_years' => 24, '2_year' => 24, 'سنتين' => 24,
+        'monthly' => 1, 'شهري' => 1,
+        'quarterly' => 3, 'ربع سنوي' => 3,
+        'semi_annual' => 6, 'half_yearly' => 6, 'نصف سنوي' => 6,
+    ];
+
     /** أشهر الزر الجاهز */
     public static function monthsFromPreset(string $preset): int
     {
-        return self::PRESETS[$preset] ?? 0;
+        return self::PRESETS[$preset] ?? self::PRESET_ALIASES[trim($preset)] ?? 0;
+    }
+
+    /**
+     * إجمالي أشهر العقد لأي غرض عرض (العداد المشترك…): total_months ← الزر الجاهز ← «مدة أخرى»
+     * ← مدة العقد المختارة ← 12 (سنة) احتياطاً. لا يرجع 0 أبداً لعقد له مدة.
+     */
+    public static function contractMonths(\App\Models\Contract $contract, int $fallback = 12): int
+    {
+        if ((int) $contract->total_months > 0) {
+            return (int) $contract->total_months;
+        }
+
+        $preset = (string) ($contract->duration_preset ?? '');
+        if ($preset === 'other') {
+            $months = self::totalMonths((int) ($contract->duration_years ?? 0), (int) ($contract->duration_months ?? 0));
+            if ($months > 0) {
+                return $months;
+            }
+        } elseif ($preset !== '' && self::monthsFromPreset($preset) > 0) {
+            return self::monthsFromPreset($preset);
+        }
+
+        try {
+            $fromPeriod = self::monthsFromContractPeriod($contract);
+        } catch (\Throwable) {
+            $fromPeriod = null;
+        }
+
+        return $fromPeriod !== null && $fromPeriod > 0 ? $fromPeriod : $fallback;
     }
 
     /** حساب الأشهر من الطلب */
