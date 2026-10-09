@@ -109,7 +109,34 @@ class AdminContractDetailResource extends JsonResource
             'status_key' => \App\Models\ContractStatus::keyForId($c->contract_status_id ? (int) $c->contract_status_id : null),
             // متابعة دفعة (د): الموظف المستلم (يملأ «المستلم» في رأس التفاصيل).
             ...$this->receiverFields($c, $full),
+            // متابعة دفعة (د) — QA: نتيجة الخادم للعدادات (العداد المشترك × أشهر العقد) وأشهر المدة، وتاريخ البداية بالتقويمين.
+            ...$this->durationAndMeterFields($c, $full),
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $full
+     * @return array<string, mixed>
+     */
+    private function durationAndMeterFields($c, array $full): array
+    {
+        $months = \App\Support\DocFee::contractMonths($c);
+        $row = $c->relationLoaded('contractTermInYears') ? $c->contractTermInYears : $c->contractTermInYears()->first();
+        $term = null;
+        if ($row !== null) {
+            $term = $row->toArray();
+            $term['months'] = $row->months !== null ? (int) $row->months : \App\Support\DocFee::monthsFromContractPeriod($c);
+        }
+
+        $meterFees = \App\Support\MeterFees::forContract($c);
+
+        return [
+            'contract_term_in_years' => $term ?? ($full['contract_term_in_years'] ?? null),
+            'contract_months' => $months,
+            'meter_fees' => $meterFees,
+            'shared_meters' => $meterFees['shared_meters'] ?? null,
+            ...\App\Support\ContractStartingDateInput::bothCalendars($c->contract_starting_date, $c->type_contract_starting_date),
+        ];
     }
 
     /**

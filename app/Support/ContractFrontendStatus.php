@@ -89,6 +89,17 @@ class ContractFrontendStatus
             explicitKey: $row?->getAttribute('status_key'),
         );
 
+        // متابعة دفعة (د): طلب مدفوع نُقل للسلة من اللوحة ⇒ يظهر لصاحبه «ملغي».
+        if ((int) $contract->is_delete === 1 && filled($contract->trashed_at ?? null) && (bool) $contract->is_completed) {
+            $payload['status'] = 'cancelled';
+            $payload['status_label'] = 'ملغي';
+            $payload['status_color'] = '#EF4444';
+            $payload['status_client_explanation'] = 'تم إلغاء هذا الطلب — للاستفسار عن المبلغ تواصل معنا.';
+            $payload['status_description'] = $payload['status_client_explanation'];
+
+            return $payload;
+        }
+
         // الطلب مدفوع (is_completed يُضبط فقط بعد دفعة ناجحة) لكن الموظف لم يغيّر حالته بعد
         // من «جديد» ⇒ يظهر للعميل «تم الدفع» متسقاً مع journey والإشعارات. (WEBSITE-2)
         if ($payload['status'] === 'new' && (bool) $contract->is_completed) {

@@ -764,6 +764,25 @@ class ReportsService
      * @param  array{0: Carbon, 1: Carbon}|null  $range
      * @return array{total_sales: float, payments_count: int, discounts_total: float, discounted_orders_count: int, refunds_total: float, net_revenue: float}
      */
+    /**
+     * متابعة دفعة (د) — QA: تعريف «الإيراد» الوحيد لكل الشاشات (الأداء/المبيعات/نظرة عامة):
+     * مجموع الدفعات الناجحة بتاريخ الدفع ضمن الفترة (أساس نقدي)، والصافي بعد الاسترجاع.
+     *
+     * @param  array{0: Carbon, 1: Carbon}|null  $range
+     * @return array{total_sales: float|int, payments_count: int, refunds_total: float|int, net_revenue: float|int}
+     */
+    public function revenueSummary(?array $range): array
+    {
+        $t = $this->salesTotals($range, null, null);
+
+        return [
+            'total_sales' => $t['total_sales'],
+            'payments_count' => $t['payments_count'],
+            'refunds_total' => $t['refunds_total'],
+            'net_revenue' => $t['net_revenue'],
+        ];
+    }
+
     private function salesTotals(?array $range, ?string $contractType, ?int $employeeId): array
     {
         $paymentsQuery = Payment::query()->successful();

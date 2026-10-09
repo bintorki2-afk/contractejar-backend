@@ -245,7 +245,7 @@ class FirebaseNotificationService
 
         try {
             $this->sendToTopic((string) config('services.firebase.users_topic', 'users'), $title, $body, $payload);
-            $topicSent = true;
+            $topicSent = $this->isConfigured(); // متابعة (د): بلا إعدادات لا يُرسل فعلاً
         } catch (\Throwable $e) {
             Log::warning('Firebase users topic failed', ['error' => $e->getMessage()]);
         }
@@ -276,7 +276,7 @@ class FirebaseNotificationService
 
         try {
             $this->sendToTopic((string) config('services.firebase.employees_topic', 'employees'), $title, $body, $payload);
-            $topicSent = true;
+            $topicSent = $this->isConfigured(); // متابعة (د): بلا إعدادات لا يُرسل فعلاً
         } catch (\Throwable $e) {
             Log::warning('Firebase employees topic failed', ['error' => $e->getMessage()]);
         }

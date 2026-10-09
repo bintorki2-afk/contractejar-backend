@@ -13,7 +13,7 @@ class ListUserContractsAction
             ->where('user_id', $userId)
             ->orderBy('created_at', 'desc')
             ->where('step', '>', '6')
-            ->where('is_delete', 0)
+            ->visibleToOwner()
             ->paginate(10);
     }
 
@@ -26,7 +26,7 @@ class ListUserContractsAction
             ->where('user_id', $userId)
             ->with(['realEstate', 'contractStatus', 'draftContractStatus', 'receivedContract', 'statusHistories'])
             ->orderBy('updated_at', 'desc')
-            ->where('is_delete', 0)
+            ->visibleToOwner()
             ->reachedAdminOrderStep()
             ->visibleToCustomer();
 

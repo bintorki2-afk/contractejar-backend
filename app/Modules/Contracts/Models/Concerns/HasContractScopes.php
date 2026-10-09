@@ -17,7 +17,24 @@ trait HasContractScopes
      */
     public function scopeOwnedBy($query, int $userId)
     {
-        return $query->where('user_id', $userId)->notDeleted();
+        return $query->where('user_id', $userId)->visibleToOwner();
+    }
+
+    /**
+     * متابعة دفعة (د) — القرار الآمن: طلب مدفوع نُقل للسلة من اللوحة يبقى ظاهراً لصاحبه (بحالة «ملغي» مع فاتورته)؛
+     * غيره من المحذوفات لا يظهر.
+     */
+    public function scopeVisibleToOwner($query)
+    {
+        $table = $query->getModel()->getTable();
+        $hasTrash = \App\Support\SchemaCache::hasColumn('contracts', 'trashed_at');
+
+        return $query->where(function ($q) use ($table, $hasTrash) {
+            $q->where($table.'.is_delete', 0);
+            if ($hasTrash) {
+                $q->orWhere(fn ($t) => $t->where($table.'.is_delete', 1)->whereNotNull($table.'.trashed_at')->where($table.'.is_completed', 1));
+            }
+        });
     }
 
     public static function requireApiUserId(): int

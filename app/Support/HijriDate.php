@@ -5,8 +5,9 @@ namespace App\Support;
 use Illuminate\Support\Carbon;
 
 /**
- * تحويل تقريبي بين التقويم الهجري والميلادي (التقويم الهجري الحسابي — دقة ± يوم تقريباً
- * مقارنة بأم القرى). يكفي لحساب مواعيد التذكير (قرب انتهاء العقد) وليس للمستندات الرسمية.
+ * تحويل بين التقويم الهجري والميلادي.
+ * متابعة دفعة (د): يُستخدم تقويم **أم القرى** (ext-intl: `@calendar=islamic-umalqura` — نفس ما تعتمده منصة إيجار
+ * والموقع عبر Intl) متى توفّر، وإلا الحساب التقريبي (± يوم) احتياطاً.
  */
 final class HijriDate
 {
@@ -41,8 +42,28 @@ final class HijriDate
         return [$y, $m, $d];
     }
 
+    public static function umAlQuraAvailable(): bool
+    {
+        return class_exists(\IntlCalendar::class) && class_exists(\IntlDateFormatter::class);
+    }
+
     public static function toGregorian(int $year, int $month, int $day): Carbon
     {
+        if (self::umAlQuraAvailable()) {
+            try {
+                $cal = \IntlCalendar::createInstance('Asia/Riyadh', 'en_US@calendar=islamic-umalqura');
+                if ($cal !== null) {
+                    $cal->clear();
+                    $cal->set($year, $month - 1, $day, 12, 0, 0);
+                    $ts = (int) floor($cal->getTime() / 1000);
+
+                    return Carbon::createFromTimestamp($ts, 'Asia/Riyadh')->startOfDay()->setTimezone(config('app.timezone', 'Asia/Riyadh'));
+                }
+            } catch (\Throwable) {
+                // احتياط حسابي
+            }
+        }
+
         [$y, $m, $d] = self::julianDayToGregorian(self::toJulianDay($year, $month, $day));
 
         return Carbon::create($y, $m, $d, 0, 0, 0, config('app.timezone', 'Asia/Riyadh'));
@@ -101,6 +122,20 @@ final class HijriDate
      */
     public static function fromGregorian(Carbon $date): array
     {
+        if (self::umAlQuraAvailable()) {
+            try {
+                $fmt = new \IntlDateFormatter('en_US@calendar=islamic-umalqura', \IntlDateFormatter::NONE, \IntlDateFormatter::NONE,
+                    'Asia/Riyadh', \IntlDateFormatter::TRADITIONAL, 'y-M-d');
+                $noon = new \DateTime($date->format('Y-m-d').' 12:00:00', new \DateTimeZone('Asia/Riyadh'));
+                $out = $fmt->format($noon);
+                if (is_string($out) && preg_match('/^(\d+)-(\d+)-(\d+)$/', $out, $m)) {
+                    return [(int) $m[1], (int) $m[2], (int) $m[3]];
+                }
+            } catch (\Throwable) {
+                // احتياط حسابي
+            }
+        }
+
         $y = (int) $date->year;
         $m = (int) $date->month;
         $d = (int) $date->day;

@@ -236,7 +236,9 @@ class CustomerNotificationService
 
         try {
             $payload = array_merge(['kind' => $kind, 'url' => (string) ($url ?? '')], $data);
-            if ($segment === 'all') {
+            if (! $this->firebase->isConfigured()) {
+                $pushResult = ['sent' => 0, 'failed' => 0, 'topic_sent' => false, 'missing_token' => false, 'disabled' => true];
+            } elseif ($segment === 'all') {
                 $pushResult = $this->firebase->sendToAllUsers($title, $body, $payload);
             } else {
                 foreach ($userIds as $uid) {
@@ -257,7 +259,10 @@ class CustomerNotificationService
                 'title' => $title,
                 'body' => $body,
                 'url' => $url,
-                'push_result' => ($pushResult['sent'] ?? 0) > 0 || ! empty($pushResult['topic_sent']) ? 'sent' : 'no_token',
+                // متابعة دفعة (د) — QA: بلا إعدادات Firebase لا يُرسل شيء فعلاً ⇒ disabled (لا «sent» مضلّل).
+                'push_result' => ! $this->firebase->isConfigured()
+                    ? 'disabled'
+                    : (($pushResult['sent'] ?? 0) > 0 || ! empty($pushResult['topic_sent']) ? 'sent' : 'no_token'),
                 'recipients_count' => $recipients,
                 'sent_at' => now(),
             ]);

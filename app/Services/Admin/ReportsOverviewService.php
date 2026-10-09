@@ -36,11 +36,10 @@ class ReportsOverviewService
         $paidCount = (clone $paidInRange)->count();
         $notarizedIds = $this->notarizedContractIds((clone $paidInRange)->pluck('contracts.id')->all());
 
-        $revenueQuery = Payment::query()->where('payments.status', 'success')
-            ->whereIn('payments.contract_uuid', (clone $paidInRange)->select('contracts.uuid'));
-        $gross = round((float) (clone $revenueQuery)->sum('payments.amount'), 2);
-        $refunded = SchemaCache::hasColumn('payments', 'refunded_amount')
-            ? round((float) (clone $revenueQuery)->sum('payments.refunded_amount'), 2) : 0.0;
+        // متابعة دفعة (د) — QA: نفس تعريف «الإيراد» في تقرير الأداء (دفعات ناجحة بتاريخ الدفع ضمن الفترة).
+        $revenue = app(ReportsService::class)->revenueSummary($window);
+        $gross = round((float) $revenue['total_sales'], 2);
+        $refunded = round((float) $revenue['refunds_total'], 2);
 
         return [
             'range' => $range,
@@ -49,7 +48,7 @@ class ReportsOverviewService
             'cards' => [
                 ['key' => 'orders_today', 'label' => 'طلبات اليوم', 'value' => $ordersToday, 'unit' => 'طلب'],
                 ['key' => 'orders_week', 'label' => 'طلبات الأسبوع', 'value' => $ordersWeek, 'unit' => 'طلب'],
-                ['key' => 'revenue', 'label' => 'الإيراد', 'value' => round($gross - $refunded, 2), 'unit' => 'ر.س', 'gross' => $gross, 'refunded' => $refunded],
+                ['key' => 'revenue', 'label' => 'الإيراد', 'value' => $gross, 'unit' => 'ر.س', 'gross' => $gross, 'refunded' => $refunded, 'net' => round($gross - $refunded, 2)],
                 ['key' => 'avg_notarization_hours', 'label' => 'متوسط مدة التوثيق', 'value' => $this->avgNotarizationHours($notarizedIds), 'unit' => 'ساعة'],
                 ['key' => 'completion_rate', 'label' => 'نسبة الإنجاز', 'value' => $paidCount > 0 ? (int) round(count($notarizedIds) / $paidCount * 100) : null, 'unit' => '%'],
                 ['key' => 'top_source', 'label' => 'أعلى مصدر', 'value' => $this->topSource($window), 'unit' => null],
@@ -59,7 +58,7 @@ class ReportsOverviewService
             'notarized_in_range' => count($notarizedIds),
             'definitions' => [
                 'scope' => 'طلب = غير محذوف والخطوة ≥ 4 (نفس «جميع الطلبات»)، تاريخ الإنشاء ضمن الفترة',
-                'revenue' => 'مجموع الدفعات الناجحة لطلبات الفترة − المسترجع',
+                'revenue' => 'مجموع الدفعات الناجحة بتاريخ الدفع ضمن الفترة (= kpis.revenue في تقرير الأداء)؛ net = بعد الاسترجاع',
                 'avg_notarization_hours' => 'من الدفع إلى «توثيق العقد في إيجار» للطلبات الموثّقة في الفترة',
                 'completion_rate' => 'الموثّق ÷ المدفوع ضمن الفترة',
                 'top_source' => 'أكثر مصدر (utm_source) جلب طلبات في الفترة',

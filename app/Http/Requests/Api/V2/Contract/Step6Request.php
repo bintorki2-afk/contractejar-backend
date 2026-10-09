@@ -243,16 +243,16 @@ class Step6Request extends BaseApiV2Request
     }
 
     /**
-     * Normalized list for persistence (empty when conditions off).
+     * Normalized list for persistence.
+     *
+     * متابعة دفعة (د) — QA: التطبيق قد يرسل conditions=false ومع ذلك يرسل نص الشروط
+     * (other_conditions / other_conditions_list) — النص يُقبل متى وُجد ولا يُسقط.
+     * «conditions=true» يبقى فقط شرطاً لإلزامية القائمة في التحقق.
      *
      * @return list<string>
      */
     public function resolvedOtherConditionsList(): array
     {
-        if (! (bool) $this->input('conditions')) {
-            return [];
-        }
-
         $list = $this->input('other_conditions_list', []);
         if (! is_array($list)) {
             return [];
