@@ -49,6 +49,7 @@ class ContractInvoiceService
 
         $breakdown = $this->resolveBreakdown($contract, $payment, $invoice, $persist);
         $status = $this->resolveStatus($contract);
+        $status['refund'] = \App\Services\Payments\PaymentRefundService::summaryFor($contract);
         $issuedAt = $this->resolveIssuedAt($contract, $payment, $invoice);
         $total = (float) $breakdown['total'];
 
@@ -489,6 +490,7 @@ class ContractInvoiceService
             'refunded_amount' => $status['refunded_amount'] ?? 0.0,
             'refunded_amount_label' => $this->formatAmountLabel((float) ($status['refunded_amount'] ?? 0)),
             'is_partially_refunded' => $status['status'] === 'partially_refunded',
+            'refund' => $status['refund'] ?? ['status' => 'none', 'amount' => 0.0, 'refunded_at' => null],
         ];
     }
 

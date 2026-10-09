@@ -717,9 +717,14 @@ class CustomerNotificationService
     {
         $order = $contract ? $this->orderNumber($contract) : (string) ($lessorChange?->uuid ?? '');
 
+        // متابعة دفعة (د): حالة الطلب في بيانات الـ push لتحديث الواجهات مباشرة.
+        $status = $contract ? ContractFrontendStatus::for($contract) : null;
+
         return [
             'kind' => $kind,
             'url' => $url,
+            'status' => (string) ($status['status'] ?? ($lessorChange?->status ?? '')),
+            'status_label' => (string) ($status['status_label'] ?? ($lessorChange ? $lessorChange->statusLabel() : '')),
             'contract_id' => (string) ($contract?->id ?? ''),
             'contract_uuid' => (string) ($contract?->uuid ?? ''),
             'order_number' => $order,

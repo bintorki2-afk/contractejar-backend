@@ -119,6 +119,47 @@ class PaymentRefundService
         return round((float) Refund::query()->where('contract_uuid', (string) $contract->uuid)->where('status', Refund::STATUS_SUCCEEDED)->sum('amount'), 2);
     }
 
+    /**
+     * ملخص الاسترجاع للعميل (متابعة دفعة د): {status: none|partial|full, amount, refunded_at}.
+     * المصدر: استرجاعات Moyasar الناجحة، ثم سجل الاسترجاع القديم (refundable_contracts.is_refunded).
+     *
+     * @return array{status: string, amount: float, refunded_at: string|null}
+     */
+    public static function summaryFor(Contract $contract): array
+    {
+        $none = ['status' => 'none', 'amount' => 0.0, 'refunded_at' => null];
+        if (! $contract->exists) {
+            return $none;
+        }
+
+        $amount = self::refundedTotalFor($contract);
+        $at = null;
+        if ($amount > 0) {
+            $at = Refund::query()->where('contract_uuid', (string) $contract->uuid)->where('status', Refund::STATUS_SUCCEEDED)->max('created_at');
+        } elseif (SchemaCache::hasTable('refundable_contracts')) {
+            $legacy = RefundableContract::query()->where('contract_id', $contract->id)->where('is_refunded', true)->latest('id')->first();
+            if ($legacy === null) {
+                return $none;
+            }
+            $amount = round((float) $legacy->refund_amount, 2);
+            $at = $legacy->updated_at;
+            if ($amount <= 0) {
+                return ['status' => 'full', 'amount' => 0.0, 'refunded_at' => $at ? \Illuminate\Support\Carbon::parse($at)->toIso8601String() : null];
+            }
+        } else {
+            return $none;
+        }
+
+        $paid = self::paidTotalFor($contract);
+        $full = $paid <= 0 || $amount + 0.009 >= $paid;
+
+        return [
+            'status' => $full ? 'full' : 'partial',
+            'amount' => $amount,
+            'refunded_at' => $at ? \Illuminate\Support\Carbon::parse($at)->toIso8601String() : null,
+        ];
+    }
+
     public static function paidTotalFor(Contract $contract): float
     {
         if (! filled($contract->uuid)) {

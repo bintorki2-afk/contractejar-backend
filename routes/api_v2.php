@@ -150,6 +150,14 @@ Route::get('/status', function () {
         'status' => $overall,
         'status_label' => $labels[$overall],
         'components' => $components,
+        // متابعة دفعة (د): نفس الحالات كخريطة مختصرة (يقرؤها الموقع).
+        'checks' => [
+            'api' => 'ok',
+            'db' => $dbOk ? 'ok' : 'down',
+            'database' => $dbOk ? 'ok' : 'down',
+            'scheduler' => $scheduler,
+            'gateway' => $gateway,
+        ],
         'checked_at' => now()->toIso8601String(),
     ], $dbOk ? 200 : 503)->header('Cache-Control', 'public, max-age=30');
 })->middleware('throttle:60,1');

@@ -271,6 +271,7 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             'meter_fees_total' => $meterFees['meter_fees_total'],
             'electricity_meter_fee' => $meterFees['electricity_meter_fee'],
             'water_meter_fee' => $meterFees['water_meter_fee'],
+            ...\App\Support\MeterFees::countFields($meterFees),
             'doc_fee' => $docFeeSummary['doc_fee'] ?? null,
             'doc_fee_lines' => $docFeeSummary['doc_fee_lines'] ?? [],
             // Single-source money breakdown (fee + proportional VAT + meter fees).
@@ -284,6 +285,8 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             'coupon' => $pricing['coupon'],
             'total' => $pricing['total'],
             'saved_property' => \App\Support\SavedPropertyState::forContract($contract),
+            'refund' => $refund = \App\Services\Payments\PaymentRefundService::summaryFor($contract),
+            'refunded_amount' => $refund['amount'],
             'payment_success_url' => $redirectUrls['success'],
             'payment_error_url' => $redirectUrls['error'],
         ]);
@@ -641,6 +644,9 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             'vat_rate' => $pricing['vat_rate'] ?? 0.0,
             'vat_label' => $pricing['vat_label'] ?? \App\Support\ContractPricing::VAT_FREE_LABEL,
             'meter_fees_total' => $pricing['meter_fees_total'] ?? 0.0,
+            'electricity_meter_fee' => $pricing['meter_fees']['electricity_meter_fee'] ?? 0.0,
+            'water_meter_fee' => $pricing['meter_fees']['water_meter_fee'] ?? 0.0,
+            ...\App\Support\MeterFees::countFields($pricing['meter_fees'] ?? []),
             'coupon' => $pricing['coupon'] ?? 0.0,
             'total' => $amount,
             'payment_success_url' => $redirectUrls['success'],
@@ -1547,6 +1553,9 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             'contract_id' => $contract?->id,
             'cart_amount' => $amount,
             'is_paid' => true,
+            'refund' => $refund = ($contract ? \App\Services\Payments\PaymentRefundService::summaryFor($contract) : ['status' => 'none', 'amount' => 0.0, 'refunded_at' => null]),
+            'refunded_amount' => $refund['amount'],
+            ...($contract ? \App\Support\MeterFees::countFields(\App\Support\MeterFees::forContract($contract)) : []),
             'payment' => $payment ? [
                 'id' => $payment->id,
                 'amount' => (float) $payment->amount,

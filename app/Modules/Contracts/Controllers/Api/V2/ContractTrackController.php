@@ -85,6 +85,8 @@ class ContractTrackController extends Controller
             'journey' => ContractFrontendStatus::journey($contract),
             'journey_sentence' => \App\Support\ContractJourney::RULE_SENTENCE,
             'activities' => app(\App\Services\Orders\ContractActivityLogger::class)->forCustomer($contract),
+            'refund' => $refund = \App\Services\Payments\PaymentRefundService::summaryFor($contract),
+            'refunded_amount' => $refund['amount'],
             'created_at' => optional($contract->created_at)->format('Y-m-d'),
             'updated_at' => optional($contract->updated_at)->format('Y-m-d H:i'),
         ], trans('api.success'));

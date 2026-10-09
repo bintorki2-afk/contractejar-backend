@@ -140,6 +140,22 @@ final class MeterFees
         return $result;
     }
 
+    /**
+     * حقول عدد العدادات وسعر العداد (ب1) لإضافتها لأي حمولة تحمل رسوم العدادات.
+     *
+     * @param  array<string, mixed>  $meterFees
+     * @return array{electricity_meter_count: int, water_meter_count: int, electricity_meter_unit_fee: float, water_meter_unit_fee: float}
+     */
+    public static function countFields(array $meterFees): array
+    {
+        return [
+            'electricity_meter_count' => (int) ($meterFees['electricity_meter_count'] ?? 0),
+            'water_meter_count' => (int) ($meterFees['water_meter_count'] ?? 0),
+            'electricity_meter_unit_fee' => (float) ($meterFees['electricity_meter_unit_fee'] ?? 0),
+            'water_meter_unit_fee' => (float) ($meterFees['water_meter_unit_fee'] ?? 0),
+        ];
+    }
+
     public static function totalForContract(Contract $contract, ?Setting $setting = null): float
     {
         return self::forContract($contract, $setting)['meter_fees_total'];

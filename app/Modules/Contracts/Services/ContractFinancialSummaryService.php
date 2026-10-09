@@ -30,6 +30,7 @@ class ContractFinancialSummaryService
                 'vat_label' => $pricing['vat_label'],
                 'electricity_meter_fee' => $meterFees['electricity_meter_fee'],
                 'water_meter_fee' => $meterFees['water_meter_fee'],
+                ...\App\Support\MeterFees::countFields($meterFees),
             ],
             'services' => ServicesPricing::where('contract_type', $contract->contract_type)->get()
                 ->map(function ($service) {
@@ -72,6 +73,7 @@ class ContractFinancialSummaryService
             'vat_label' => $pricing['vat_label'],
             'electricity_meter_fee' => $meterFees['electricity_meter_fee'],
             'water_meter_fee' => $meterFees['water_meter_fee'],
+            ...\App\Support\MeterFees::countFields($meterFees),
         ];
 
         if ($docFeeSummary) {
