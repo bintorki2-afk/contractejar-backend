@@ -107,7 +107,33 @@ class AdminContractDetailResource extends JsonResource
             // ب11: علامات التأخير (محسوبة الآن، لا تنتظر المجدول).
             'delay_flags' => app(\App\Services\Orders\OrderAttentionService::class)->flagsFor($c),
             'status_key' => \App\Models\ContractStatus::keyForId($c->contract_status_id ? (int) $c->contract_status_id : null),
+            // متابعة دفعة (د): الموظف المستلم (يملأ «المستلم» في رأس التفاصيل).
+            ...$this->receiverFields($c, $full),
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $full
+     * @return array<string, mixed>
+     */
+    private function receiverFields($c, array $full): array
+    {
+        $received = $c->relationLoaded('receivedContract') ? $c->receivedContract : $c->receivedContract()->with('employee')->first();
+        $received?->loadMissing('employee');
+        $name = $received?->employee?->name;
+
+        $receivedArray = $full['received_contract'] ?? null;
+        if (is_array($receivedArray)) {
+            $receivedArray['employee_name'] = $name;
+        } elseif ($received !== null) {
+            $receivedArray = array_merge($received->toArray(), ['employee_name' => $name]);
+        }
+
+        return [
+            'employee_id' => $received?->employee_id,
+            'employee_name' => $name,
+            'received_contract' => $receivedArray,
+        ];
     }
 
     /**

@@ -22,6 +22,7 @@ class OrdersKpisResource extends JsonResource
             'incomplete' => (int) ($this->resource['incomplete'] ?? 0),
             'canceled' => (int) ($this->resource['canceled'] ?? 0),
             'returned' => (int) ($this->resource['returned'] ?? 0),
+            'refunded_orders' => (int) ($this->resource['refunded_orders'] ?? $this->resource['returned'] ?? 0),
             'avg_completion_minutes' => $this->resource['avg_completion_minutes'] ?? null,
         ];
     }

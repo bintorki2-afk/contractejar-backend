@@ -47,7 +47,22 @@ class AdminOrderPatchService
         'notes' => ['label' => 'ملاحظات', 'rules' => ['nullable', 'string', 'max:2000']],
     ];
 
+    /** @var list<string> */
+    public const MOBILE_FIELDS = ['property_owner_mobile', 'tenant_mobile'];
+
     public function __construct(private readonly OrderFlowService $flow) {}
+
+    public static function canonicalMobile(string $value): string
+    {
+        $digits = preg_replace('/\D+/', '', $value) ?? '';
+        if (str_starts_with($digits, '00966')) {
+            $digits = substr($digits, 5);
+        } elseif (str_starts_with($digits, '966')) {
+            $digits = substr($digits, 3);
+        }
+
+        return ltrim($digits, '0');
+    }
 
     /**
      * @param  array<string, mixed>  $input
@@ -73,6 +88,10 @@ class AdminOrderPatchService
         $changed = [];
         foreach ($clean as $key => $value) {
             $value = $value === '' ? null : $value;
+            // متابعة دفعة (د): الجوالات بنفس صيغة المعالج 5XXXXXXXX.
+            if ($value !== null && in_array($key, self::MOBILE_FIELDS, true)) {
+                $value = self::canonicalMobile((string) $value);
+            }
             $before = $contract->getAttribute($key);
             if ((string) ($before ?? '') === (string) ($value ?? '')) {
                 continue;

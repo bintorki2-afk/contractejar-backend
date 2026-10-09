@@ -64,6 +64,8 @@ class AdminOrderDetailService
             'contract_summary' => array_merge(Arr::only($detail, [
                 'id',
                 'uuid',
+                'employee_id',
+                'employee_name',
                 'contract_type',
                 'instrument_type',
                 'instrument_number',

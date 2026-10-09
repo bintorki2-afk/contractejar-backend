@@ -82,7 +82,8 @@ class ReportsService
         $paid = (clone $base)->where('is_completed', 1)->count();
         $draft = (clone $base)->where('is_draft', true)->count();
         $incomplete = (clone $base)->where('is_completed', 0)->count();
-        $returned = (clone $base)->whereIn('contract_status_id', ContractStatus::idsFor([ContractStatus::KEY_REFUNDED]) ?: [-1])->count();
+        // متابعة دفعة (د): «مسترجعة» = نفس التعريف في كل التقارير (حالة مسترجع أو استرجاع Moyasar ناجح).
+        $returned = $this->refundedOrdersQuery($base)->count();
         $canceled = $this->canceledContractsQuery($range, $contractType, $employeeId)->count();
 
         return new OrdersReportResource([
@@ -94,6 +95,7 @@ class ReportsService
                 'incomplete' => $incomplete,
                 'canceled' => $canceled,
                 'returned' => $returned,
+                'refunded_orders' => $returned,
                 'avg_completion_minutes' => $this->avgCompletionMinutes($range, $contractType, $employeeId),
             ]),
             'by_employee' => ReportEmployeeStatResource::collection(
@@ -348,7 +350,8 @@ class ReportsService
         $documentedCount = $doneIds === [] ? 0 : (clone $base)->whereIn('contract_status_id', $doneIds)->count();
         $draftCount = $this->reachedDraftCount($range, $contractType, $employeeId, $doneIds);
         $receivedCount = (clone $base)->whereHas('receivedContract')->count();
-        $refundedCount = $this->refundedCount($range);
+        $refundRequestsConfirmed = $this->refundedCount($range);
+        $refundedCount = $this->refundedOrdersQuery($base)->count();
         $canceledCount = $this->canceledContractsQuery($range, $contractType, $employeeId)->count();
         $activeCount = (clone $base)
             ->when($notOpenIds !== [], fn ($q) => $q->where(function ($sq) use ($notOpenIds) {
@@ -381,6 +384,8 @@ class ReportsService
                 'active_count' => $activeCount,
                 'canceled_count' => $canceledCount,
                 'refunded_count' => $refundedCount,
+                'refunded_orders' => $refundedCount,
+                'refund_requests_confirmed' => $refundRequestsConfirmed,
                 'revenue' => $this->moneyValue($revenue),
                 'paid' => $paidCount,
                 'delayed_count' => $delayed,
@@ -509,6 +514,22 @@ class ReportsService
         }
 
         return $query;
+    }
+
+    /**
+     * طلبات مسترجعة: حالتها «مسترجع» أو لها استرجاع ناجح عبر Moyasar (ضمن نفس النطاق).
+     */
+    private function refundedOrdersQuery($base)
+    {
+        $refundedIds = ContractStatus::idsFor([ContractStatus::KEY_REFUNDED]) ?: [-1];
+        $hasRefunds = Schema::hasTable('refunds');
+
+        return (clone $base)->where(function ($q) use ($refundedIds, $hasRefunds) {
+            $q->whereIn('contract_status_id', $refundedIds);
+            if ($hasRefunds) {
+                $q->orWhereIn('uuid', \App\Models\Refund::query()->where('status', 'succeeded')->select('contract_uuid'));
+            }
+        });
     }
 
     /**

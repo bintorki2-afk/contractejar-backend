@@ -60,8 +60,16 @@ class AdminOrderQueryService
         }
 
         if ($isCompleted !== null) {
+            // متابعة دفعة (د): status_key / tab تُطبَّق مع فلتر الدفع أيضاً.
+            $tab = strtolower(trim((string) $request->input('tab', '')));
+            if ($tab === 'incomplete' || $tab === 'incomplete_drafts') {
+                return $this->paginateIncompleteDrafts($request);
+            }
+            $statusKeys = $this->resolveStatusKeysFromRequest($request);
+
             $orders = $this->baseOrdersQuery($request)
                 ->where('is_completed', $isCompleted ? 1 : 0)
+                ->tap(fn ($q) => $this->applyStatusKeysFilter($q, $statusKeys))
                 ->latest()
                 ->paginate($this->perPage($request, 120, 200));
 
@@ -69,6 +77,7 @@ class AdminOrderQueryService
                 'paginator' => $orders,
                 'meta' => [
                     'is_completed' => $isCompleted ? 1 : 0,
+                    'status_keys' => $statusKeys,
                 ],
             ];
         }
@@ -187,10 +196,12 @@ class AdminOrderQueryService
             }
         }
 
-        // «تم الدفع» افتراضية: جديد + مدفوع (لم ينتقل بعد).
+        // «تم الدفع» افتراضية: صف «جديد» المدفوع (لم ينتقل بعد). by_key.new = غير المدفوع فقط
+        // حتى يطابق ?status_key=new، و by_key.paid = المدفوع — والمجموع = عدد صف «جديد».
         $newId = ContractStatus::idFor(ContractStatus::KEY_NEW);
         $paidNew = $newId !== null ? (clone $listed)->where('contract_status_id', $newId)->where('is_completed', 1)->count() : 0;
         $byKey[ContractStatus::KEY_PAID] = ($byKey[ContractStatus::KEY_PAID] ?? 0) + $paidNew;
+        $byKey[ContractStatus::KEY_NEW] = max(0, ($byKey[ContractStatus::KEY_NEW] ?? 0) - $paidNew);
 
         $incomplete = $this->filteredScope(Contract::query()->incompleteDraft(), $request)->count();
 
@@ -202,12 +213,32 @@ class AdminOrderQueryService
             'no_status' => (int) ($byStatusId[''] ?? $byStatusId[0] ?? 0),
             'by_key' => $byKey,
             'statuses' => $rows,
-            'tabs' => array_values(array_filter([
-                ['key' => 'all', 'label' => 'جميع الطلبات', 'count' => $all],
-                ...array_map(fn ($r) => ['key' => $r['status_key'] ?? ('status_'.$r['id']), 'label' => $r['name'], 'count' => $r['count'], 'status_id' => $r['id']], $rows),
-                ['key' => 'incomplete', 'label' => 'غير مكتمل', 'count' => $incomplete],
-            ])),
+            'tabs' => $this->buildTabs($rows, $byKey, $all, $incomplete),
         ];
+    }
+
+    /**
+     * تبويب لكل حالة؛ صف «جديد» يُقسم إلى «جديد» (غير مدفوع) و«تم الدفع» — عدد كل تبويب = إجمالي ?status_key=<key>.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @param  array<string, int>  $byKey
+     * @return list<array<string, mixed>>
+     */
+    private function buildTabs(array $rows, array $byKey, int $all, int $incomplete): array
+    {
+        $tabs = [['key' => 'all', 'label' => 'جميع الطلبات', 'count' => $all]];
+        foreach ($rows as $r) {
+            if ($r['status_key'] === ContractStatus::KEY_NEW) {
+                $tabs[] = ['key' => 'new', 'label' => $r['name'], 'count' => $byKey['new'] ?? 0, 'status_id' => $r['id'], 'status_key' => 'new'];
+                $tabs[] = ['key' => 'paid', 'label' => 'تم الدفع', 'count' => $byKey['paid'] ?? 0, 'status_id' => $r['id'], 'status_key' => 'paid'];
+
+                continue;
+            }
+            $tabs[] = ['key' => $r['status_key'] ?? ('status_'.$r['id']), 'label' => $r['name'], 'count' => $r['count'], 'status_id' => $r['id'], 'status_key' => $r['status_key']];
+        }
+        $tabs[] = ['key' => 'incomplete', 'label' => 'غير مكتمل', 'count' => $incomplete];
+
+        return $tabs;
     }
 
     /**

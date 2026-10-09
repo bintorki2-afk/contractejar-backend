@@ -32,12 +32,12 @@ class EjarCopyService
                 'name_owner' => ['اسم المالك', $contract->name_owner],
                 'property_owner_id_num' => ['رقم هوية المالك', $contract->property_owner_id_num],
                 'property_owner_dob' => ['تاريخ ميلاد المالك', $this->date($contract->property_owner_dob, $contract->type_dob_property_owner)],
-                'property_owner_mobile' => ['جوال المالك', $contract->property_owner_mobile],
+                'property_owner_mobile' => ['جوال المالك', $this->mobile($contract->property_owner_mobile)],
                 'property_owner_iban' => ['آيبان المالك', $contract->property_owner_iban],
                 'property_owner_is_deceased' => ['المالك متوفى', $contract->property_owner_is_deceased ? 'نعم' : null],
                 'id_num_of_property_owner_agent' => ['رقم هوية وكيل المالك', $contract->add_legal_agent_of_owner ? $contract->id_num_of_property_owner_agent : null],
                 'dob_of_property_owner_agent' => ['تاريخ ميلاد وكيل المالك', $contract->add_legal_agent_of_owner ? $this->date($contract->dob_hijri_of_property_owner_agent ?: $contract->dob_gregorian_of_property_owner_agent, $contract->type_dob_property_owner_agent) : null],
-                'mobile_of_property_owner_agent' => ['جوال وكيل المالك', $contract->add_legal_agent_of_owner ? $contract->mobile_of_property_owner_agent : null],
+                'mobile_of_property_owner_agent' => ['جوال وكيل المالك', $contract->add_legal_agent_of_owner ? $this->mobile($contract->mobile_of_property_owner_agent) : null],
                 'agency_number_in_instrument_of_property_owner' => ['رقم الوكالة', $contract->add_legal_agent_of_owner ? $contract->agency_number_in_instrument_of_property_owner : null],
                 'agency_instrument_date_of_property_owner' => ['تاريخ الوكالة', $contract->add_legal_agent_of_owner ? $this->date($contract->agency_instrument_date_of_property_owner, $contract->type_agency_instrument_date_of_property_owner) : null],
                 'agent_iban_of_property_owner' => ['آيبان الوكيل', $contract->add_legal_agent_of_owner ? $contract->agent_iban_of_property_owner : null],
@@ -45,13 +45,13 @@ class EjarCopyService
             $this->block('tenant', 'بيانات المستأجر', [
                 'tenant_id_num' => ['رقم هوية المستأجر', $contract->tenant_id_num],
                 'tenant_dob' => ['تاريخ ميلاد المستأجر', $this->date($contract->tenant_dob ?: $contract->tenant_dob_gregorian, $contract->type_tenant_dob)],
-                'tenant_mobile' => ['جوال المستأجر', $contract->tenant_mobile],
+                'tenant_mobile' => ['جوال المستأجر', $this->mobile($contract->tenant_mobile)],
                 'tenant_entity' => ['المستأجر منشأة', $contract->tenant_entity ? 'نعم' : null],
                 'tenant_entity_unified_registry_number' => ['الرقم الموحد للمنشأة', $contract->tenant_entity_unified_registry_number],
                 'tenant_entity_city' => ['مدينة المنشأة', $this->name($contract->tenantEntityCity)],
                 'tenant_role' => ['صفة المستأجر', $contract->tenantRole?->text_of_reason],
                 'id_num_of_property_tenant_agent' => ['رقم هوية وكيل المستأجر', $contract->add_legal_agent_of_tenant ? $contract->id_num_of_property_tenant_agent : null],
-                'mobile_of_property_tenant_agent' => ['جوال وكيل المستأجر', $contract->add_legal_agent_of_tenant ? $contract->mobile_of_property_tenant_agent : null],
+                'mobile_of_property_tenant_agent' => ['جوال وكيل المستأجر', $contract->add_legal_agent_of_tenant ? $this->mobile($contract->mobile_of_property_tenant_agent) : null],
                 'agency_number_in_instrument_of_property_tenant' => ['رقم وكالة المستأجر', $contract->add_legal_agent_of_tenant ? $contract->agency_number_in_instrument_of_property_tenant : null],
             ]),
             $this->block('property', 'بيانات العقار', [
@@ -237,6 +237,23 @@ class EjarCopyService
         [$hy, $hm, $hd] = HijriDate::fromGregorian($date);
 
         return sprintf('%02d/%02d/%04d هـ — %s م', $hd, $hm, $hy, $date->format('Y-m-d'));
+    }
+
+    /** جوال سعودي بصيغة نماذج إيجار: 05XXXXXXXX (المخزَّن 5XXXXXXXX). */
+    private function mobile(mixed $value): ?string
+    {
+        $digits = preg_replace('/\D+/', '', (string) $this->ascii($value)) ?? '';
+        if ($digits === '') {
+            return null;
+        }
+        if (str_starts_with($digits, '00966')) {
+            $digits = substr($digits, 5);
+        } elseif (str_starts_with($digits, '966')) {
+            $digits = substr($digits, 3);
+        }
+        $digits = ltrim($digits, '0');
+
+        return strlen($digits) === 9 ? '0'.$digits : (string) $this->ascii($value);
     }
 
     private function money(mixed $value): ?string

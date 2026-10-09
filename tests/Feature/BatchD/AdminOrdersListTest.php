@@ -76,7 +76,11 @@ class AdminOrdersListTest extends BatchDTestCase
         $this->assertSame(1, $counts['by_key']['under_review']);
         $this->assertSame(1, $counts['by_key']['refunded']);
         $this->assertSame(1, $counts['by_key']['paid']);
-        $this->assertSame(2, $counts['by_key']['new']); // صف «جديد» (مدفوع وغير مدفوع)
+        $this->assertSame(1, $counts['by_key']['new']); // «جديد» غير المدفوع فقط (= ?status_key=new)
+        $tabs = collect($counts['tabs'])->keyBy('key');
+        $this->assertSame(1, $tabs['new']['count']);
+        $this->assertSame(1, $tabs['paid']['count']);
+        $this->assertSame(1, $tabs['paid']['status_id']);
         $this->assertSame(5, $counts['paid']);
         $this->assertSame(collect($counts['statuses'])->sum('count'), $counts['all']);
         $this->assertSame('all', $counts['tabs'][0]['key']);
@@ -112,5 +116,17 @@ class AdminOrdersListTest extends BatchDTestCase
             ?? $this->getJson('/api/v2/contracts?per_page=100')->json('data'))->pluck('id')->filter()->all();
         $this->assertNotContains($orders['early1']->id, $customerIds);
         $this->assertNotContains($orders['early2']->id, $customerIds);
+    }
+
+    public function test_status_key_is_applied_together_with_payment_filter(): void
+    {
+        $this->employee('manager');
+        [, $orders] = $this->seedOrders();
+
+        $ids = fn (string $q) => collect($this->getJson('/api/admin/orders?per_page=100&'.$q)->assertOk()->json('data.items'))->pluck('id')->sort()->values()->all();
+        $this->assertSame([$orders['paid_new']->id], $ids('status_key=new,paid&complete=1'));
+        $this->assertSame([$orders['new']->id], $ids('status_key=new&incomplete=1'));
+        $this->assertSame([$orders['review']->id], $ids('status_key=under_review&is_completed=1'));
+        $this->assertSame([], $ids('status_key=under_review&is_completed=0'));
     }
 }
