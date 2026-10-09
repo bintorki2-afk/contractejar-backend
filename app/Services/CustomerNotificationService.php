@@ -520,7 +520,6 @@ class CustomerNotificationService
             "تم تسجيل حوالتك البنكية بمبلغ {$amountLabel} ر.س لطلب {$order} — فريقنا يكمل التوثيق الآن",
             ['type' => 'payment_success', 'method' => 'bank_transfer', 'amount' => $amount],
             contract: $contract,
-            dedupe: false,
         );
     }
 

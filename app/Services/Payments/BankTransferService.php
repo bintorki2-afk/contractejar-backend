@@ -86,7 +86,7 @@ class BankTransferService
             'payment_method' => Payment::METHOD_BANK_TRANSFER,
             'payment_brand' => 'bank',
             'status' => 'success',
-            'payment_date' => ($date ?? now())->toDateTimeString(),
+            'payment_date' => ($date ?? now())->toDateString(),
             'employee_id' => $employee->id,
             'receipt_path' => $path,
             'reference' => filled($reference) ? trim((string) $reference) : null,
@@ -101,6 +101,13 @@ class BankTransferService
                 'payment_id' => $payment->id, 'amount' => (float) $payment->amount, 'reference' => $payment->reference, 'paid_at' => $payment->payment_date,
             ], 'employee', 'تسجيل حوالة بنكية '.rtrim(rtrim(number_format($amount, 2, '.', ''), '0'), '.').' ر.س'.($payment->reference ? ' — مرجع '.$payment->reference : ''));
 
+            // إشعار العميل بالحوالة أولاً (نفس مفتاح payment_success) حتى لا يتكرر إشعار الدفع العام من التسوية.
+            try {
+                $this->customers->bankTransferRecorded($contract->fresh(['user']), (float) $payment->amount);
+            } catch (\Throwable $e) {
+                Log::warning('bank transfer notification failed', ['contract_id' => $contract->id, 'error' => $e->getMessage()]);
+            }
+
             try {
                 app(MoyasarPaymentService::class)->settleRecordedPayment((string) $contract->uuid);
             } catch (\Throwable $e) {
@@ -111,12 +118,6 @@ class BankTransferService
                 app(\App\Services\ContractInvoiceService::class)->forContract($contract->fresh());
             } catch (\Throwable $e) {
                 Log::warning('invoice after bank transfer failed', ['contract_id' => $contract->id, 'error' => $e->getMessage()]);
-            }
-
-            try {
-                $this->customers->bankTransferRecorded($contract->fresh(['user']), (float) $payment->amount);
-            } catch (\Throwable $e) {
-                Log::warning('bank transfer notification failed', ['contract_id' => $contract->id, 'error' => $e->getMessage()]);
             }
         }
 

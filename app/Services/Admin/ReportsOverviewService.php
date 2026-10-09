@@ -48,7 +48,14 @@ class ReportsOverviewService
             'cards' => [
                 ['key' => 'orders_today', 'label' => 'طلبات اليوم', 'value' => $ordersToday, 'unit' => 'طلب'],
                 ['key' => 'orders_week', 'label' => 'طلبات الأسبوع', 'value' => $ordersWeek, 'unit' => 'طلب'],
-                ['key' => 'revenue', 'label' => 'الإيراد', 'value' => $gross, 'unit' => 'ر.س', 'gross' => $gross, 'refunded' => $refunded, 'net' => round($gross - $refunded, 2)],
+                ['key' => 'revenue', 'label' => 'الإيراد', 'value' => $gross, 'unit' => 'ر.س', 'gross' => $gross, 'refunded' => $refunded, 'net' => round($gross - $refunded, 2),
+                    // دفعة (هـ) — 2.7
+                    'extra_fees' => round((float) ($revenue['extra_fees'] ?? 0), 2), 'price_differences' => round((float) ($revenue['price_differences'] ?? 0), 2),
+                    'original' => round((float) ($revenue['original_revenue'] ?? $gross), 2), 'bank_transfers' => round((float) ($revenue['bank_transfers'] ?? 0), 2)],
+                ['key' => 'extra_fees', 'label' => 'رسوم إضافية', 'value' => round((float) ($revenue['extra_fees'] ?? 0), 2), 'unit' => 'ر.س', 'count' => (int) ($revenue['extra_fees_count'] ?? 0)],
+                ['key' => 'price_differences', 'label' => 'فروقات سعر', 'value' => round((float) ($revenue['price_differences'] ?? 0), 2), 'unit' => 'ر.س', 'count' => (int) ($revenue['price_differences_count'] ?? 0)],
+                ['key' => 'refunds', 'label' => 'استرجاعات', 'value' => $refunded, 'unit' => 'ر.س'],
+                ['key' => 'net_revenue', 'label' => 'صافي الإيراد', 'value' => round($gross - $refunded, 2), 'unit' => 'ر.س'],
                 ['key' => 'avg_notarization_hours', 'label' => 'متوسط مدة التوثيق', 'value' => $this->avgNotarizationHours($notarizedIds), 'unit' => 'ساعة'],
                 ['key' => 'completion_rate', 'label' => 'نسبة الإنجاز', 'value' => $paidCount > 0 ? (int) round(count($notarizedIds) / $paidCount * 100) : null, 'unit' => '%'],
                 ['key' => 'top_source', 'label' => 'أعلى مصدر', 'value' => $this->topSource($window), 'unit' => null],
@@ -56,6 +63,13 @@ class ReportsOverviewService
             'orders_in_range' => $ordersInRange,
             'paid_in_range' => $paidCount,
             'notarized_in_range' => count($notarizedIds),
+            // دفعة (هـ) — 2.7 (نفس الأرقام كمفاتيح مباشرة)
+            'extra_fees' => round((float) ($revenue['extra_fees'] ?? 0), 2),
+            'price_differences' => round((float) ($revenue['price_differences'] ?? 0), 2),
+            'refunds' => $refunded,
+            'net_revenue' => round($gross - $refunded, 2),
+            'open_data_requests' => \App\Support\SchemaCache::hasTable('contract_data_requests') ? \App\Models\ContractDataRequest::query()->where('status', 'pending')->count() : 0,
+            'pending_charges' => \App\Support\SchemaCache::hasTable('contract_charges') ? ['count' => \App\Models\ContractCharge::query()->where('status', 'pending')->count(), 'amount' => round((float) \App\Models\ContractCharge::query()->where('status', 'pending')->sum('amount'), 2)] : ['count' => 0, 'amount' => 0.0],
             'definitions' => [
                 'scope' => 'طلب = غير محذوف والخطوة ≥ 4 (نفس «جميع الطلبات»)، تاريخ الإنشاء ضمن الفترة',
                 'revenue' => 'مجموع الدفعات الناجحة بتاريخ الدفع ضمن الفترة (= kpis.revenue في تقرير الأداء)؛ net = بعد الاسترجاع',

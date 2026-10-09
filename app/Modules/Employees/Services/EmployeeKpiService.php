@@ -288,6 +288,8 @@ class EmployeeKpiService
         $revenueByEmployee = $this->revenueByEmployee($ids, $doneIds, $range);
         $receiveRows = $this->receivedRowsInPeriod($ids, $range);
         $processRows = $this->processRowsInPeriod($ids, $doneIds, $range);
+        // دفعة (هـ) — 2.7: رسوم أضافها الموظف / فروقات سعر / طلبات مرفق ناقص / حوالات سجّلها.
+        $batchE = $this->batchEMetricsByEmployee($ids, $range);
 
         $payloads = [];
         foreach ($employees as $employee) {
@@ -377,7 +379,40 @@ class EmployeeKpiService
                         'value' => $returned,
                         'tone' => $returned > 0 ? 'warning' : 'default',
                     ],
+                    // دفعة (هـ) — 2.7
+                    [
+                        'key' => 'fees_added_count',
+                        'label_ar' => 'رسوم أضافها',
+                        'value' => (int) ($batchE[$employeeId]['fees_added_count'] ?? 0),
+                        'amount' => (float) ($batchE[$employeeId]['fees_added_amount'] ?? 0),
+                        'tone' => 'default',
+                    ],
+                    [
+                        'key' => 'price_difference_count',
+                        'label_ar' => 'فروقات سعر',
+                        'value' => (int) ($batchE[$employeeId]['price_difference_count'] ?? 0),
+                        'tone' => 'default',
+                    ],
+                    [
+                        'key' => 'data_requests_count',
+                        'label_ar' => 'طلبات مرفق ناقص',
+                        'value' => (int) ($batchE[$employeeId]['data_requests_count'] ?? 0),
+                        'tone' => 'default',
+                    ],
+                    [
+                        'key' => 'bank_transfers_recorded',
+                        'label_ar' => 'حوالات سجّلها',
+                        'value' => (int) ($batchE[$employeeId]['bank_transfers_recorded'] ?? 0),
+                        'amount' => (float) ($batchE[$employeeId]['bank_transfers_amount'] ?? 0),
+                        'tone' => 'default',
+                    ],
                 ],
+                'fees_added_count' => (int) ($batchE[$employeeId]['fees_added_count'] ?? 0),
+                'fees_added_amount' => (float) ($batchE[$employeeId]['fees_added_amount'] ?? 0),
+                'price_difference_count' => (int) ($batchE[$employeeId]['price_difference_count'] ?? 0),
+                'data_requests_count' => (int) ($batchE[$employeeId]['data_requests_count'] ?? 0),
+                'bank_transfers_recorded' => (int) ($batchE[$employeeId]['bank_transfers_recorded'] ?? 0),
+                'bank_transfers_amount' => (float) ($batchE[$employeeId]['bank_transfers_amount'] ?? 0),
                 'avg_receive' => [
                     'key' => 'avg_receive_work_minutes',
                     'label_ar' => 'متوسط الاستلام (د عمل)',
@@ -457,6 +492,65 @@ class EmployeeKpiService
         }
 
         return $payloads;
+    }
+
+    /**
+     * دفعة (هـ) — 2.7: مقاييس لكل موظف ضمن الفترة.
+     *
+     * @param  list<int>  $employeeIds
+     * @param  array{0: Carbon, 1: Carbon}|null  $range
+     * @return array<int, array{fees_added_count: int, fees_added_amount: float, price_difference_count: int, data_requests_count: int, bank_transfers_recorded: int, bank_transfers_amount: float}>
+     */
+    private function batchEMetricsByEmployee(array $employeeIds, ?array $range): array
+    {
+        $out = [];
+        foreach ($employeeIds as $id) {
+            $out[(int) $id] = ['fees_added_count' => 0, 'fees_added_amount' => 0.0, 'price_difference_count' => 0, 'data_requests_count' => 0, 'bank_transfers_recorded' => 0, 'bank_transfers_amount' => 0.0];
+        }
+        if ($employeeIds === []) {
+            return $out;
+        }
+        $between = static function ($q, string $column) use ($range) {
+            if ($range !== null) {
+                $q->whereBetween($column, [$range[0]->toDateTimeString(), $range[1]->toDateTimeString()]);
+            }
+        };
+
+        if (\App\Support\SchemaCache::hasTable('contract_charges')) {
+            $charges = \App\Models\ContractCharge::query()->whereIn('created_by', $employeeIds)
+                ->where('status', '!=', \App\Models\ContractCharge::STATUS_CANCELLED)
+                ->tap(fn ($q) => $between($q, 'created_at'))
+                ->get(['created_by', 'kind', 'amount']);
+            foreach ($charges as $c) {
+                $e = (int) $c->created_by;
+                if ($c->kind === \App\Models\ContractCharge::KIND_EXTRA_FEE) {
+                    $out[$e]['fees_added_count']++;
+                    $out[$e]['fees_added_amount'] = round($out[$e]['fees_added_amount'] + (float) $c->amount, 2);
+                } else {
+                    $out[$e]['price_difference_count']++;
+                }
+            }
+        }
+        if (\App\Support\SchemaCache::hasTable('contract_data_requests')) {
+            $rows = \App\Models\ContractDataRequest::query()->whereIn('requested_by', $employeeIds)
+                ->tap(fn ($q) => $between($q, 'requested_at'))
+                ->selectRaw('requested_by, COUNT(*) as c')->groupBy('requested_by')->pluck('c', 'requested_by');
+            foreach ($rows as $e => $c) {
+                $out[(int) $e]['data_requests_count'] = (int) $c;
+            }
+        }
+        if (\App\Support\SchemaCache::hasColumn('payments', 'employee_id')) {
+            $rows = \App\Models\Payment::query()->whereIn('employee_id', $employeeIds)
+                ->where('payment_method', \App\Models\Payment::METHOD_BANK_TRANSFER)->where('status', 'success')
+                ->tap(fn ($q) => $between($q, 'created_at'))
+                ->selectRaw('employee_id, COUNT(*) as c, COALESCE(SUM(amount), 0) as s')->groupBy('employee_id')->get();
+            foreach ($rows as $r) {
+                $out[(int) $r->employee_id]['bank_transfers_recorded'] = (int) $r->c;
+                $out[(int) $r->employee_id]['bank_transfers_amount'] = round((float) $r->s, 2);
+            }
+        }
+
+        return $out;
     }
 
     /**

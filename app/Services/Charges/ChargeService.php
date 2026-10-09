@@ -317,7 +317,7 @@ class ChargeService
             'payment_method' => 'test',
             'payment_brand' => 'test',
             'status' => 'success',
-            'payment_date' => now(),
+            'payment_date' => now()->toDateString(),
         ]);
     }
 

@@ -129,6 +129,14 @@ class ReportsService
                 'discounts_used' => $totals['discounts_total'],
                 'refunds' => $totals['refunds_total'],
                 'net_revenue' => $totals['net_revenue'],
+                // دفعة (هـ)
+                'extra_fees' => $totals['extra_fees'],
+                'extra_fees_count' => $totals['extra_fees_count'],
+                'price_differences' => $totals['price_differences'],
+                'price_differences_count' => $totals['price_differences_count'],
+                'original_revenue' => $totals['original_revenue'],
+                'bank_transfers' => $totals['bank_transfers'],
+                'bank_transfers_count' => $totals['bank_transfers_count'],
             ]),
             'by_period' => ReportLabeledValueResource::collection($this->salesByQuickPeriod()),
             'daily' => ReportLabeledValueResource::collection(
@@ -148,6 +156,10 @@ class ReportsService
                     ? (int) round(($totals['refunds_total'] / $totals['total_sales']) * 100)
                     : 0,
                 'net_revenue_after_refunds' => $totals['net_revenue'],
+                'extra_fees' => $totals['extra_fees'],
+                'price_differences' => $totals['price_differences'],
+                'refunds' => $totals['refunds'],
+                'net_revenue' => $totals['net_revenue'],
             ]),
         ]);
     }
@@ -359,7 +371,8 @@ class ReportsService
             }))
             ->count();
 
-        $revenue = $this->salesTotals($range, $contractType, $employeeId)['total_sales'];
+        $salesTotals = $this->salesTotals($range, $contractType, $employeeId);
+        $revenue = $salesTotals['total_sales'];
         $delayed = $this->delayedOpenContractsCount($range);
 
         $funnel = $this->conversionFunnel([
@@ -387,6 +400,11 @@ class ReportsService
                 'refunded_orders' => $refundedCount,
                 'refund_requests_confirmed' => $refundRequestsConfirmed,
                 'revenue' => $this->moneyValue($revenue),
+                // دفعة (هـ) — 2.7
+                'extra_fees' => $salesTotals['extra_fees'],
+                'price_differences' => $salesTotals['price_differences'],
+                'refunds' => $salesTotals['refunds'],
+                'net_revenue' => $salesTotals['net_revenue'],
                 'paid' => $paidCount,
                 'delayed_count' => $delayed,
             ]),
@@ -780,6 +798,15 @@ class ReportsService
             'payments_count' => $t['payments_count'],
             'refunds_total' => $t['refunds_total'],
             'net_revenue' => $t['net_revenue'],
+            // دفعة (هـ)
+            'extra_fees' => $t['extra_fees'],
+            'extra_fees_count' => $t['extra_fees_count'],
+            'price_differences' => $t['price_differences'],
+            'price_differences_count' => $t['price_differences_count'],
+            'refunds' => $t['refunds'],
+            'original_revenue' => $t['original_revenue'],
+            'bank_transfers' => $t['bank_transfers'],
+            'bank_transfers_count' => $t['bank_transfers_count'],
         ];
     }
 
@@ -798,6 +825,13 @@ class ReportsService
         $discounts = $this->couponDiscounts($range);
         $refunds = $this->refundsAmount($range);
 
+        // دفعة (هـ) — 2.7: الرسوم الإضافية وفروقات السعر (دفعات ناجحة بنوعها) منفصلة عن الإيراد الأصلي.
+        $extraFees = $this->paymentsByKind($paymentsQuery, \App\Models\Payment::KIND_EXTRA_FEE);
+        $priceDifferences = $this->paymentsByKind($paymentsQuery, \App\Models\Payment::KIND_PRICE_DIFFERENCE);
+        $bankTransfers = \App\Support\SchemaCache::hasColumn('payments', 'kind')
+            ? ['count' => (clone $paymentsQuery)->where('payment_method', \App\Models\Payment::METHOD_BANK_TRANSFER)->count(), 'amount' => $this->moneyValue((float) (clone $paymentsQuery)->where('payment_method', \App\Models\Payment::METHOD_BANK_TRANSFER)->sum('amount'))]
+            : ['count' => 0, 'amount' => 0];
+
         return [
             'total_sales' => $this->moneyValue($totalSales),
             'payments_count' => $paymentsCount,
@@ -805,7 +839,28 @@ class ReportsService
             'discounted_orders_count' => $discounts['orders_count'],
             'refunds_total' => $refunds,
             'net_revenue' => $this->moneyValue($totalSales - $refunds),
+            'extra_fees' => $extraFees['amount'],
+            'extra_fees_count' => $extraFees['count'],
+            'price_differences' => $priceDifferences['amount'],
+            'price_differences_count' => $priceDifferences['count'],
+            'refunds' => $refunds,
+            'original_revenue' => $this->moneyValue($totalSales - $extraFees['amount'] - $priceDifferences['amount']),
+            'bank_transfers' => $bankTransfers['amount'],
+            'bank_transfers_count' => $bankTransfers['count'],
         ];
+    }
+
+    /**
+     * @return array{count: int, amount: int|float}
+     */
+    private function paymentsByKind($paymentsQuery, string $kind): array
+    {
+        if (! \App\Support\SchemaCache::hasColumn('payments', 'kind')) {
+            return ['count' => 0, 'amount' => 0];
+        }
+        $q = (clone $paymentsQuery)->where('kind', $kind);
+
+        return ['count' => (clone $q)->count(), 'amount' => $this->moneyValue((float) (clone $q)->sum('amount'))];
     }
 
     /**
@@ -828,7 +883,8 @@ class ReportsService
             return;
         }
 
-        $query->whereBetween('payment_date', [$range[0]->toDateString(), $range[1]->toDateString()]);
+        // دفعة (هـ): نهاية اليوم بالوقت حتى تُحتسب الصفوف المخزّنة بتاريخ ووقت (sqlite محلياً) في اليوم الأخير.
+        $query->whereBetween('payment_date', [$range[0]->toDateString(), $range[1]->toDateString().' 23:59:59']);
     }
 
     /**
