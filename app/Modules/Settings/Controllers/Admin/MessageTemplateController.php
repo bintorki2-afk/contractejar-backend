@@ -93,7 +93,12 @@ class MessageTemplateController extends Controller
         ]);
         $vars = array_merge([
             'order' => '123456', 'name' => 'محمد', 'link' => 'https://contractejar.com/r/123456',
-            'amount' => '249', 'draft_number' => '0012345678', 'support' => '0597500014',
+            'amount' => '249', 'support' => '0597500014',
+            // دفعة (هـ)
+            'items' => "• صورة الصك غير واضحة\n• رقم الصك",
+            'reason' => 'تغيير نوع المستند: إلكتروني → ورقي',
+            'payment_url' => 'https://contractejar.com/r/123456?charge=1',
+            'bank' => 'مصرف الراجحي', 'iban' => 'SA00 0000 0000 0000 0000 0000', 'account_name' => 'مؤسسة عقدي العقارية',
         ], $data['vars'] ?? []);
 
         return $this->apiResponse([

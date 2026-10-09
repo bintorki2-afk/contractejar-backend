@@ -258,6 +258,12 @@ class PaymentController extends Controller
      */
     private function frontendPaymentRedirectUrl(string $type, string $uuid, array $extra = []): string
     {
+        // دفعة (هـ) — E5: دفعة رسم (chg-{uuid}-{id}) ⇒ العودة لصفحة الطلب (الرابط الذكي) مع معرّف الرسم.
+        $parsed = \App\Models\Payment::parseChargeKey($uuid);
+        if ($parsed !== null) {
+            return \App\Support\SmartLink::forOrder($parsed['uuid']).'?charge='.$parsed['charge_id'].'&status='.($type === 'error' ? 'failed' : 'success').'&paid='.($type === 'error' ? '0' : '1');
+        }
+
         $templateKey = $type === 'error'
             ? 'services.moyasar.payment_error_url_template'
             : 'services.moyasar.payment_success_url_template';

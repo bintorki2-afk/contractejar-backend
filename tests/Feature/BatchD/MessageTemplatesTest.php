@@ -17,7 +17,11 @@ class MessageTemplatesTest extends BatchDTestCase
 
         $list = $this->getJson('/api/admin/message-templates')->assertOk()->json('data');
         $keys = collect($list['items'])->map(fn ($r) => $r['channel'].':'.$r['key'])->all();
-        foreach (['whatsapp:stage_received', 'whatsapp:stage_draft_sent', 'whatsapp:stage_notarized', 'push:status_on_hold', 'push:refund'] as $k) {
+        // دفعة (هـ): قوالب المسودة أُزيلت؛ أُضيفت data_request / data_request_reminder / charge_payment_request / bank_transfer_instructions.
+        $this->assertNotContains('whatsapp:stage_draft_sent', $keys);
+        $this->assertNotContains('push:draft_sent', $keys);
+        foreach (['whatsapp:stage_received', 'whatsapp:stage_notarized', 'push:status_on_hold', 'push:refund',
+            'whatsapp:data_request', 'whatsapp:data_request_reminder', 'whatsapp:charge_payment_request', 'whatsapp:bank_transfer_instructions'] as $k) {
             $this->assertContains($k, $keys);
         }
         $this->assertContains('{order}', array_column($list['placeholders'], 'token'));

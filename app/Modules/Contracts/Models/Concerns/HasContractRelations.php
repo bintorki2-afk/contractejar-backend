@@ -162,6 +162,32 @@ trait HasContractRelations
         return $this->hasOne(ReceivedContract::class, 'contract_id');
     }
 
+    // ───────── دفعة (هـ) ─────────
+
+    /** الرسوم (فرق سعر / رسوم إضافية). */
+    public function charges()
+    {
+        return $this->hasMany(\App\Models\ContractCharge::class, 'contract_id');
+    }
+
+    /** طلبات المرفق الناقص. */
+    public function dataRequests()
+    {
+        return $this->hasMany(\App\Models\ContractDataRequest::class, 'contract_id');
+    }
+
+    /** الدفعات المرتبطة بـ contract_id (تشمل دفعات الرسوم والحوالات). */
+    public function paymentRows()
+    {
+        return $this->hasMany(\App\Models\Payment::class, 'contract_id');
+    }
+
+    /** الاسترجاعات (Moyasar/يدوي). */
+    public function refunds()
+    {
+        return $this->hasMany(\App\Models\Refund::class, 'contract_id');
+    }
+
     public function contractStatus()
     {
         return $this->belongsTo(ContractStatus::class, 'contract_status_id');

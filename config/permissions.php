@@ -9,6 +9,9 @@ return [
         'retrieve' => ['ar' => 'استرجاع', 'en' => 'Retrieve'],
         // دفعة (د) — ب8: استرجاع المبلغ عبر Moyasar (لقسم المدفوعات فقط — انظر section_only_actions).
         'refund' => ['ar' => 'استرجاع المدفوعات', 'en' => 'Refund payments'],
+        // دفعة (هـ) — E2/E5 (لقسم المدفوعات فقط).
+        'record_transfer' => ['ar' => 'تسجيل حوالة بنكية', 'en' => 'Record bank transfer'],
+        'add_fee' => ['ar' => 'إضافة رسوم', 'en' => 'Add extra fee'],
     ],
 
     /**
@@ -18,6 +21,8 @@ return [
      */
     'section_only_actions' => [
         'refund' => ['payments'],
+        'record_transfer' => ['payments'],
+        'add_fee' => ['payments'],
     ],
 
     'sections' => [

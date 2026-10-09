@@ -125,6 +125,7 @@ class AdminOrderQueryService
             ->when($request->filled('search'), fn ($q) => $q->adminSearch($request->string('search')->toString())
             )
             ->tap(fn ($q) => $this->applyReceivedContractPresenceToQuery($q, $request))
+            ->tap(fn ($q) => $this->applyAttentionFilter($q, $request))
             ->with($this->orderListRelations())
             ->latest()
             ->paginate($this->perPage($request, 120, 200));
@@ -136,6 +137,7 @@ class AdminOrderQueryService
                 'status_keys' => $statusKeys,
                 'tab' => $tab !== '' ? $tab : 'all',
                 'is_received' => $receivedPresenceFilter,
+                'attention' => $request->filled('attention') ? (string) $request->input('attention') : null,
             ],
         ];
     }
@@ -228,6 +230,10 @@ class AdminOrderQueryService
     {
         $tabs = [['key' => 'all', 'label' => 'جميع الطلبات', 'count' => $all]];
         foreach ($rows as $r) {
+            // دفعة (هـ): حالات قديمة (المسودة) لا تُعرض كتبويب.
+            if (in_array($r['status_key'], ContractStatus::LEGACY_KEYS, true)) {
+                continue;
+            }
             if ($r['status_key'] === ContractStatus::KEY_NEW) {
                 $tabs[] = ['key' => 'new', 'label' => $r['name'], 'count' => $byKey['new'] ?? 0, 'status_id' => $r['id'], 'status_key' => 'new'];
                 $tabs[] = ['key' => 'paid', 'label' => 'تم الدفع', 'count' => $byKey['paid'] ?? 0, 'status_id' => $r['id'], 'status_key' => 'paid'];
@@ -415,6 +421,11 @@ class AdminOrderQueryService
             'contractStatus',
             'draftContractStatus',
             'contractPayments' => fn ($q) => $q->where('status', 'success'),
+            // دفعة (هـ): شارة الدفع/«بانتظار دفع فرق»/«بانتظار العميل» بلا استعلام لكل صف.
+            'paymentRows' => fn ($q) => $q->where('status', 'success'),
+            'charges',
+            'dataRequests' => fn ($q) => $q->where('status', \App\Models\ContractDataRequest::STATUS_PENDING),
+            'refunds' => fn ($q) => $q->where('status', \App\Models\Refund::STATUS_SUCCEEDED),
         ];
     }
 
@@ -467,6 +478,7 @@ class AdminOrderQueryService
             ->when($request->filled('user_id'), fn ($q) => $q->where('user_id', $request->user_id)
             )
             ->tap(fn ($q) => $this->applyReceivedContractPresenceToQuery($q, $request))
+            ->tap(fn ($q) => $this->applyAttentionFilter($q, $request))
             ->with($this->orderListRelations());
     }
 
@@ -844,6 +856,31 @@ class AdminOrderQueryService
 
     private function perPage(Request $request, int $default = 20, int $max = 100): int
     {
+        // دفعة (هـ): التصدير يطلب صفحة كبيرة واحدة.
+        $exportMax = (int) $request->attributes->get('export_max', 0);
+        if ($exportMax > 0) {
+            $max = $exportMax;
+        }
+
         return min(max((int) $request->input('per_page', $default), 1), $max);
+    }
+
+    /**
+     * دفعة (هـ): فلتر «عليك الحين» على القائمة — ?attention=awaiting_customer (طلب مرفق معلّق)
+     * أو ?attention=charge_pending (رسوم بانتظار الدفع «بانتظار دفع فرق»).
+     */
+    private function applyAttentionFilter(Builder $query, Request $request): void
+    {
+        $attention = strtolower(trim((string) $request->input('attention', '')));
+        if ($attention === '') {
+            return;
+        }
+        if ($attention === 'awaiting_customer' && \App\Support\SchemaCache::hasTable('contract_data_requests')) {
+            $query->whereIn('contracts.id', \App\Models\ContractDataRequest::query()->select('contract_id')->where('status', \App\Models\ContractDataRequest::STATUS_PENDING));
+        } elseif (in_array($attention, ['charge_pending', 'awaiting_charge'], true) && \App\Support\SchemaCache::hasTable('contract_charges')) {
+            $query->whereIn('contracts.id', \App\Models\ContractCharge::query()->select('contract_id')->where('status', \App\Models\ContractCharge::STATUS_PENDING));
+        } elseif ($attention === 'unpaid') {
+            $query->where('contracts.is_completed', 0);
+        }
     }
 }

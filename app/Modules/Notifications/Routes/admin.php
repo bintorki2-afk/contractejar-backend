@@ -19,6 +19,16 @@ Route::prefix('notifications')->name('notifications.')->controller(NotificationC
         Route::post('/broadcast/preview', 'broadcastPreview')->name('broadcast.preview');
     });
 
+// دفعة (هـ): إشعارات اللوحة للموظف الحالي.
+Route::prefix('employee-notifications')->name('employee-notifications.')
+    ->controller(\App\Modules\Notifications\Controllers\Admin\EmployeeNotificationController::class)
+    ->middleware(['auth:sanctum', 'permission:all_requests.view'])
+    ->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::post('/read-all', 'readAll')->name('read-all');
+        Route::post('/{id}/read', 'read')->whereNumber('id')->name('read');
+    });
+
 // سجل إرسال إشعارات العملاء (ف8) — المجدولة والفورية واليدوية
 Route::get('/notification-dispatches', [NotificationController::class, 'dispatches'])
     ->middleware(['auth:sanctum', 'permission:notifications.view'])

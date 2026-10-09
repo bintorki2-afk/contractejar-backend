@@ -62,7 +62,15 @@ class ContractResource extends JsonResource
             'draft_contract_status_name' => optional($this->draftContractStatus)->name,
             'draft_contract_status_color' => optional($this->draftContractStatus)->color,
             'journey' => ContractFrontendStatus::journey($this->resource),
+            // دفعة (هـ) — E3: الحالة الجانبية (ملغي/مسترجع) تُعرض بدل الخطوات.
+            'journey_side_state' => \App\Support\ContractJourney::sideState($this->resource),
+            'journey_sentence' => \App\Support\ContractJourney::RULE_SENTENCE,
             'status_timeline' => ContractFrontendStatus::statusTimeline($this->resource),
+            // دفعة (هـ) — 2.1/2.3/2.4: حالة الدفع والتفاصيل والرسوم وطلبات المرفق الناقص.
+            'payment_state' => ($paymentState = app(\App\Services\Payments\ContractPaymentState::class))->state($this->resource),
+            'payment_details' => $paymentState->details($this->resource),
+            'charges' => app(\App\Services\Charges\ChargeService::class)->forCustomer($this->resource),
+            'pending_data_requests' => app(\App\Services\DataRequests\ContractDataRequestService::class)->pendingForCustomer($this->resource),
             // دفعة (د) — ب9: ما تم على طلبك (نسخة آمنة: بلا أسماء موظفين أو ملاحظات داخلية).
             'activities' => app(\App\Services\Orders\ContractActivityLogger::class)->forCustomer($this->resource),
             // متابعة دفعة (د): مبلغ الاسترجاع للعميل.

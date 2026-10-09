@@ -15,16 +15,19 @@ class FlagOrderDelaysCommand extends Command
 {
     protected $signature = 'orders:flag-delays {--dry-run : عرض دون حفظ أو إشعار}';
 
-    protected $description = 'Flag delayed orders (paid-not-received >2h, received-no-draft >24h, draft-no-notarize >72h) and notify employees';
+    protected $description = 'Flag delayed orders (paid-not-received >2h, received-not-notarized >24h, customer-no-reply 24h/72h) and notify employees + owner';
 
     public function handle(OrderAttentionService $attention, OrderFlowService $flow, FirebaseNotificationService $firebase): int
     {
+        $dataRequests = app(\App\Services\DataRequests\ContractDataRequestService::class);
+
         if ($this->option('dry-run')) {
             $board = $attention->board();
             $this->info('delayed: '.$board['counts']['delayed']);
             foreach ($board['delayed'] as $row) {
                 $this->line("#{$row['uuid']} ".implode(', ', $row['delay_flags']));
             }
+            $this->info('owner alerts (72h, dry): '.$dataRequests->alertOwnerForStale(true));
 
             return self::SUCCESS;
         }
@@ -45,8 +48,11 @@ class FlagOrderDelaysCommand extends Command
             }
         }
 
+        // دفعة (هـ) — E4: تنبيه المالك عبر تيليجرام بعد 72 ساعة بلا رد (مرة واحدة لكل طلب).
+        $alerts = $dataRequests->alertOwnerForStale(false);
+
         Cache::put('orders.flag_delays.last_run', now()->toIso8601String(), now()->addDays(2));
-        $this->info('newly delayed: '.count($flagged));
+        $this->info('newly delayed: '.count($flagged).' · owner alerts: '.$alerts);
 
         return self::SUCCESS;
     }

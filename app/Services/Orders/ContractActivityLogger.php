@@ -36,12 +36,26 @@ class ContractActivityLogger
         'restored' => 'استعادة من السلة',
         'notification_sent' => 'إرسال إشعار',
         'delay_flagged' => 'تنبيه تأخير',
+        // دفعة (هـ)
+        'bank_transfer_recorded' => 'تسجيل حوالة بنكية',
+        'charge_created' => 'إضافة رسوم / فرق سعر',
+        'charge_link_sent' => 'رابط دفع الرسوم',
+        'charge_paid' => 'دفع الرسوم',
+        'charge_cancelled' => 'إلغاء الرسوم',
+        'refund_due' => 'فرق لصالح العميل',
+        'data_request_sent' => 'طلب مرفق ناقص',
+        'data_request_reminded' => 'تذكير بطلب المرفق',
+        'data_request_resolved' => 'حل طلب المرفق',
+        'data_request_cancelled' => 'إلغاء طلب المرفق',
+        'ejar_entry_progress' => 'إدخال في إيجار',
     ];
 
     /** إجراءات تظهر للعميل (بدون أسماء الموظفين/الملاحظات الداخلية). */
     public const CUSTOMER_VISIBLE = [
         'payment', 'status_changed', 'received', 'assigned', 'stage_received', 'stage_draft_sent', 'stage_notarized',
         'cancelled', 'refunded', 'discount_applied',
+        // دفعة (هـ)
+        'bank_transfer_recorded', 'charge_created', 'charge_paid', 'data_request_sent', 'data_request_resolved',
     ];
 
     /**
@@ -208,6 +222,12 @@ class ContractActivityLogger
             'discount_applied' => 'تم تطبيق خصم على طلبك',
             'cancelled' => 'تم إلغاء الطلب',
             'payment' => 'تم استلام دفعتك',
+            // دفعة (هـ)
+            'bank_transfer_recorded' => 'تم استلام دفعتك (حوالة بنكية)',
+            'charge_created' => (($after['kind'] ?? '') === 'price_difference' ? 'فرق سعر' : 'رسوم إضافية').(isset($after['amount']) ? ' '.rtrim(rtrim(number_format((float) $after['amount'], 2, '.', ''), '0'), '.').' ر.س' : '').(filled($after['message'] ?? null) ? ' — '.$after['message'] : ''),
+            'charge_paid' => 'تم استلام دفعتك'.(isset($after['amount']) ? ' ('.rtrim(rtrim(number_format((float) $after['amount'], 2, '.', ''), '0'), '.').' ر.س)' : ''),
+            'data_request_sent' => 'طلبنا منك: '.implode('، ', (array) ($after['items'] ?? [])),
+            'data_request_resolved' => 'أرسلت المطلوب — شكراً لك',
             default => null,
         };
     }

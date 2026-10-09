@@ -46,6 +46,14 @@ class PaymentAmountVerifier
 
     public function expectedMinor(string $uuid): ?int
     {
+        // دفعة (هـ) — E5: مفتاح رسم ⇒ المستحق = مبلغ الرسم المعلّق.
+        $charge = \App\Models\Payment::parseChargeKey($uuid);
+        if ($charge !== null) {
+            $row = \App\Support\SchemaCache::hasTable('contract_charges') ? \App\Models\ContractCharge::query()->find($charge['charge_id']) : null;
+
+            return $row !== null && $row->isPending() ? (int) round((float) $row->amount * 100) : null;
+        }
+
         $employeePaid = ContractPaidByEmployee::query()->where('contract_uuid', $uuid)->first();
         if ($employeePaid !== null) {
             return (int) round((float) $employeePaid->amount * 100);

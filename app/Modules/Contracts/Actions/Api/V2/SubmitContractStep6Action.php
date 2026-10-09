@@ -15,7 +15,7 @@ class SubmitContractStep6Action
      */
     public function execute(Contract $contract, Step6Request $request): array
     {
-        if ($contract->is_completed) {
+        if ($contract->lockedForCustomerStep(6)) {
             return ['ok' => false, 'message' => trans('api.completed_contract')];
         }
 

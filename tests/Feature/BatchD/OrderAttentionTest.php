@@ -9,7 +9,8 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 
 /**
- * دفعة (د) — ب11: «عليك الحين» + علامات التأخير (ساعتان / 24 / 72 ساعة) + orders:flag-delays.
+ * دفعة (د) — ب11 / دفعة (هـ) — E3: «عليك الحين» + علامات التأخير (ساعتان / 24 ساعة بلا توثيق) + orders:flag-delays.
+ * (مرحلة المسودة أُلغيت: المستلم ينتقل مباشرة إلى «بانتظار التوثيق».)
  */
 class OrderAttentionTest extends BatchDTestCase
 {
@@ -28,10 +29,8 @@ class OrderAttentionTest extends BatchDTestCase
         $rc = ReceivedContract::query()->create(['contract_id' => $receivedLate->id, 'employee_id' => $employee->id, 'status' => 'finish', 'date_of_received' => now()->toDateString()]);
         DB::table('received_contracts')->where('id', $rc->id)->update(['created_at' => now()->subHours(30)]);
 
-        $draftLate = $this->paidContract(['contract_status_id' => $this->statusId('whatsapp_draft')]);
-        ReceivedContract::query()->create(['contract_id' => $draftLate->id, 'employee_id' => $employee->id, 'status' => 'finish', 'date_of_received' => now()->toDateString()]);
-        $h = ContractStatusHistory::query()->create(['contract_id' => $draftLate->id, 'status_type' => 'contract', 'status' => 'whatsapp_draft', 'status_label' => 'مسودة', 'source' => 'admin']);
-        DB::table('contract_status_histories')->where('id', $h->id)->update(['created_at' => now()->subHours(80)]);
+        $receivedFresh = $this->paidContract(['contract_status_id' => $this->statusId('received_by_employee')]);
+        ReceivedContract::query()->create(['contract_id' => $receivedFresh->id, 'employee_id' => $employee->id, 'status' => 'finish', 'date_of_received' => now()->toDateString()]);
 
         $done = $this->paidContract(['contract_status_id' => $this->statusId('ejar_authenticated')]);
         $unpaid = $this->contract();
@@ -42,27 +41,29 @@ class OrderAttentionTest extends BatchDTestCase
         $this->assertSame($latePaid->id, $board['awaiting_receive'][0]['id']); // الأقدم أولاً
         $this->assertSame(['paid_not_received'], $board['awaiting_receive'][0]['delay_flags']);
         $this->assertSame([], $board['awaiting_receive'][1]['delay_flags']);
-        $this->assertSame(1, $board['counts']['awaiting_draft']);
-        $this->assertSame(['received_no_draft'], $board['awaiting_draft'][0]['delay_flags']);
-        $this->assertSame($employee->name, $board['awaiting_draft'][0]['employee_name']);
-        $this->assertSame(1, $board['counts']['awaiting_notarize']);
-        $this->assertSame(['draft_no_notarize'], $board['awaiting_notarize'][0]['delay_flags']);
-        $this->assertSame(3, $board['counts']['delayed']);
-        $ids = collect($board)->only(['awaiting_receive', 'awaiting_draft', 'awaiting_notarize'])->flatten(1)->pluck('id')->all();
+        $this->assertArrayNotHasKey('awaiting_draft', $board);
+        $this->assertSame(2, $board['counts']['awaiting_notarize']);
+        $this->assertSame($receivedLate->id, $board['awaiting_notarize'][0]['id']); // الأقدم أولاً
+        $this->assertSame(['received_not_notarized'], $board['awaiting_notarize'][0]['delay_flags']);
+        $this->assertSame($employee->name, $board['awaiting_notarize'][0]['employee_name']);
+        $this->assertSame([], $board['awaiting_notarize'][1]['delay_flags']);
+        $this->assertSame(2, $board['counts']['delayed']);
+        $this->assertSame(0, $board['counts']['awaiting_customer']);
+        $ids = collect($board)->only(['awaiting_receive', 'awaiting_notarize'])->flatten(1)->pluck('id')->all();
         $this->assertNotContains($done->id, $ids);
         $this->assertNotContains($unpaid->id, $ids);
 
         // المجدول يحفظ العلامات ويسجّل النشاط مرة واحدة لكل تأخير جديد.
         Artisan::call('orders:flag-delays');
         $this->assertSame(['paid_not_received'], $latePaid->fresh()->delay_flags);
-        $this->assertSame(3, ContractActivity::query()->where('action', 'delay_flagged')->count());
+        $this->assertSame(2, ContractActivity::query()->where('action', 'delay_flagged')->count());
         Artisan::call('orders:flag-delays');
-        $this->assertSame(3, ContractActivity::query()->where('action', 'delay_flagged')->count());
+        $this->assertSame(2, ContractActivity::query()->where('action', 'delay_flagged')->count());
 
         $list = collect($this->getJson('/api/admin/orders?per_page=100')->json('data.items'))->keyBy('id');
         $this->assertTrue($list[$latePaid->id]['is_delayed']);
         $this->assertSame(['paid_not_received'], $list[$latePaid->id]['delay_flags']);
-        $this->assertSame(['draft_no_notarize'], $this->getJson('/api/admin/orders/'.$draftLate->id)->json('data.delay_flags'));
+        $this->assertSame(['received_not_notarized'], $this->getJson('/api/admin/orders/'.$receivedLate->id)->json('data.delay_flags'));
 
         // بعد الاستلام تختفي علامة «لم يُستلم».
         $this->postJson('/api/admin/orders/'.$latePaid->id.'/stage/received')->assertOk();

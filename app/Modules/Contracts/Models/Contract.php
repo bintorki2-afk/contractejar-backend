@@ -211,6 +211,22 @@ class Contract extends Model
         'dob_of_property_owner_agent',
     ];
 
+    /**
+     * دفعة (هـ) — E4: الطلب المدفوع مقفل أمام العميل إلا إذا كان لديه طلب مرفق ناقص معلّق لهذه الخطوة.
+     */
+    public function lockedForCustomerStep(int $step): bool
+    {
+        if (! (bool) $this->is_completed) {
+            return false;
+        }
+
+        try {
+            return ! app(\App\Services\DataRequests\ContractDataRequestService::class)->customerMayEditStep($this, $step);
+        } catch (\Throwable) {
+            return true;
+        }
+    }
+
     public static function boot()
     {
         parent::boot();

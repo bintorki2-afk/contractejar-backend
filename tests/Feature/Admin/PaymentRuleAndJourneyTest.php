@@ -18,9 +18,10 @@ use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 /**
- * دفعة الإصلاحات (ب) — ف2: قاعدة «المسودة قبل التوثيق» على الخادم + رحلة الطلب (6 خطوات).
+ * دفعة (هـ) — E2/E3: قاعدة «الدفع قبل التوثيق» على الخادم + رحلة الطلب (3 خطوات).
+ * (حلّت محل اختبار قاعدة المسودة من دفعة الإصلاحات ب.)
  */
-class FixBatchBDraftRuleAndJourneyTest extends TestCase
+class PaymentRuleAndJourneyTest extends TestCase
 {
     protected function setUp(): void
     {
@@ -60,24 +61,33 @@ class FixBatchBDraftRuleAndJourneyTest extends TestCase
         return $employee;
     }
 
-    private function paidContract(): Contract
+    private function paidContract(bool $withPayment = true): Contract
     {
         $user = User::query()->create([
             'name' => 'عميل', 'mobile' => '0551234567', 'email' => 'c'.uniqid().'@test.local',
             'password' => bcrypt('x'), 'is_active' => true,
         ]);
 
-        return Contract::query()->create([
+        $contract = Contract::query()->create([
             'user_id' => $user->id, 'contract_type' => 'housing', 'instrument_type' => 'electronic',
             'duration_preset' => '1_year', 'total_months' => 12, 'step' => 7, 'is_completed' => 1,
             'tenant_mobile' => '0551234567', 'contract_status_id' => ContractStatus::NEW_ID,
         ]);
+        if ($withPayment) {
+            \App\Models\Payment::query()->create([
+                'name' => 'pay', 'amount' => \App\Support\ContractPricing::total($contract), 'payment_date' => now()->toDateString(),
+                'contract_uuid' => (string) $contract->uuid, 'tran_currency' => 'SAR', 'payment_method' => 'creditcard', 'status' => 'success',
+            ]);
+        }
+
+        return $contract;
     }
 
-    public function test_notarization_is_rejected_before_whatsapp_draft(): void
+    public function test_notarization_is_rejected_before_payment(): void
     {
         $this->employee('manager');
-        $contract = $this->paidContract();
+        $contract = $this->paidContract(withPayment: false);
+        $contract->forceFill(['is_completed' => 0])->save();
 
         $response = $this->postJson('/api/admin/orders/'.$contract->id.'/status', [
             'status_id' => ContractStatus::EJAR_AUTHENTICATION_ID,
@@ -86,16 +96,15 @@ class FixBatchBDraftRuleAndJourneyTest extends TestCase
         ]);
 
         $response->assertStatus(422)
-            ->assertJsonPath('message', ContractJourney::RULE_MESSAGE)
-            ->assertJsonPath('errors.contract_status_id.0', ContractJourney::RULE_MESSAGE);
+            ->assertJsonPath('code', 'payment_required')
+            ->assertJsonPath('errors.contract_status_id.0', \App\Services\Payments\ContractPaymentState::BLOCK_MESSAGES['payment_required']);
 
         $this->assertSame(ContractStatus::NEW_ID, (int) $contract->fresh()->contract_status_id);
 
         // «مكتمل» تخضع لنفس القاعدة.
         $completedId = (int) ContractStatus::query()->where('name', 'مكتمل')->value('id');
         $this->postJson('/api/admin/orders/'.$contract->id.'/status', ['status_id' => $completedId])
-            ->assertStatus(422)
-            ->assertJsonPath('message', ContractJourney::RULE_MESSAGE);
+            ->assertStatus(422)->assertJsonPath('code', 'payment_required');
 
         // غير مدير النظام لا يستطيع التجاوز حتى مع force=1.
         $this->postJson('/api/admin/orders/'.$contract->id.'/status', [
@@ -106,19 +115,16 @@ class FixBatchBDraftRuleAndJourneyTest extends TestCase
         ])->assertStatus(422);
     }
 
-    public function test_notarization_allowed_after_draft_and_journey_reflects_steps(): void
+    public function test_notarization_allowed_after_payment_and_journey_reflects_three_steps(): void
     {
         $this->employee('manager');
         $contract = $this->paidContract();
 
-        $this->postJson('/api/admin/orders/'.$contract->id.'/status', [
-            'status_id' => ContractStatus::WHATSAPP_DRAFT_ID,
-            'ejar_contract_draft_number' => 'DRAFT-1',
-            'contact_number_mode' => 'same',
-        ])->assertOk();
+        // لا مرحلة مسودة بعد الآن ⇒ 410.
+        $this->postJson('/api/admin/orders/'.$contract->id.'/stage/draft_sent', ['ejar_contract_draft_number' => 'D1', 'contact_number_mode' => 'same'])
+            ->assertStatus(410);
 
-        $this->assertTrue(ContractStatusHistory::query()
-            ->where('contract_id', $contract->id)->where('status', 'whatsapp_draft')->exists());
+        $this->postJson('/api/admin/orders/'.$contract->id.'/stage/received')->assertOk();
 
         $this->postJson('/api/admin/orders/'.$contract->id.'/status', [
             'status_id' => ContractStatus::EJAR_AUTHENTICATION_ID,
@@ -129,20 +135,20 @@ class FixBatchBDraftRuleAndJourneyTest extends TestCase
         $this->assertSame(ContractStatus::EJAR_AUTHENTICATION_ID, (int) $contract->fresh()->contract_status_id);
 
         $journey = ContractJourney::for($contract->fresh(['contractStatus', 'statusHistories']));
-        $this->assertCount(6, $journey);
-        $this->assertSame(
-            ['received', 'paid', 'under_review', 'whatsapp_draft', 'draft_reviewed', 'ejar_authenticated'],
-            array_column($journey, 'key')
-        );
-        $this->assertSame([true, true, true, true, true, true], array_column($journey, 'done'));
-        $this->assertSame([false, false, false, false, false, false], array_column($journey, 'current'));
-        $this->assertNotNull($journey[3]['at']);
+        $this->assertCount(3, $journey);
+        $this->assertSame(['under_review', 'received_by_employee', 'ejar_authenticated'], array_column($journey, 'key'));
+        $this->assertSame([true, true, true], array_column($journey, 'done'));
+        $this->assertSame([false, false, false], array_column($journey, 'current'));
+        $this->assertNotNull($journey[1]['at']);
+        $this->assertSame('موظف manager', $journey[1]['by']);
+        $this->assertNull(ContractJourney::sideState($contract->fresh()));
     }
 
     public function test_super_admin_can_force_and_it_is_recorded(): void
     {
         $admin = $this->employee('admin');
-        $contract = $this->paidContract();
+        $contract = $this->paidContract(withPayment: false);
+        $contract->forceFill(['is_completed' => 0])->save();
 
         $this->postJson('/api/admin/orders/'.$contract->id.'/status', [
             'status_id' => ContractStatus::EJAR_AUTHENTICATION_ID,
@@ -154,8 +160,8 @@ class FixBatchBDraftRuleAndJourneyTest extends TestCase
         $row = ContractStatusHistory::query()
             ->where('contract_id', $contract->id)->where('status', 'ejar_authenticated')->latest('id')->first();
         $this->assertNotNull($row);
-        $this->assertTrue((bool) ($row->meta['draft_rule_forced'] ?? false));
-        $this->assertSame($admin->id, (int) $row->meta['draft_rule_forced_by']);
+        $this->assertTrue((bool) ($row->meta['payment_rule_forced'] ?? false));
+        $this->assertSame($admin->id, (int) $row->meta['payment_rule_forced_by']);
     }
 
     /** WEBSITE-2: طلب مدفوع وحالته الإدارية ما زالت «جديد» يظهر للعميل «تم الدفع». */
@@ -167,6 +173,7 @@ class FixBatchBDraftRuleAndJourneyTest extends TestCase
         $detail = $this->getJson('/api/v2/contracts/'.$contract->id)->assertOk()->json('data');
         $this->assertSame('paid', $detail['status']);
         $this->assertSame('تم الدفع', $detail['status_label']);
+        $this->assertSame('paid', $detail['payment_state']['status']);
 
         $list = $this->getJson('/api/v2/contracts')->assertOk()->json();
         $this->assertStringContainsString('"status":"paid"', json_encode($list, JSON_UNESCAPED_UNICODE));
@@ -177,30 +184,42 @@ class FixBatchBDraftRuleAndJourneyTest extends TestCase
         $this->assertSame('new', $this->getJson('/api/v2/contracts/'.$contract->id)->json('data.status'));
     }
 
-    public function test_customer_contract_and_track_expose_six_step_journey(): void
+    public function test_customer_contract_and_track_expose_three_step_journey_and_side_state(): void
     {
         $contract = $this->paidContract();
         $user = $contract->user;
 
         Sanctum::actingAs($user, ['*']);
-        $journey = $this->getJson('/api/v2/contracts/'.$contract->id)->assertOk()->json('data.journey');
+        $data = $this->getJson('/api/v2/contracts/'.$contract->id)->assertOk()->json('data');
+        $journey = $data['journey'];
 
-        $this->assertCount(6, $journey);
-        $this->assertTrue($journey[0]['done']);   // استلام الطلب
-        $this->assertTrue($journey[1]['done']);   // الدفع (is_completed)
-        $this->assertFalse($journey[2]['done']);
-        $this->assertTrue($journey[2]['current']); // مراجعة الفريق
-        $this->assertSame('إرسال مسودة العقد عبر واتساب', $journey[3]['label']);
-        $this->assertSame('توثيق العقد في إيجار', $journey[5]['label']);
+        $this->assertCount(3, $journey);
+        $this->assertTrue($journey[0]['done']);    // قيد المراجعة (الدفع)
+        $this->assertFalse($journey[1]['done']);
+        $this->assertTrue($journey[1]['current']); // مستلم من الموظف
+        $this->assertSame('مستلم من الموظف', $journey[1]['label']);
+        $this->assertSame('تم التوثيق', $journey[2]['label']);
+        $this->assertNull($data['journey_side_state']);
+        $this->assertSame(ContractJourney::RULE_SENTENCE, $data['journey_sentence']);
+        $this->assertStringNotContainsString('مسودة', json_encode($journey, JSON_UNESCAPED_UNICODE));
 
         $this->mock(MoyasarPaymentService::class, fn ($mock) => $mock->shouldReceive('isPaymentConfirmed')->andReturn(true));
         $track = $this->postJson('/api/v2/contract/track', ['order' => (string) $contract->uuid, 'mobile' => '0551234567'])
             ->assertOk()
             ->json('data');
-        $this->assertCount(6, $track['journey']);
+        $this->assertCount(3, $track['journey']);
         $this->assertSame(ContractJourney::RULE_SENTENCE, $track['journey_sentence']);
+        $this->assertSame('paid', $track['payment_state']['status']);
 
-        // مسودة غير مُرسلة (step 5): استلام الطلب غير منجز بعد.
+        // حالة جانبية: ملغي.
+        $cancelledId = (int) ContractStatus::query()->where('name', 'ملغى')->value('id');
+        $contract->forceFill(['contract_status_id' => $cancelledId])->save();
+        app(\App\Services\ContractStatusHistoryService::class)->record($contract->fresh(['contractStatus']), ['source' => 'admin']);
+        $side = $this->getJson('/api/v2/contracts/'.$contract->id)->assertOk()->json('data.journey_side_state');
+        $this->assertSame('cancelled', $side['key']);
+        $this->assertSame('ملغي', $side['label']);
+
+        // مسودة غير مُرسلة (step 5): الخطوة الأولى حالية.
         $draft = Contract::query()->create([
             'user_id' => $user->id, 'contract_type' => 'housing', 'step' => 5,
         ]);

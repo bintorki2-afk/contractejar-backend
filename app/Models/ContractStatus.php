@@ -30,7 +30,7 @@ class ContractStatus extends Model
      */
     public const RECEIVED_ID = 6;
 
-    /** إرسال مسودة العقد لكم عبر واتساب (احتياط — المفتاح whatsapp_draft هو المرجع). */
+    /** @deprecated حالة قديمة (أُلغيت مرحلة المسودة في دفعة هـ) — تبقى للبيانات التاريخية فقط. */
     public const WHATSAPP_DRAFT_ID = 8;
 
     /** توثيق العقد في إيجار (احتياط — المفتاح ejar_authenticated هو المرجع). */
@@ -60,16 +60,18 @@ class ContractStatus extends Model
 
     public const KEY_WAITING_SUPERVISOR = 'waiting_supervisor';
 
-    /** ترتيب مسار الطلب الرئيسي (بدون الحالات الجانبية). */
+    /** ترتيب مسار الطلب الرئيسي (بدون الحالات الجانبية). دفعة (هـ): بلا مرحلة المسودة. */
     public const FLOW = [
         self::KEY_NEW,
         self::KEY_PAID,
         self::KEY_UNDER_REVIEW,
         self::KEY_RECEIVED_BY_EMPLOYEE,
-        self::KEY_WHATSAPP_DRAFT,
         self::KEY_EJAR_AUTHENTICATED,
         self::KEY_COMPLETED,
     ];
+
+    /** مفاتيح قديمة تبقى بيانات تاريخية فقط (لا تظهر في التبويبات ولا المسار). */
+    public const LEGACY_KEYS = [self::KEY_WHATSAPP_DRAFT];
 
     /** الحالات الجانبية. */
     public const SIDE_STATES = [self::KEY_CANCELLED, self::KEY_ON_HOLD, self::KEY_REFUNDED];

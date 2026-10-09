@@ -74,8 +74,56 @@ class OrderResource extends JsonResource
             ...$this->returnOrderFields(),
             // دفعة (د) — ب2/ب11: مفتاح الحالة الثابت وعلامات التأخير.
             'status_key' => \App\Models\ContractStatus::keyForId($this->contract_status_id ? (int) $this->contract_status_id : null),
-            'delay_flags' => is_array($this->delay_flags) ? $this->delay_flags : [],
-            'is_delayed' => is_array($this->delay_flags) && $this->delay_flags !== [],
+            'delay_flags' => $delayFlags = $this->listDelayFlags(),
+            'is_delayed' => $delayFlags !== [],
+            // دفعة (هـ): شارة الدفع + «بانتظار دفع فرق» + «بانتظار العميل» + أعمدة التصدير.
+            'payment_state' => $paymentSummary = app(\App\Services\Payments\ContractPaymentState::class)->summaryForList($this->resource),
+            'paid_original' => $paymentSummary['paid_original'],
+            'paid_extra' => $paymentSummary['paid_extra'],
+            'refunded_total' => $paymentSummary['refunded_total'],
+            'net_total' => $paymentSummary['net_total'],
+            'payment_method' => $paymentSummary['method'],
+            'payment_method_label' => $paymentSummary['method_label'],
+            'awaiting_charge' => $paymentSummary['awaiting_charge'],
+            'pending_charges_total' => $paymentSummary['pending_charges_total'],
+            'data_request_pending' => $this->listDataRequestPending(),
+        ];
+    }
+
+    /** علامات التأخير المحفوظة + customer_no_reply_24h الحيّة من طلبات المرفق المعلّقة. */
+    private function listDelayFlags(): array
+    {
+        $flags = is_array($this->delay_flags) ? array_values($this->delay_flags) : [];
+        $pending = $this->listDataRequestPending();
+        if ($pending !== null && (int) $pending['hours'] >= (int) config('data_requests.reminder_after_hours', 24) && ! in_array('customer_no_reply_24h', $flags, true)) {
+            $flags[] = 'customer_no_reply_24h';
+        }
+
+        return $flags;
+    }
+
+    /** @return array{request_id: int, section: string, items: list<string>, hours: int, label: string}|null */
+    private function listDataRequestPending(): ?array
+    {
+        if (! $this->relationLoaded('dataRequests')) {
+            return app(\App\Services\DataRequests\ContractDataRequestService::class)->pendingSummary($this->resource);
+        }
+        $pending = $this->dataRequests->where('status', \App\Models\ContractDataRequest::STATUS_PENDING)->sortBy('requested_at');
+        if ($pending->isEmpty()) {
+            return null;
+        }
+        $oldest = $pending->first();
+        $items = $pending->flatMap(fn ($r) => $r->itemLabels())->unique()->values()->all();
+        $since = $oldest->requested_at ?? $oldest->created_at;
+
+        return [
+            'request_id' => $oldest->id,
+            'section' => $oldest->section,
+            'items' => $items,
+            'hours' => $since ? (int) \Illuminate\Support\Carbon::parse($since)->diffInHours(now()) : 0,
+            'requested_at' => $since?->toIso8601String(),
+            'reminded_at' => $oldest->reminded_at?->toIso8601String(),
+            'label' => 'بانتظار العميل · '.implode('، ', $items),
         ];
     }
 
