@@ -60,8 +60,16 @@ class AdminOrderQueryService
         }
 
         if ($isCompleted !== null) {
+            // متابعة دفعة (د): status_key / tab تُطبَّق مع فلتر الدفع أيضاً.
+            $tab = strtolower(trim((string) $request->input('tab', '')));
+            if ($tab === 'incomplete' || $tab === 'incomplete_drafts') {
+                return $this->paginateIncompleteDrafts($request);
+            }
+            $statusKeys = $this->resolveStatusKeysFromRequest($request);
+
             $orders = $this->baseOrdersQuery($request)
                 ->where('is_completed', $isCompleted ? 1 : 0)
+                ->tap(fn ($q) => $this->applyStatusKeysFilter($q, $statusKeys))
                 ->latest()
                 ->paginate($this->perPage($request, 120, 200));
 
@@ -69,6 +77,7 @@ class AdminOrderQueryService
                 'paginator' => $orders,
                 'meta' => [
                     'is_completed' => $isCompleted ? 1 : 0,
+                    'status_keys' => $statusKeys,
                 ],
             ];
         }
@@ -93,16 +102,21 @@ class AdminOrderQueryService
             return $this->paginateReceivedOrders($request);
         }
 
-        $hasExplicitStatusFilter = $request->filled('status_name');
-        $defaultStatusId = ContractStatus::RECEIVED_ID;
+        // دفعة (د) — ب3: «جميع الطلبات» بدون فلتر حالة ضمني (كل الحالات). فلتر صريح عبر
+        // status_key / status_case (مفتاح أو أكثر مفصولة بفواصل) أو tab، مع بقاء status_id للتوافق.
+        $tab = strtolower(trim((string) $request->input('tab', '')));
+        if ($tab === 'incomplete' || $tab === 'incomplete_drafts') {
+            return $this->paginateIncompleteDrafts($request);
+        }
+
+        $statusKeys = $this->resolveStatusKeysFromRequest($request);
 
         $orders = Contract::query()
             ->tap(fn ($q) => $this->applySuccessfulPaymentAmountSelect($q))
             ->notDeleted()
             ->reachedAdminOrderStep()
             ->tap(fn ($q) => $this->applyContractStatusFiltersToQuery($q, $request))
-            ->when(! $hasExplicitStatusFilter, fn ($q) => $q->where('contract_status_id', $defaultStatusId)
-            )
+            ->tap(fn ($q) => $this->applyStatusKeysFilter($q, $statusKeys))
             // فلتر نوع العقد/العميل كان مفقوداً في هذا الفرع الافتراضي. (DASHBOARD-4)
             ->when($request->filled('contract_type'), fn ($q) => $q->where('contract_type', $request->contract_type)
             )
@@ -118,10 +132,175 @@ class AdminOrderQueryService
         return [
             'paginator' => $orders,
             'meta' => [
-                'contract_status_id' => $hasExplicitStatusFilter ? null : $defaultStatusId,
+                'contract_status_id' => null,
+                'status_keys' => $statusKeys,
+                'tab' => $tab !== '' ? $tab : 'all',
                 'is_received' => $receivedPresenceFilter,
             ],
         ];
+    }
+
+    /**
+     * «غير مكتمل»: مسودات لم تتجاوز الخطوة 3 (راجع ARCHITECTURE.md — قاعدة الظهور).
+     *
+     * @return array{paginator: LengthAwarePaginator, meta: array<string, mixed>}
+     */
+    public function paginateIncompleteDrafts(Request $request): array
+    {
+        $orders = $this->filteredScope(Contract::query()->incompleteDraft(), $request)
+            ->tap(fn ($q) => $this->applySuccessfulPaymentAmountSelect($q))
+            ->with($this->orderListRelations())
+            ->latest()
+            ->paginate($this->perPage($request, 120, 200));
+
+        return [
+            'paginator' => $orders,
+            'meta' => ['tab' => 'incomplete', 'contract_status_id' => null, 'status_keys' => []],
+        ];
+    }
+
+    /**
+     * عدّادات تبويبات «جميع الطلبات» (ب3): نفس نطاق القائمة تماماً + نفس فلاتر البحث/النوع/العميل.
+     *
+     * @return array<string, mixed>
+     */
+    public function statusCounts(Request $request): array
+    {
+        $listed = $this->filteredScope(Contract::query()->notDeleted()->reachedAdminOrderStep(), $request);
+
+        $byStatusId = (clone $listed)
+            ->selectRaw('contract_status_id, COUNT(*) as aggregate')
+            ->groupBy('contract_status_id')
+            ->pluck('aggregate', 'contract_status_id')
+            ->map(fn ($v) => (int) $v)
+            ->all();
+
+        $all = array_sum($byStatusId);
+        $statuses = ContractStatus::query()->orderBy('order')->orderBy('id')->get();
+        $rows = [];
+        $byKey = array_fill_keys(ContractStatus::KEYS, 0);
+        foreach ($statuses as $status) {
+            $key = \App\Support\ContractFrontendStatus::keyForStatusRow($status);
+            $count = (int) ($byStatusId[$status->id] ?? 0);
+            $rows[] = [
+                'id' => (int) $status->id,
+                'name' => $status->name,
+                'status_key' => $key,
+                'color' => $status->color,
+                'color_text' => $status->color_text,
+                'is_active' => (bool) $status->is_active,
+                'count' => $count,
+            ];
+            if ($key !== null) {
+                $byKey[$key] = ($byKey[$key] ?? 0) + $count;
+            }
+        }
+
+        // «تم الدفع» افتراضية: صف «جديد» المدفوع (لم ينتقل بعد). by_key.new = غير المدفوع فقط
+        // حتى يطابق ?status_key=new، و by_key.paid = المدفوع — والمجموع = عدد صف «جديد».
+        $newId = ContractStatus::idFor(ContractStatus::KEY_NEW);
+        $paidNew = $newId !== null ? (clone $listed)->where('contract_status_id', $newId)->where('is_completed', 1)->count() : 0;
+        $byKey[ContractStatus::KEY_PAID] = ($byKey[ContractStatus::KEY_PAID] ?? 0) + $paidNew;
+        $byKey[ContractStatus::KEY_NEW] = max(0, ($byKey[ContractStatus::KEY_NEW] ?? 0) - $paidNew);
+
+        $incomplete = $this->filteredScope(Contract::query()->incompleteDraft(), $request)->count();
+
+        return [
+            'all' => $all,
+            'paid' => (clone $listed)->where('is_completed', 1)->count(),
+            'unpaid' => (clone $listed)->where('is_completed', 0)->count(),
+            'incomplete' => $incomplete,
+            'no_status' => (int) ($byStatusId[''] ?? $byStatusId[0] ?? 0),
+            'by_key' => $byKey,
+            'statuses' => $rows,
+            'tabs' => $this->buildTabs($rows, $byKey, $all, $incomplete),
+        ];
+    }
+
+    /**
+     * تبويب لكل حالة؛ صف «جديد» يُقسم إلى «جديد» (غير مدفوع) و«تم الدفع» — عدد كل تبويب = إجمالي ?status_key=<key>.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @param  array<string, int>  $byKey
+     * @return list<array<string, mixed>>
+     */
+    private function buildTabs(array $rows, array $byKey, int $all, int $incomplete): array
+    {
+        $tabs = [['key' => 'all', 'label' => 'جميع الطلبات', 'count' => $all]];
+        foreach ($rows as $r) {
+            if ($r['status_key'] === ContractStatus::KEY_NEW) {
+                $tabs[] = ['key' => 'new', 'label' => $r['name'], 'count' => $byKey['new'] ?? 0, 'status_id' => $r['id'], 'status_key' => 'new'];
+                $tabs[] = ['key' => 'paid', 'label' => 'تم الدفع', 'count' => $byKey['paid'] ?? 0, 'status_id' => $r['id'], 'status_key' => 'paid'];
+
+                continue;
+            }
+            $tabs[] = ['key' => $r['status_key'] ?? ('status_'.$r['id']), 'label' => $r['name'], 'count' => $r['count'], 'status_id' => $r['id'], 'status_key' => $r['status_key']];
+        }
+        $tabs[] = ['key' => 'incomplete', 'label' => 'غير مكتمل', 'count' => $incomplete];
+
+        return $tabs;
+    }
+
+    /**
+     * فلاتر البحث/النوع/العميل المشتركة بين القائمة والعدّادات.
+     */
+    private function filteredScope(Builder $query, Request $request): Builder
+    {
+        return $query
+            ->when($request->filled('contract_type'), fn ($q) => $q->where('contract_type', $request->contract_type))
+            ->when($request->filled('user_id'), fn ($q) => $q->where('user_id', $request->user_id))
+            ->when($request->filled('search'), fn ($q) => $q->adminSearch($request->string('search')->toString()));
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function resolveStatusKeysFromRequest(Request $request): array
+    {
+        $raw = $request->input('status_key', $request->input('status_case'));
+        $tab = strtolower(trim((string) $request->input('tab', '')));
+        if (($raw === null || $raw === '') && $tab !== '' && $tab !== 'all') {
+            $raw = $tab;
+        }
+        if ($raw === null || $raw === '') {
+            return [];
+        }
+
+        $keys = is_array($raw) ? $raw : explode(',', (string) $raw);
+        $keys = array_values(array_unique(array_filter(array_map(static fn ($k) => strtolower(trim((string) $k)), $keys))));
+
+        foreach ($keys as $key) {
+            if (! in_array($key, ContractStatus::KEYS, true)) {
+                throw new InvalidArgumentException('status_key غير معروف: '.$key.' — المسموح: '.implode(', ', ContractStatus::KEYS));
+            }
+        }
+
+        return $keys;
+    }
+
+    /**
+     * @param  list<string>  $keys
+     */
+    private function applyStatusKeysFilter($query, array $keys): void
+    {
+        if ($keys === []) {
+            return;
+        }
+
+        $newId = ContractStatus::idFor(ContractStatus::KEY_NEW);
+        $query->where(function ($q) use ($keys, $newId) {
+            $plain = array_values(array_diff($keys, [ContractStatus::KEY_PAID, ContractStatus::KEY_NEW]));
+            $ids = ContractStatus::idsFor($plain);
+            $q->whereIn('contract_status_id', $ids ?: [-1]);
+            // new/paid: نفس الصف «جديد» مفرّقاً بالدفع.
+            if ($newId !== null && in_array(ContractStatus::KEY_NEW, $keys, true) && in_array(ContractStatus::KEY_PAID, $keys, true)) {
+                $q->orWhere('contract_status_id', $newId);
+            } elseif ($newId !== null && in_array(ContractStatus::KEY_NEW, $keys, true)) {
+                $q->orWhere(fn ($w) => $w->where('contract_status_id', $newId)->where('is_completed', 0));
+            } elseif ($newId !== null && in_array(ContractStatus::KEY_PAID, $keys, true)) {
+                $q->orWhere(fn ($w) => $w->where('contract_status_id', $newId)->where('is_completed', 1));
+            }
+        });
     }
 
     /**
@@ -296,7 +475,8 @@ class AdminOrderQueryService
         return Contract::query()
             ->tap(fn ($q) => $this->applySuccessfulPaymentAmountSelect($q))
             ->notDeleted()
-            ->where('contract_status_id', ContractStatus::NEW_ID)
+            // دفعة (د): المدفوع ينتقل تلقائياً إلى «قيد المراجعة» — يبقى بانتظار الاستلام حتى يستلمه موظف.
+            ->whereIn('contract_status_id', $this->awaitingReceiptStatusIds())
             ->whereDoesntHave('receivedContract')
             ->when($request->has('is_completed'), fn ($q) => $q->where('is_completed', $request->boolean('is_completed') ? 1 : 0)
             )
@@ -313,6 +493,12 @@ class AdminOrderQueryService
     /**
      * @return array<string, mixed>
      */
+    /** @return list<int> */
+    public function awaitingReceiptStatusIds(): array
+    {
+        return ContractStatus::idsFor([ContractStatus::KEY_NEW, ContractStatus::KEY_UNDER_REVIEW]) ?: [ContractStatus::NEW_ID];
+    }
+
     private function newOrdersListSummaryIfNeeded(Request $request, int $statusId): array
     {
         if ($statusId !== ContractStatus::NEW_ID) {
@@ -336,7 +522,8 @@ class AdminOrderQueryService
         $base = Contract::query()
             ->notDeleted()
             ->reachedAdminOrderStep()
-            ->where('contract_status_id', ContractStatus::NEW_ID)
+            ->whereIn('contract_status_id', $this->awaitingReceiptStatusIds())
+            ->whereDoesntHave('receivedContract')
             ->when($isCompleted !== null, fn ($q) => $q->where('is_completed', $isCompleted ? 1 : 0)
             )
             ->when($request->filled('search'), fn ($q) => $q->adminSearch($request->string('search')->toString())

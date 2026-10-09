@@ -62,6 +62,195 @@ class OrderController extends Controller
         }
     }
 
+    /**
+     * GET /api/admin/orders/status-counts — عدّادات التبويبات (نفس نطاق القائمة وفلاترها).
+     */
+    public function statusCounts(Request $request)
+    {
+        return $this->apiResponse($this->orders->statusCounts($request), trans('api.success'));
+    }
+
+    /**
+     * GET /api/admin/orders/trash — الطلبات في السلة (الأحدث أولاً).
+     */
+    public function trash(Request $request)
+    {
+        $trash = app(\App\Services\Orders\TrashService::class);
+        $paginator = Contract::query()
+            ->where('is_delete', 1)->whereNotNull('trashed_at')
+            ->when($request->filled('search'), fn ($q) => $q->adminSearch($request->string('search')->toString()))
+            ->with($this->orders->orderListRelations())
+            ->latest('trashed_at')
+            ->paginate(min(max((int) $request->input('per_page', 50), 1), 200));
+
+        $items = collect($paginator->items())->map(fn (Contract $c) => array_merge(
+            (new OrderResource($c))->toArray($request),
+            $trash->trashMeta($c->trashed_at, $c->deleted_by),
+        ))->values();
+
+        return $this->paginatedApiResponse($paginator, $items, trans('api.success'), ['retention_days' => \App\Services\Orders\TrashService::RETENTION_DAYS]);
+    }
+
+    /**
+     * POST /api/admin/orders/{id}/restore
+     */
+    public function restore(Request $request, int $id)
+    {
+        try {
+            $contract = app(\App\Services\Orders\TrashService::class)->restoreContract(
+                Contract::query()->findOrFail($id),
+                $request->user() instanceof \App\Models\Employee ? $request->user() : null,
+            );
+
+            return $this->apiResponse(['id' => $contract->id, 'uuid' => (string) $contract->uuid, 'is_delete' => false], 'تمت استعادة الطلب.');
+        } catch (InvalidArgumentException $e) {
+            return $this->errorMessage($e->getMessage(), 422);
+        }
+    }
+
+    /**
+     * GET /api/admin/orders/attention — «عليك الحين» (الأقدم أولاً).
+     */
+    public function attention(Request $request)
+    {
+        $limit = min(max((int) $request->input('limit', 50), 1), 200);
+
+        return $this->apiResponse(app(\App\Services\Orders\OrderAttentionService::class)->board($limit), trans('api.success'));
+    }
+
+    /**
+     * POST /api/admin/orders/{id}/stage/{received|draft_sent|notarized}
+     */
+    public function stage(Request $request, int $id, string $stage)
+    {
+        $employee = $request->user();
+        if (! $employee instanceof \App\Models\Employee) {
+            return $this->errorMessage(trans('api.unauthorized'), 403);
+        }
+
+        try {
+            $result = app(\App\Services\Orders\OrderStageService::class)
+                ->run($request, Contract::query()->where('is_delete', 0)->findOrFail($id), $stage, $employee);
+
+            return $this->apiResponse($result, trans('api.success'));
+        } catch (ValidationException $e) {
+            return response()->json([
+                'message' => collect($e->errors())->flatten()->first() ?? $e->getMessage(),
+                'errors' => $e->errors(),
+                'code' => 422,
+                'success' => false,
+            ], 422);
+        } catch (ModelNotFoundException) {
+            return $this->errorMessage(trans('api.contract_not_found'), 404);
+        }
+    }
+
+    /**
+     * PATCH /api/admin/orders/{id} — تعديل حقول صغيرة (هويات، أسماء، تواريخ، مبالغ) مع سجل قبل/بعد.
+     */
+    public function patchFields(Request $request, int $id)
+    {
+        try {
+            $result = app(\App\Services\Orders\AdminOrderPatchService::class)->patch(
+                Contract::query()->findOrFail($id),
+                $request->except(['_method']),
+                $request->user() instanceof \App\Models\Employee ? $request->user() : null,
+            );
+
+            return $this->apiResponse($result, $result['changed'] === [] ? 'لا توجد تغييرات.' : trans('api.success'));
+        } catch (ValidationException $e) {
+            return response()->json(['message' => collect($e->errors())->flatten()->first(), 'errors' => $e->errors(), 'code' => 422, 'success' => false], 422);
+        }
+    }
+
+    /** GET /api/admin/orders/editable-fields — الحقول المسموح تعديلها مضمّنة (PATCH). */
+    public function editableFields()
+    {
+        return $this->apiResponse(collect(\App\Services\Orders\AdminOrderPatchService::FIELDS)
+            ->map(fn ($f, $k) => ['key' => $k, 'label' => $f['label'], 'rules' => $f['rules']])->values(), trans('api.success'));
+    }
+
+    /**
+     * GET /api/admin/orders/{id}/ejar-copy[?format=text] — كتل بترتيب إدخال إيجار.
+     */
+    public function ejarCopy(Request $request, int $id)
+    {
+        $payload = app(\App\Services\Orders\EjarCopyService::class)->build(Contract::query()->findOrFail($id));
+
+        if ($request->query('format') === 'text') {
+            return response($payload['text'], 200, ['Content-Type' => 'text/plain; charset=UTF-8']);
+        }
+
+        return $this->apiResponse($payload, trans('api.success'));
+    }
+
+    /**
+     * GET /api/admin/orders/{id}/stages — المرحلة الحالية والتالية وحقولها (لأزرار المراحل في اللوحة).
+     */
+    public function stages(int $id)
+    {
+        $contract = Contract::query()->findOrFail($id);
+        $service = app(\App\Services\Orders\OrderStageService::class);
+        $key = \App\Models\ContractStatus::keyForId((int) $contract->contract_status_id);
+        $received = $contract->receivedContract()->exists();
+        $current = match (true) {
+            in_array($key, ['ejar_authenticated', 'completed'], true) => 'notarized',
+            $key === 'whatsapp_draft' => 'draft_sent',
+            $received => 'received',
+            default => null,
+        };
+        $next = $current === null ? 'received' : \App\Services\Orders\OrderStageService::NEXT[$current];
+
+        return $this->apiResponse([
+            'current_stage' => $current,
+            'next_stage' => $next,
+            'next_stage_label' => $next ? \App\Services\Orders\OrderStageService::LABELS[$next] : null,
+            'next_stage_required_fields' => $service->requiredFields($next),
+            'stages' => collect(\App\Services\Orders\OrderStageService::STAGES)->map(fn ($s) => [
+                'key' => $s, 'label' => \App\Services\Orders\OrderStageService::LABELS[$s],
+                'done' => $current !== null && array_search($s, \App\Services\Orders\OrderStageService::STAGES, true) <= array_search($current, \App\Services\Orders\OrderStageService::STAGES, true),
+            ])->values(),
+            'customer_phone' => $service->customerPhone($contract),
+        ], trans('api.success'));
+    }
+
+    /**
+     * POST /api/admin/orders/{id}/notify { kind: data_missing|status_changed, message?, step? }
+     */
+    public function notifyCustomer(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'kind' => ['required', 'in:data_missing,status_changed'],
+            'message' => ['nullable', 'string', 'max:1000'],
+            'step' => ['nullable', 'integer', 'min:1', 'max:7'],
+        ]);
+
+        $contract = Contract::query()->findOrFail($id);
+        $customers = app(\App\Services\CustomerNotificationService::class);
+        $offer = $validated['kind'] === 'data_missing'
+            ? $customers->dataMissing($contract, $validated['message'] ?? null, isset($validated['step']) ? (int) $validated['step'] : null)
+            : $customers->notify(
+                $contract->user ?? throw new InvalidArgumentException('لا يوجد عميل مرتبط بالطلب.'),
+                \App\Services\CustomerNotificationService::KIND_STATUS_CHANGED,
+                'تحديث حالة طلبك',
+                'طلبك رقم '.$contract->uuid.': '.(\App\Support\ContractFrontendStatus::for($contract)['status_label'] ?? ''),
+                [],
+                $contract,
+                dedupe: false,
+            );
+
+        app(\App\Services\Orders\OrderFlowService::class)->activity(
+            $contract, 'notification_sent', $request->user() instanceof \App\Models\Employee ? $request->user() : null,
+            null, ['kind' => $validated['kind'], 'step' => $validated['step'] ?? null], 'employee', $validated['message'] ?? null,
+        );
+
+        return $this->apiResponse([
+            'stored' => $offer !== null,
+            'notification_id' => $offer?->id,
+            'notifications_sent' => $customers->sentForContract($contract),
+        ], trans('api.success'));
+    }
+
     public function returnOrders(Request $request)
     {
         try {
@@ -306,15 +495,15 @@ class OrderController extends Controller
                 ]);
             }
 
-            DB::transaction(function () use ($contract) {
-                if (! empty($contract->uuid)) {
-                    Payment::where('contract_uuid', $contract->uuid)->delete();
-                }
+            // دفعة (د) — ب12: نقل للسلة (استعادة خلال 30 يوماً) بدل الحذف النهائي، والدفعات لا تُحذف.
+            $contract = app(\App\Services\Orders\TrashService::class)->trashContract($contract, $actor);
 
-                $contract->delete();
-            });
-
-            return $this->apiResponse(null, trans('api.success'), true, 200);
+            return $this->apiResponse([
+                'id' => $contract->id,
+                'uuid' => (string) $contract->uuid,
+                'message' => 'نُقل الطلب إلى السلة — يمكنك التراجع خلال 30 يوماً.',
+                ...app(\App\Services\Orders\TrashService::class)->trashMeta($contract->trashed_at, $contract->deleted_by),
+            ], trans('api.success'), true, 200);
         } catch (ModelNotFoundException $e) {
             return $this->apiResponse(null, trans('api.contract_not_found'), false, 404);
         } catch (\Throwable $e) {

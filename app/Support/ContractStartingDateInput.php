@@ -105,4 +105,41 @@ final class ContractStartingDateInput
 
         return $errors;
     }
+
+    /**
+     * متابعة دفعة (د) — QA: صيغة التخزين: ميلادي `YYYY-MM-DD`، هجري `DD-MM-YYYY` (يحدّدها type_contract_starting_date).
+     * للعرض/النسخ نرجع القيمتين بصيغة ثابتة: gregorian = YYYY-MM-DD، hijri = DD-MM-YYYY (أم القرى).
+     *
+     * @return array{contract_starting_date_gregorian: string|null, contract_starting_date_hijri: string|null}
+     */
+    public static function bothCalendars(?string $stored, ?string $type): array
+    {
+        $none = ['contract_starting_date_gregorian' => null, 'contract_starting_date_hijri' => null];
+        $raw = trim((string) $stored);
+        if ($raw === '') {
+            return $none;
+        }
+
+        try {
+            $hijri = HijriDate::parseStored($raw);
+            if ($hijri !== null && ($type === 'hijri' || $type === null || $type === '')) {
+                [$y, $m, $d] = $hijri;
+
+                return [
+                    'contract_starting_date_gregorian' => HijriDate::toGregorian($y, $m, $d)->format('Y-m-d'),
+                    'contract_starting_date_hijri' => sprintf('%02d-%02d-%04d', $d, $m, $y),
+                ];
+            }
+
+            $greg = \Illuminate\Support\Carbon::parse($raw);
+            [$hy, $hm, $hd] = HijriDate::fromGregorian($greg);
+
+            return [
+                'contract_starting_date_gregorian' => $greg->format('Y-m-d'),
+                'contract_starting_date_hijri' => sprintf('%02d-%02d-%04d', $hd, $hm, $hy),
+            ];
+        } catch (\Throwable) {
+            return $none;
+        }
+    }
 }

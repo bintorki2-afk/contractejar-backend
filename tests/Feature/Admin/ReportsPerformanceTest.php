@@ -89,8 +89,12 @@ class ReportsPerformanceTest extends TestCase
             'documented_count' => 2,
             'working_count' => 2,
             'active_count' => 2,
-            'canceled_count' => 1,
-            'refunded_count' => 2,
+            // دفعة (د) — ب6: «ملغى» = حالة cancelled لطلب غير محذوف؛ الطلب المحذوف لا يُعد إلغاءً.
+            'canceled_count' => 0,
+            // متابعة دفعة (د): «مسترجعة» = حالة مسترجع أو استرجاع Moyasar؛ طلبات الاسترجاع المؤكدة القديمة منفصلة.
+            'refunded_count' => 0,
+            'refunded_orders' => 0,
+            'refund_requests_confirmed' => 2,
             'revenue' => self::HOUSING_PAYMENT + self::COMMERCIAL_PAYMENT,
             'paid' => 2,
             'delayed_count' => 0,
@@ -111,8 +115,8 @@ class ReportsPerformanceTest extends TestCase
         $this->assertSame(67, $rates['تحويل المسودة إلى دفع']);
         $this->assertSame(75, $rates['نسبة استلام الطلبات']);
         $this->assertSame(50, $rates['نسبة التوثيق']);
-        $this->assertSame(20, $rates['نسبة الإلغاء']);
-        $this->assertSame(100, $rates['نسبة الاسترجاع']);
+        $this->assertSame(0, $rates['نسبة الإلغاء']); // ب6: ملغى ÷ البداية (لا طلب بحالة «ملغى» هنا)
+        $this->assertSame(0, $rates['نسبة الاسترجاع']); // متابعة (د): الطلبات المسترجعة فعلاً ÷ المدفوع (لا طلب مسترجع هنا)
 
         $this->assertSame([
             ['label' => 'سكني', 'value' => 3, 'revenue' => self::HOUSING_PAYMENT],
@@ -214,7 +218,8 @@ class ReportsPerformanceTest extends TestCase
         $this->assertSame([], $result['correction_errors']);
         $this->assertSame(0, $result['refund_requests_total']);
         $this->assertSame(0, $result['operational_metrics']['waiting_count']);
-        $this->assertSame(100, $result['operational_metrics']['sla_percent']);
+        // دفعة (د) — ب6: لا طلبات ⇒ null («—») بدل 100%.
+        $this->assertNull($result['operational_metrics']['sla_percent']);
         $this->assertSame([0, 0, 0, 0, 0], array_column($result['conversion_funnel'], 'value'));
 
         // A single-day window labels the bar with its weekday name.

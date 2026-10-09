@@ -126,6 +126,7 @@ class NotificationController extends Controller
                 'id' => $row->id,
                 'kind' => $row->kind,
                 'kind_label' => CustomerNotificationService::KIND_LABELS[$row->kind] ?? $row->kind,
+                'channel' => $row->channel ?? 'push',
                 'title' => $row->title,
                 'body' => $row->body,
                 'url' => $row->url,
@@ -193,6 +194,11 @@ class NotificationController extends Controller
                 'kind' => ['nullable', Rule::in([CustomerNotificationService::KIND_OFFER, CustomerNotificationService::KIND_ANNOUNCEMENT])],
                 'url' => ['nullable', 'string', 'max:500', 'url'],
                 'data' => ['nullable', 'array'],
+                // دفعة (د) — ب10: شريحة الإرسال الجماعي + كوبون اختياري بصلاحية.
+                'segment' => ['nullable', Rule::in(CustomerNotificationService::SEGMENTS)],
+                'city_id' => ['nullable', 'integer', Rule::requiredIf(fn () => $request->input('segment') === 'city')],
+                'coupon_code' => ['nullable', 'string', 'max:64'],
+                'valid_until' => ['nullable', 'date'],
             ]);
 
             $audience = (string) $validated['audience'];
@@ -201,6 +207,14 @@ class NotificationController extends Controller
             $kind = (string) ($validated['kind'] ?? CustomerNotificationService::KIND_OFFER);
             $url = isset($validated['url']) && $validated['url'] !== '' ? (string) $validated['url'] : null;
             $data = is_array($validated['data'] ?? null) ? $validated['data'] : [];
+            if (in_array($audience, ['user', 'custom_user'], true)) {
+                if (filled($validated['coupon_code'] ?? null)) {
+                    $data['coupon_code'] = (string) $validated['coupon_code'];
+                }
+                if (filled($validated['valid_until'] ?? null)) {
+                    $data['valid_until'] = \Illuminate\Support\Carbon::parse($validated['valid_until'])->toDateString();
+                }
+            }
 
             $result = match ($audience) {
                 'user', 'custom_user' => $this->sendToCustomer((int) $validated['user_id'], $kind, $title, $body, $url, $data),
@@ -210,7 +224,12 @@ class NotificationController extends Controller
                     $body,
                     $data
                 ),
-                'all_users' => $this->broadcastToCustomers($kind, $title, $body, $url, $data),
+                'all_users' => $this->broadcastToCustomers($kind, $title, $body, $url, $data, [
+                    'segment' => $validated['segment'] ?? 'all',
+                    'city_id' => $validated['city_id'] ?? null,
+                    'coupon_code' => $validated['coupon_code'] ?? null,
+                    'valid_until' => isset($validated['valid_until']) ? \Illuminate\Support\Carbon::parse($validated['valid_until'])->toDateString() : null,
+                ]),
                 'all_employees' => $this->firebase->sendToAllEmployees($title, $body, $data),
             };
 
@@ -273,14 +292,54 @@ class NotificationController extends Controller
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
-    private function broadcastToCustomers(string $kind, string $title, string $body, ?string $url, array $data): array
+    private function broadcastToCustomers(string $kind, string $title, string $body, ?string $url, array $data, array $options = []): array
     {
-        $outcome = $this->customers->broadcast($kind, $title, $body, $url, $data);
+        $outcome = $this->customers->broadcast($kind, $title, $body, $url, $data, $options);
 
         return array_merge($outcome['push'], [
             'stored' => $outcome['recipients'] > 0,
             'recipients' => $outcome['recipients'],
+            'segment' => $outcome['segment'] ?? 'all',
             'missing_token' => false,
         ]);
+    }
+
+    /**
+     * POST /api/admin/notifications/broadcast/preview — عدد المستلمين للشريحة + شكل الإشعار كما يظهر للعميل.
+     */
+    public function broadcastPreview(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'segment' => ['nullable', Rule::in(CustomerNotificationService::SEGMENTS)],
+                'city_id' => ['nullable', 'integer', Rule::requiredIf(fn () => $request->input('segment') === 'city')],
+                'title' => ['nullable', 'string', 'max:255'],
+                'body' => ['nullable', 'string', 'max:5000'],
+                'kind' => ['nullable', Rule::in([CustomerNotificationService::KIND_OFFER, CustomerNotificationService::KIND_ANNOUNCEMENT])],
+                'coupon_code' => ['nullable', 'string', 'max:64'],
+                'valid_until' => ['nullable', 'date'],
+            ]);
+
+            $segment = (string) ($validated['segment'] ?? 'all');
+
+            return $this->apiResponse([
+                'segment' => $segment,
+                'segments' => [
+                    ['value' => 'all', 'label' => 'كل العملاء'],
+                    ['value' => 'has_active_contract', 'label' => 'عملاء لديهم عقد مدفوع نشط'],
+                    ['value' => 'city', 'label' => 'عملاء مدينة محددة'],
+                ],
+                'recipients_count' => $this->customers->segmentCount(['segment' => $segment, 'city_id' => $validated['city_id'] ?? null]),
+                'preview' => [
+                    'kind' => $validated['kind'] ?? CustomerNotificationService::KIND_OFFER,
+                    'title' => $validated['title'] ?? '',
+                    'body' => $validated['body'] ?? '',
+                    'coupon_code' => $validated['coupon_code'] ?? null,
+                    'valid_until' => isset($validated['valid_until']) ? \Illuminate\Support\Carbon::parse($validated['valid_until'])->toDateString() : null,
+                ],
+            ], trans('api.success'));
+        } catch (ValidationException $e) {
+            return $this->errorResponse($e->errors(), 422);
+        }
     }
 }

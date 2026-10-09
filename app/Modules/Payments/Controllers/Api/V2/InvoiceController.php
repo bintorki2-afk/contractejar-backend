@@ -33,7 +33,7 @@ class InvoiceController extends Controller
         $paginator = Invoice::query()
             ->where('user_id', $userId)
             ->where(function ($q) {
-                $q->whereHas('contract', fn ($c) => $c->where('is_delete', 0))
+                $q->whereHas('contract', fn ($c) => $c->visibleToOwner())
                     ->orWhere('kind', Invoice::KIND_LESSOR_CHANGE);
             })
             ->with([
@@ -165,7 +165,7 @@ class InvoiceController extends Controller
     {
         return Contract::query()
             ->where('user_id', auth()->id())
-            ->where('is_delete', 0)
+            ->visibleToOwner()
             ->with(['user', 'contractStatus', 'refundableContract'])
             ->find($contractId);
     }

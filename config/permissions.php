@@ -7,6 +7,17 @@ return [
         'edit' => ['ar' => 'تعديل', 'en' => 'Edit'],
         'delete' => ['ar' => 'حذف', 'en' => 'Delete'],
         'retrieve' => ['ar' => 'استرجاع', 'en' => 'Retrieve'],
+        // دفعة (د) — ب8: استرجاع المبلغ عبر Moyasar (لقسم المدفوعات فقط — انظر section_only_actions).
+        'refund' => ['ar' => 'استرجاع المدفوعات', 'en' => 'Refund payments'],
+    ],
+
+    /**
+     * Actions that exist only for the listed sections (not a column for every section).
+     *
+     * @var array<string, list<string>>
+     */
+    'section_only_actions' => [
+        'refund' => ['payments'],
     ],
 
     'sections' => [
@@ -27,7 +38,7 @@ return [
         'employee_kpis' => ['ar' => 'مؤشرات الموظفين', 'en' => 'Employee KPIs'],
         'users' => ['ar' => 'العملاء', 'en' => 'Users / Clients'],
         'notifications' => ['ar' => 'الإشعارات', 'en' => 'Push Notifications'],
-        'payments' => ['ar' => 'سجلات المدفوعات', 'en' => 'Payment records'],
+        'payments' => ['ar' => 'المدفوعات', 'en' => 'Payments'],
         'contract_payments' => ['ar' => 'تحصيل الموظف', 'en' => 'Employee Contract Payments'],
         'regions' => ['ar' => 'المناطق', 'en' => 'Regions'],
         'cities' => ['ar' => 'المدن', 'en' => 'Cities'],

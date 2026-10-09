@@ -72,6 +72,10 @@ class OrderResource extends JsonResource
             'updated_at' => $this->updated_at?->format('Y-m-d H:i:s'),
             ...$this->returnAcceptanceFields(),
             ...$this->returnOrderFields(),
+            // دفعة (د) — ب2/ب11: مفتاح الحالة الثابت وعلامات التأخير.
+            'status_key' => \App\Models\ContractStatus::keyForId($this->contract_status_id ? (int) $this->contract_status_id : null),
+            'delay_flags' => is_array($this->delay_flags) ? $this->delay_flags : [],
+            'is_delayed' => is_array($this->delay_flags) && $this->delay_flags !== [],
         ];
     }
 

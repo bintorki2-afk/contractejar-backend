@@ -82,7 +82,8 @@ class ReportsService
         $paid = (clone $base)->where('is_completed', 1)->count();
         $draft = (clone $base)->where('is_draft', true)->count();
         $incomplete = (clone $base)->where('is_completed', 0)->count();
-        $returned = (clone $base)->where('contract_status_id', ContractStatus::RETURN_ID)->count();
+        // متابعة دفعة (د): «مسترجعة» = نفس التعريف في كل التقارير (حالة مسترجع أو استرجاع Moyasar ناجح).
+        $returned = $this->refundedOrdersQuery($base)->count();
         $canceled = $this->canceledContractsQuery($range, $contractType, $employeeId)->count();
 
         return new OrdersReportResource([
@@ -94,6 +95,7 @@ class ReportsService
                 'incomplete' => $incomplete,
                 'canceled' => $canceled,
                 'returned' => $returned,
+                'refunded_orders' => $returned,
                 'avg_completion_minutes' => $this->avgCompletionMinutes($range, $contractType, $employeeId),
             ]),
             'by_employee' => ReportEmployeeStatResource::collection(
@@ -283,22 +285,27 @@ class ReportsService
         $periodContracts = $this->ordersBaseQuery($range, $contractType, $employeeId);
 
         $customerIds = (clone $periodContracts)->pluck('user_id')->filter()->unique();
-        $total = $customerIds->count();
+        $active = $customerIds->count();
 
-        $newCustomers = 0;
-        if ($customerIds->isNotEmpty()) {
-            $firstContractAtByUser = Contract::query()
+        // دفعة (د) — ب6: إجمالي العملاء والعملاء الجدد بنفس نطاق صفحة العملاء (User::customers()).
+        $total = \App\Modules\Users\Models\User::query()->customers()->count();
+        $newQuery = \App\Modules\Users\Models\User::query()->customers();
+        if ($range !== null) {
+            $newQuery->whereBetween('users.created_at', [$range[0]->toDateTimeString(), $range[1]->toDateTimeString()]);
+        }
+        $newCustomers = $newQuery->count();
+
+        // العملاء الذين طلبوا في الفترة وكان أول طلب لهم قبلها = عائدون.
+        $returning = 0;
+        if ($customerIds->isNotEmpty() && $range !== null) {
+            $returning = Contract::query()
                 ->whereIn('user_id', $customerIds)
                 ->notDeleted()
                 ->groupBy('user_id')
                 ->selectRaw('user_id, MIN(created_at) as first_created_at')
-                ->pluck('first_created_at', 'user_id');
-
-            $newCustomers = $range === null
-                ? $firstContractAtByUser->count()
-                : $firstContractAtByUser->filter(
-                    fn ($firstCreatedAt) => Carbon::parse($firstCreatedAt)->between($range[0], $range[1])
-                )->count();
+                ->pluck('first_created_at', 'user_id')
+                ->filter(fn ($first) => Carbon::parse($first)->lt($range[0]))
+                ->count();
         }
 
         $incompleteCustomers = (clone $periodContracts)->where('is_completed', 0)->pluck('user_id')->filter()->unique()->count();
@@ -310,13 +317,14 @@ class ReportsService
             'kpis' => new CustomersKpisResource([
                 'total' => $total,
                 'new' => $newCustomers,
-                'returning' => max(0, $total - $newCustomers),
-                'avg_contracts_per_customer' => $total > 0 ? round($totalContracts / $total, 1) : 0,
+                'active' => $active,
+                'returning' => $returning,
+                'avg_contracts_per_customer' => $active > 0 ? round($totalContracts / $active, 1) : 0,
                 'incomplete' => $incompleteCustomers,
             ]),
             'segments' => ReportLabeledValueResource::collection([
                 ['label' => 'عملاء جدد', 'value' => $newCustomers],
-                ['label' => 'عملاء عائدون', 'value' => max(0, $total - $newCustomers)],
+                ['label' => 'عملاء عائدون', 'value' => $returning],
             ]),
             'top_customers' => ReportTopCustomerResource::collection($topCustomers),
         ]);
@@ -342,7 +350,8 @@ class ReportsService
         $documentedCount = $doneIds === [] ? 0 : (clone $base)->whereIn('contract_status_id', $doneIds)->count();
         $draftCount = $this->reachedDraftCount($range, $contractType, $employeeId, $doneIds);
         $receivedCount = (clone $base)->whereHas('receivedContract')->count();
-        $refundedCount = $this->refundedCount($range);
+        $refundRequestsConfirmed = $this->refundedCount($range);
+        $refundedCount = $this->refundedOrdersQuery($base)->count();
         $canceledCount = $this->canceledContractsQuery($range, $contractType, $employeeId)->count();
         $activeCount = (clone $base)
             ->when($notOpenIds !== [], fn ($q) => $q->where(function ($sq) use ($notOpenIds) {
@@ -375,6 +384,8 @@ class ReportsService
                 'active_count' => $activeCount,
                 'canceled_count' => $canceledCount,
                 'refunded_count' => $refundedCount,
+                'refunded_orders' => $refundedCount,
+                'refund_requests_confirmed' => $refundRequestsConfirmed,
                 'revenue' => $this->moneyValue($revenue),
                 'paid' => $paidCount,
                 'delayed_count' => $delayed,
@@ -384,6 +395,21 @@ class ReportsService
                 'count' => $leakageCount,
                 'percent' => $this->percentOf($leakageCount, $startedCount),
             ]),
+            // دفعة (د) — ب6: أرقام القمع الصريحة (التسرّب = البداية − المكتمل الدفع؛ مثال 16 − 3 = 13 = 81%).
+            'funnel_summary' => [
+                'started' => $startedCount,
+                'completed' => $paidCount,
+                'drop_off' => $leakageCount,
+                'drop_off_percent' => $this->percentOf($leakageCount, $startedCount),
+                'cancelled' => $canceledCount,
+                'cancellation_rate' => $this->percentOf($canceledCount, $startedCount),
+                'definitions' => [
+                    'started' => 'كل طلب بدأه العميل في الفترة (غير محذوف، أي خطوة)',
+                    'completed' => 'الطلبات المدفوعة (is_completed = 1)',
+                    'drop_off' => 'started − completed',
+                    'cancellation_rate' => 'cancelled ÷ started',
+                ],
+            ],
             'conversion_rates' => ReportLabeledValueResource::collection([
                 [
                     'label' => 'نسبة عدم الإكمال (تسرّب)',
@@ -407,7 +433,7 @@ class ReportsService
                 ],
                 [
                     'label' => 'نسبة الإلغاء',
-                    'value' => $this->percentOf($canceledCount, $totalCount + $canceledCount),
+                    'value' => $this->percentOf($canceledCount, $startedCount),
                     'tone' => 'red',
                 ],
                 [
@@ -476,7 +502,7 @@ class ReportsService
      */
     private function startedOrdersQuery(?array $range, ?string $contractType, ?int $employeeId)
     {
-        $query = Contract::query()->notDeleted();
+        $query = Contract::query()->notDeleted()->notSynthetic();
         $this->applyDateRange($query, 'created_at', $range);
 
         if ($contractType !== null) {
@@ -491,11 +517,29 @@ class ReportsService
     }
 
     /**
+     * طلبات مسترجعة: حالتها «مسترجع» أو لها استرجاع ناجح عبر Moyasar (ضمن نفس النطاق).
+     */
+    private function refundedOrdersQuery($base)
+    {
+        $refundedIds = ContractStatus::idsFor([ContractStatus::KEY_REFUNDED]) ?: [-1];
+        $hasRefunds = Schema::hasTable('refunds');
+
+        return (clone $base)->where(function ($q) use ($refundedIds, $hasRefunds) {
+            $q->whereIn('contract_status_id', $refundedIds);
+            if ($hasRefunds) {
+                $q->orWhereIn('uuid', \App\Models\Refund::query()->where('status', 'succeeded')->select('contract_uuid'));
+            }
+        });
+    }
+
+    /**
      * @param  array{0: Carbon, 1: Carbon}|null  $range
      */
     private function canceledContractsQuery(?array $range, ?string $contractType, ?int $employeeId)
     {
-        $query = Contract::query()->where('is_delete', 1);
+        // دفعة (د) — ب6: «ملغى» = حالة الطلب cancelled (لا الطلبات المحذوفة is_delete).
+        $query = Contract::query()->notDeleted()->notSynthetic()
+            ->whereIn('contract_status_id', ContractStatus::idsFor([ContractStatus::KEY_CANCELLED]) ?: [-1]);
         $this->applyDateRange($query, 'created_at', $range);
 
         if ($contractType !== null) {
@@ -525,7 +569,7 @@ class ReportsService
     {
         return ContractStatus::query()
             ->where(function ($q) {
-                $q->whereKey(ContractStatus::WAITING_SUPERVISOR_ID)
+                $q->whereKey(ContractStatus::idsFor([ContractStatus::KEY_WAITING_SUPERVISOR, ContractStatus::KEY_COMPLETED]) ?: [-1])
                     ->orWhere('name', 'مكتمل')
                     ->orWhere('name', 'like', '%بانتظار المشرف%');
             })
@@ -541,14 +585,14 @@ class ReportsService
     {
         $ids = $this->doneStatusIds();
 
-        $closed = ContractStatus::query()
-            ->where(function ($q) {
-                $q->whereKey(ContractStatus::RETURN_ID)
-                    ->orWhereIn('name', ['ملغى', 'مكتمل', 'مسترجع', 'استرجاع']);
-            })
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
-            ->all();
+        $closed = array_values(array_unique([
+            ...ContractStatus::idsFor([ContractStatus::KEY_REFUNDED, ContractStatus::KEY_CANCELLED, ContractStatus::KEY_COMPLETED]),
+            ...ContractStatus::query()
+                ->whereIn('name', ['ملغى', 'مكتمل', 'مسترجع', 'استرجاع'])
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all(),
+        ]));
 
         return array_values(array_unique([...$ids, ...$closed]));
     }
@@ -720,6 +764,25 @@ class ReportsService
      * @param  array{0: Carbon, 1: Carbon}|null  $range
      * @return array{total_sales: float, payments_count: int, discounts_total: float, discounted_orders_count: int, refunds_total: float, net_revenue: float}
      */
+    /**
+     * متابعة دفعة (د) — QA: تعريف «الإيراد» الوحيد لكل الشاشات (الأداء/المبيعات/نظرة عامة):
+     * مجموع الدفعات الناجحة بتاريخ الدفع ضمن الفترة (أساس نقدي)، والصافي بعد الاسترجاع.
+     *
+     * @param  array{0: Carbon, 1: Carbon}|null  $range
+     * @return array{total_sales: float|int, payments_count: int, refunds_total: float|int, net_revenue: float|int}
+     */
+    public function revenueSummary(?array $range): array
+    {
+        $t = $this->salesTotals($range, null, null);
+
+        return [
+            'total_sales' => $t['total_sales'],
+            'payments_count' => $t['payments_count'],
+            'refunds_total' => $t['refunds_total'],
+            'net_revenue' => $t['net_revenue'],
+        ];
+    }
+
     private function salesTotals(?array $range, ?string $contractType, ?int $employeeId): array
     {
         $paymentsQuery = Payment::query()->successful();
@@ -1806,7 +1869,8 @@ class ReportsService
 
         $received = count($seconds);
         $avgWait = $received > 0 ? (int) round(array_sum($seconds) / $received) : 0;
-        $slaPercent = $received > 0 ? (int) round(($slaMet / $received) * 100) : 100;
+        // دفعة (د) — ب6: لا طلبات مستلمة ⇒ null («—») بدل 100%.
+        $slaPercent = $received > 0 ? (int) round(($slaMet / $received) * 100) : null;
 
         $waiting = $this->waitingQueueSeconds($range, $contractType, $employeeId);
 

@@ -91,11 +91,38 @@ class LessorChangeAdminController extends Controller
         return $this->apiResponse($this->adminRow($row->fresh(['user', 'employee']), true), trans('api.updated_successfully'));
     }
 
-    public function destroy(int $id)
+    public function destroy(Request $request, int $id)
     {
-        LessorChangeRequest::query()->findOrFail($id)->update(['is_delete' => true]);
+        // دفعة (د) — ب12: نقل للسلة (استعادة خلال 30 يوماً).
+        $trash = app(\App\Services\Orders\TrashService::class);
+        $row = $trash->trashLessorChange(LessorChangeRequest::query()->findOrFail($id), $request->user() instanceof \App\Models\Employee ? $request->user() : null);
 
-        return $this->apiResponse(null, trans('api.deleted_successfully'));
+        return $this->apiResponse(array_merge(['id' => $row->id, 'uuid' => (string) $row->uuid], $trash->trashMeta($row->trashed_at, $row->deleted_by)), trans('api.deleted_successfully'));
+    }
+
+    public function trash(Request $request)
+    {
+        $trash = app(\App\Services\Orders\TrashService::class);
+        $rows = LessorChangeRequest::query()->with(['user:id,name,mobile,contact_mobile', 'employee:id,name'])
+            ->where('is_delete', true)->whereNotNull('trashed_at')->latest('trashed_at')
+            ->paginate((int) $request->input('per_page', 50));
+        $rows->getCollection()->transform(fn (LessorChangeRequest $r) => array_merge($this->adminRow($r), $trash->trashMeta($r->trashed_at, $r->deleted_by)));
+
+        return $this->apiResponse([
+            'items' => $rows->items(),
+            'meta' => ['current_page' => $rows->currentPage(), 'last_page' => $rows->lastPage(), 'per_page' => $rows->perPage(), 'total' => $rows->total(), 'retention_days' => \App\Services\Orders\TrashService::RETENTION_DAYS],
+        ], trans('api.success'));
+    }
+
+    public function restore(Request $request, int $id)
+    {
+        try {
+            $row = app(\App\Services\Orders\TrashService::class)->restoreLessorChange(LessorChangeRequest::query()->findOrFail($id), $request->user() instanceof \App\Models\Employee ? $request->user() : null);
+
+            return $this->apiResponse(['id' => $row->id, 'is_delete' => false], 'تمت الاستعادة.');
+        } catch (\InvalidArgumentException $e) {
+            return $this->errorMessage($e->getMessage(), 422);
+        }
     }
 
     private function adminRow(LessorChangeRequest $r, bool $withImages = false): array

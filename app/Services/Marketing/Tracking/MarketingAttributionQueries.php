@@ -54,7 +54,10 @@ class MarketingAttributionQueries
                 }
             })
             ->where('contracts.is_delete', 0)
-            ->where('contracts.step', '>=', 3);
+            ->where('contracts.step', '>=', Contract::CUSTOMER_VISIBLE_MIN_STEP); // دفعة (د) — ب5: نفس قاعدة الطلب
+        if (\App\Support\SchemaCache::hasColumn('contracts', 'is_synthetic')) {
+            $query->where(fn ($q) => $q->whereNull('contracts.is_synthetic')->orWhere('contracts.is_synthetic', false));
+        }
 
         $this->joinUsersForAttribution($query);
         $this->applyDateRange($query, 'contracts.created_at', $range);

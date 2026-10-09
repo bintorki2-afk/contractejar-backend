@@ -29,6 +29,12 @@ class ContractFrontendStatus
         'ارسال مسودة العقد لكم عبر واتساب' => 'whatsapp_draft',
         'توثيق العقد في إيجار' => 'ejar_authenticated',
         'توثيق العقد في ايجار' => 'ejar_authenticated',
+        'مسترجع' => 'refunded',
+        'مُسترجع' => 'refunded',
+        'مسترجعة' => 'refunded',
+        'استرجاع' => 'refunded',
+        'تم الاسترجاع' => 'refunded',
+        'بانتظار المشرف' => 'waiting_supervisor',
     ];
 
     /**
@@ -79,8 +85,20 @@ class ContractFrontendStatus
             description: $row?->description,
             clientExplanation: $row?->client_explanation,
             defaultLabel: 'قيد المراجعة',
-            defaultKey: 'under_review'
+            defaultKey: 'under_review',
+            explicitKey: $row?->getAttribute('status_key'),
         );
+
+        // متابعة دفعة (د): طلب مدفوع نُقل للسلة من اللوحة ⇒ يظهر لصاحبه «ملغي».
+        if ((int) $contract->is_delete === 1 && filled($contract->trashed_at ?? null) && (bool) $contract->is_completed) {
+            $payload['status'] = 'cancelled';
+            $payload['status_label'] = 'ملغي';
+            $payload['status_color'] = '#EF4444';
+            $payload['status_client_explanation'] = 'تم إلغاء هذا الطلب — للاستفسار عن المبلغ تواصل معنا.';
+            $payload['status_description'] = $payload['status_client_explanation'];
+
+            return $payload;
+        }
 
         // الطلب مدفوع (is_completed يُضبط فقط بعد دفعة ناجحة) لكن الموظف لم يغيّر حالته بعد
         // من «جديد» ⇒ يظهر للعميل «تم الدفع» متسقاً مع journey والإشعارات. (WEBSITE-2)
@@ -156,6 +174,29 @@ class ContractFrontendStatus
         ];
     }
 
+    /** المفتاح الثابت لاسم حالة معروف، أو null. */
+    public static function knownKeyFromName(?string $name): ?string
+    {
+        if ($name === null || trim($name) === '') {
+            return null;
+        }
+
+        return self::NAME_TO_KEY[trim($name)] ?? null;
+    }
+
+    /**
+     * مفتاح حالة صف من جدول الحالات: العمود status_key أولاً ثم الاسم.
+     */
+    public static function keyForStatusRow(?\App\Models\ContractStatus $row): ?string
+    {
+        if ($row === null) {
+            return null;
+        }
+        $explicit = $row->getAttribute('status_key');
+
+        return filled($explicit) ? (string) $explicit : self::knownKeyFromName($row->name);
+    }
+
     public static function keyFromName(?string $name, string $fallback = 'unknown'): string
     {
         if ($name === null || trim($name) === '') {
@@ -195,10 +236,13 @@ class ContractFrontendStatus
         ?string $description,
         ?string $clientExplanation,
         string $defaultLabel,
-        string $defaultKey
+        string $defaultKey,
+        ?string $explicitKey = null,
     ): array {
         $label = $name !== null && trim($name) !== '' ? trim($name) : $defaultLabel;
-        $key = self::keyFromName($name, $id ? "{$statusType}_{$id}" : $defaultKey);
+        $key = filled($explicitKey)
+            ? (string) $explicitKey
+            : self::keyFromName($name, $id ? "{$statusType}_{$id}" : $defaultKey);
         $client = filled($clientExplanation) ? trim((string) $clientExplanation) : null;
 
         // Tracking UI prefers client explanation; fall back to internal description.

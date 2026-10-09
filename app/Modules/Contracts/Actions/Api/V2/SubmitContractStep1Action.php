@@ -24,7 +24,6 @@ class SubmitContractStep1Action
         $validated = $request->validated();
 
         $step1Data = [
-            'app_or_web' => 'app',
             'is_multiple_trusteeship_deed_copy' => array_key_exists('is_multiple_trusteeship_deed_copy', $validated)
                 ? (bool) $validated['is_multiple_trusteeship_deed_copy']
                 : (bool) $contract->is_multiple_trusteeship_deed_copy,

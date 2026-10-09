@@ -95,7 +95,72 @@ class AdminContractDetailResource extends JsonResource
             'comments_count' => $c->relationLoaded('comments') ? $c->comments->count() : 0,
             'status_timeline' => app(ContractStatusHistoryService::class)->timeline($c),
             'invoice' => $this->invoiceSummary($c),
+            // دفعة (د) — ب9: سجل النشاط (من/ماذا/متى + قبل/بعد).
+            'activities' => app(\App\Services\Orders\ContractActivityLogger::class)->forAdmin($c),
+            // دفعة (د) — ب10: الإشعارات المرسلة + الخصم المطبّق.
+            'notifications_sent' => app(\App\Services\CustomerNotificationService::class)->sentForContract($c),
+            'applied_discount' => \App\Services\Admin\UserCustomDiscountService::appliedFor($c),
+            // ب8: الدفعات (لزر «استرجاع») وسجل الاسترجاعات.
+            'payments' => \App\Services\Payments\PaymentRefundService::paymentsFor($c),
+            'refunds' => \App\Services\Payments\PaymentRefundService::refundsFor($c),
+            'refunded_amount' => \App\Services\Payments\PaymentRefundService::refundedTotalFor($c),
+            // ب11: علامات التأخير (محسوبة الآن، لا تنتظر المجدول).
+            'delay_flags' => app(\App\Services\Orders\OrderAttentionService::class)->flagsFor($c),
+            'status_key' => \App\Models\ContractStatus::keyForId($c->contract_status_id ? (int) $c->contract_status_id : null),
+            // متابعة دفعة (د): الموظف المستلم (يملأ «المستلم» في رأس التفاصيل).
+            ...$this->receiverFields($c, $full),
+            // متابعة دفعة (د) — QA: نتيجة الخادم للعدادات (العداد المشترك × أشهر العقد) وأشهر المدة، وتاريخ البداية بالتقويمين.
+            ...$this->durationAndMeterFields($c, $full),
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $full
+     * @return array<string, mixed>
+     */
+    private function durationAndMeterFields($c, array $full): array
+    {
+        $months = \App\Support\DocFee::contractMonths($c);
+        $row = $c->relationLoaded('contractTermInYears') ? $c->contractTermInYears : $c->contractTermInYears()->first();
+        $term = null;
+        if ($row !== null) {
+            $term = $row->toArray();
+            $term['months'] = $row->months !== null ? (int) $row->months : \App\Support\DocFee::monthsFromContractPeriod($c);
+        }
+
+        $meterFees = \App\Support\MeterFees::forContract($c);
+
+        return [
+            'contract_term_in_years' => $term ?? ($full['contract_term_in_years'] ?? null),
+            'contract_months' => $months,
+            'meter_fees' => $meterFees,
+            'shared_meters' => $meterFees['shared_meters'] ?? null,
+            ...\App\Support\ContractStartingDateInput::bothCalendars($c->contract_starting_date, $c->type_contract_starting_date),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $full
+     * @return array<string, mixed>
+     */
+    private function receiverFields($c, array $full): array
+    {
+        $received = $c->relationLoaded('receivedContract') ? $c->receivedContract : $c->receivedContract()->with('employee')->first();
+        $received?->loadMissing('employee');
+        $name = $received?->employee?->name;
+
+        $receivedArray = $full['received_contract'] ?? null;
+        if (is_array($receivedArray)) {
+            $receivedArray['employee_name'] = $name;
+        } elseif ($received !== null) {
+            $receivedArray = array_merge($received->toArray(), ['employee_name' => $name]);
+        }
+
+        return [
+            'employee_id' => $received?->employee_id,
+            'employee_name' => $name,
+            'received_contract' => $receivedArray,
+        ];
     }
 
     /**

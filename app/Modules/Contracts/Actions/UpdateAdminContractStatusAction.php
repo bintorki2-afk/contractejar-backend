@@ -81,7 +81,9 @@ class UpdateAdminContractStatusAction
         $statusId = (int) $request->contract_status_id;
         $status = ContractStatus::query()->find($statusId);
 
-        if ($statusId === ContractStatus::RETURN_ID) {
+        // دفعة (د): «مسترجع» تُحدَّد بالمفتاح refunded؛ «قيد المراجعة» لم تعد تتطلب طلب استرجاع.
+        $refundedId = ContractStatus::refundedId();
+        if ($refundedId !== null && $statusId === $refundedId && (int) $contract->contract_status_id !== $refundedId) {
             $this->refundable->assertRefundableRequestExists($contract);
         }
 
@@ -151,12 +153,28 @@ class UpdateAdminContractStatusAction
         array $override = ['forced' => false, 'forced_by' => null]
     ): void {
         $extra = $this->caseService->extract($request, $contract, $statusId, $statusName);
+        $beforeId = $contract->{$statusColumn};
 
         $contract->update(array_merge(
             [$statusColumn => $statusId],
             $extra
         ));
         $contract->load($this->orders->contractDetailRelations());
+
+        // دفعة (د) — ب9: سجل النشاط.
+        if ((int) $beforeId !== $statusId) {
+            $employee = $request->user() instanceof \App\Models\Employee ? $request->user() : null;
+            $isCancel = $statusColumn === 'contract_status_id' && ContractStatus::keyForId($statusId) === ContractStatus::KEY_CANCELLED;
+            app(\App\Services\Orders\OrderFlowService::class)->activity(
+                $contract,
+                $isCancel ? 'cancelled' : 'status_changed',
+                $employee,
+                [$statusColumn => $beforeId],
+                array_merge([$statusColumn => $statusId], array_map(static fn ($v) => is_scalar($v) || $v === null ? $v : '[ملف]', $extra)),
+                'employee',
+                $override['forced'] ? 'تجاوز قاعدة المسودة (force)' : null,
+            );
+        }
 
         try {
             $meta = $this->caseService->historyMeta($statusId, $statusName, $extra) ?? [];

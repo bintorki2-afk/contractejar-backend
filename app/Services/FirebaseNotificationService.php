@@ -68,17 +68,8 @@ class FirebaseNotificationService
 
         $this->sendToAllEmployees($title, $body, $data);
 
-        if ((int) $contract->user_id > 0) {
-            try {
-                $this->sendToUser((int) $contract->user_id, $title, $body, $data);
-            } catch (\Throwable $e) {
-                Log::warning('Firebase notify contract owner on receive failed', [
-                    'contract_id' => $contract->id,
-                    'user_id' => $contract->user_id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
+        // دفعة (د) — ب10: إشعار العميل بالاستلام يمر عبر CustomerNotificationService (صندوق + Push + سجل)
+        // من OrderFlowService::receive — لا push مباشر مكرر هنا.
     }
 
     /**
@@ -254,7 +245,7 @@ class FirebaseNotificationService
 
         try {
             $this->sendToTopic((string) config('services.firebase.users_topic', 'users'), $title, $body, $payload);
-            $topicSent = true;
+            $topicSent = $this->isConfigured(); // متابعة (د): بلا إعدادات لا يُرسل فعلاً
         } catch (\Throwable $e) {
             Log::warning('Firebase users topic failed', ['error' => $e->getMessage()]);
         }
@@ -285,7 +276,7 @@ class FirebaseNotificationService
 
         try {
             $this->sendToTopic((string) config('services.firebase.employees_topic', 'employees'), $title, $body, $payload);
-            $topicSent = true;
+            $topicSent = $this->isConfigured(); // متابعة (د): بلا إعدادات لا يُرسل فعلاً
         } catch (\Throwable $e) {
             Log::warning('Firebase employees topic failed', ['error' => $e->getMessage()]);
         }

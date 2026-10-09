@@ -17,7 +17,24 @@ trait HasContractScopes
      */
     public function scopeOwnedBy($query, int $userId)
     {
-        return $query->where('user_id', $userId)->notDeleted();
+        return $query->where('user_id', $userId)->visibleToOwner();
+    }
+
+    /**
+     * متابعة دفعة (د) — القرار الآمن: طلب مدفوع نُقل للسلة من اللوحة يبقى ظاهراً لصاحبه (بحالة «ملغي» مع فاتورته)؛
+     * غيره من المحذوفات لا يظهر.
+     */
+    public function scopeVisibleToOwner($query)
+    {
+        $table = $query->getModel()->getTable();
+        $hasTrash = \App\Support\SchemaCache::hasColumn('contracts', 'trashed_at');
+
+        return $query->where(function ($q) use ($table, $hasTrash) {
+            $q->where($table.'.is_delete', 0);
+            if ($hasTrash) {
+                $q->orWhere(fn ($t) => $t->where($table.'.is_delete', 1)->whereNotNull($table.'.trashed_at')->where($table.'.is_completed', 1));
+            }
+        });
     }
 
     public static function requireApiUserId(): int
@@ -66,12 +83,30 @@ trait HasContractScopes
     }
 
     /**
-     * Contracts that reached at least the given step (default: 3).
-     * Used by admin order lists and API v2 contract lists.
+     * قاعدة الظهور الموحّدة (دفعة د — ب5): «طلب» = بلغ الخطوة 4 فأكثر (صك + عنوان + مالك مُرسلة).
+     * نفس الحد للعميل (visibleToCustomer) ولقوائم اللوحة وعدّاداتها وملف العميل في اللوحة.
+     * ما دون ذلك «مسودة غير مكتملة» (scopeIncompleteDraft) — تبويب «غير مكتمل» فقط. انظر ARCHITECTURE.md.
      */
-    public function scopeReachedAdminOrderStep($query, int $minStep = 3)
+    public function scopeReachedAdminOrderStep($query, ?int $minStep = null)
     {
-        return $query->where('step', '>=', $minStep);
+        return $query->where('step', '>=', $minStep ?? self::CUSTOMER_VISIBLE_MIN_STEP)->notSynthetic();
+    }
+
+    /** «طلب» ظاهر في اللوحة: غير محذوف + بلغ الخطوة 4 (وليس بيانات فحص اصطناعية). */
+    public function scopeAdminListed($query)
+    {
+        return $query->where('is_delete', 0)->where('step', '>=', self::CUSTOMER_VISIBLE_MIN_STEP)->notSynthetic();
+    }
+
+    /** ب19: استبعاد طلبات الفحص اليومي الاصطناعية. */
+    public function scopeNotSynthetic($query)
+    {
+        if (! \App\Support\SchemaCache::hasColumn('contracts', 'is_synthetic')) {
+            return $query;
+        }
+        $table = $query->getModel()->getTable();
+
+        return $query->where(fn ($q) => $q->whereNull($table.'.is_synthetic')->orWhere($table.'.is_synthetic', false));
     }
 
     /**
@@ -84,6 +119,18 @@ trait HasContractScopes
     public function scopeVisibleToCustomer($query)
     {
         return $query->where('step', '>=', self::CUSTOMER_VISIBLE_MIN_STEP);
+    }
+
+    /**
+     * «مسودة غير مكتملة» (دفعة د — ب5): لم يتجاوز العميل الخطوة 3 ولم يدفع.
+     * تظهر في اللوحة تحت تبويب «غير مكتمل» فقط، ولا تظهر للعميل ولا في عدّادات «جميع الطلبات».
+     */
+    public function scopeIncompleteDraft($query)
+    {
+        return $query->where('is_delete', 0)
+            ->where('step', '<', self::CUSTOMER_VISIBLE_MIN_STEP)
+            ->where('is_completed', 0)
+            ->notSynthetic();
     }
 
     public function scopeIncomplete($query)

@@ -59,6 +59,12 @@ class ContractCommentController extends Controller
             ]);
             $comment->load('employee');
 
+            // دفعة (د) — ب9: سجل النشاط.
+            app(\App\Services\Orders\OrderFlowService::class)->activity(
+                Contract::query()->find($contractId), 'note_added', $employee, null, ['comment_id' => $comment->id], 'employee',
+                mb_strimwidth((string) $comment->comment, 0, 300, '…'),
+            );
+
             return $this->apiResponse(
                 new ContractCommentResource($comment),
                 trans('api.created_successfully'),

@@ -73,7 +73,7 @@ class BatchPricingMetersLessorChangeTest extends TestCase
             ->assertJsonPath('data.housing.first_year', 249)
             ->assertJsonPath('data.housing.extra_year', 150)
             ->assertJsonPath('data.commercial.first_year', 349)
-            ->assertJsonPath('data.commercial.extra_year', 250)
+            ->assertJsonPath('data.commercial.extra_year', 450) // دفعة (د): قرار المالك 450
             ->assertJsonPath('data.document_surcharge.fee', 75)
             ->assertJsonPath('data.meter_transfer_fee.housing.electricity', 15)
             ->assertJsonPath('data.meter_transfer_fee.commercial.water', 25)
@@ -87,13 +87,13 @@ class BatchPricingMetersLessorChangeTest extends TestCase
             ->assertJsonPath('data.document_surcharge.fee', 90);
     }
 
-    public function test_fee_rule_year_or_part_thereof_and_commercial_extra_year_is_250(): void
+    public function test_fee_rule_year_or_part_thereof_and_commercial_extra_year_is_450(): void
     {
         $this->assertSame(249.0, DocFee::amount(12, 'housing'));
         $this->assertSame(399.0, DocFee::amount(13, 'housing'));   // سنة ويوم → سنتين
         $this->assertSame(349.0, DocFee::amount(6, 'commercial'));
-        $this->assertSame(599.0, DocFee::amount(24, 'commercial'));
-        $this->assertSame(849.0, DocFee::amount(25, 'commercial'));
+        $this->assertSame(799.0, DocFee::amount(24, 'commercial'));   // 349 + 450
+        $this->assertSame(1249.0, DocFee::amount(25, 'commercial'));  // 349 + 2 × 450
     }
 
     public function test_document_surcharge_applies_once_for_special_deed_types(): void

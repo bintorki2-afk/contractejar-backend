@@ -271,6 +271,7 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             'meter_fees_total' => $meterFees['meter_fees_total'],
             'electricity_meter_fee' => $meterFees['electricity_meter_fee'],
             'water_meter_fee' => $meterFees['water_meter_fee'],
+            ...\App\Support\MeterFees::countFields($meterFees),
             'doc_fee' => $docFeeSummary['doc_fee'] ?? null,
             'doc_fee_lines' => $docFeeSummary['doc_fee_lines'] ?? [],
             // Single-source money breakdown (fee + proportional VAT + meter fees).
@@ -284,6 +285,8 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             'coupon' => $pricing['coupon'],
             'total' => $pricing['total'],
             'saved_property' => \App\Support\SavedPropertyState::forContract($contract),
+            'refund' => $refund = \App\Services\Payments\PaymentRefundService::summaryFor($contract),
+            'refunded_amount' => $refund['amount'],
             'payment_success_url' => $redirectUrls['success'],
             'payment_error_url' => $redirectUrls['error'],
         ]);
@@ -641,6 +644,9 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             'vat_rate' => $pricing['vat_rate'] ?? 0.0,
             'vat_label' => $pricing['vat_label'] ?? \App\Support\ContractPricing::VAT_FREE_LABEL,
             'meter_fees_total' => $pricing['meter_fees_total'] ?? 0.0,
+            'electricity_meter_fee' => $pricing['meter_fees']['electricity_meter_fee'] ?? 0.0,
+            'water_meter_fee' => $pricing['meter_fees']['water_meter_fee'] ?? 0.0,
+            ...\App\Support\MeterFees::countFields($pricing['meter_fees'] ?? []),
             'coupon' => $pricing['coupon'] ?? 0.0,
             'total' => $amount,
             'payment_success_url' => $redirectUrls['success'],
@@ -1236,7 +1242,7 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             return;
         }
 
-        Payment::create([
+        Payment::create(array_merge([
             'name' => $this->resolvePaymentName(
                 $metadata['name'] ?? $request->input('metadata.name'),
                 $contractUuid
@@ -1248,7 +1254,75 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             'payment_brand' => $this->resolvePaymentBrand($source),
             'status' => $status,
             'payment_date' => now(),
-        ]);
+        ], $this->gatewayIdColumn($verified['id'] ?? null)));
+    }
+
+    /**
+     * دفعة (د) — ب8: حفظ معرّف دفعة Moyasar (لازم للاسترجاع).
+     *
+     * @return array<string, string>
+     */
+    private function gatewayIdColumn(mixed $gatewayId): array
+    {
+        if (! is_string($gatewayId) || trim($gatewayId) === '' || ! \App\Support\SchemaCache::hasColumn('payments', 'gateway_payment_id')) {
+            return [];
+        }
+
+        return ['gateway_payment_id' => trim($gatewayId)];
+    }
+
+    /**
+     * دفعة (د) — ب8: استرجاع مبلغ دفعة عبر Moyasar — POST /v1/payments/{id}/refund (المبلغ بالهللات؛ كامل عند عدم التحديد).
+     * في وضع الاختبار (بلا مفتاح) يُحاكى النجاح.
+     *
+     * @return array{success: bool, refund_id: string|null, gateway_payment_id: string|null, message: string|null, data: array<string, mixed>|null}
+     */
+    public function refund(Payment $payment, ?float $amount = null): array
+    {
+        $gatewayId = (string) ($payment->gateway_payment_id ?? '');
+
+        if ($this->testMode) {
+            return [
+                'success' => true,
+                'refund_id' => 'sim_refund_'.$payment->id.'_'.now()->timestamp,
+                'gateway_payment_id' => $gatewayId !== '' ? $gatewayId : null,
+                'message' => null,
+                'data' => ['simulated' => true, 'amount' => $amount !== null ? $this->toMinorUnits($amount) : null],
+            ];
+        }
+
+        if ($gatewayId === '') {
+            $latest = $this->fetchLatestPaymentByContractUuid((string) $payment->contract_uuid);
+            if (is_array($latest) && in_array(strtolower((string) ($latest['status'] ?? '')), ['paid', 'captured'], true)) {
+                $gatewayId = (string) ($latest['id'] ?? '');
+            }
+        }
+
+        if ($gatewayId === '') {
+            return ['success' => false, 'refund_id' => null, 'gateway_payment_id' => null, 'message' => 'تعذّر العثور على معرّف الدفعة في Moyasar.', 'data' => null];
+        }
+
+        $body = $amount !== null ? ['amount' => $this->toMinorUnits($amount)] : [];
+        $response = $this->buildRequest('POST', '/v1/payments/'.$gatewayId.'/refund', $body);
+        $data = is_array($response['data'] ?? null) ? $response['data'] : null;
+
+        if (! $response['success'] || ! is_array($data)) {
+            return [
+                'success' => false,
+                'refund_id' => null,
+                'gateway_payment_id' => $gatewayId,
+                'message' => (string) ($response['message'] ?? 'رفضت بوابة الدفع الاسترجاع.'),
+                'data' => $data,
+            ];
+        }
+
+        return [
+            'success' => true,
+            'refund_id' => trim($gatewayId.':'.(string) ($data['refunded_at'] ?? now()->toIso8601String()), ':'),
+            'gateway_payment_id' => $gatewayId,
+            'message' => null,
+            'data' => array_intersect_key($data, array_flip(['id', 'status', 'amount', 'refunded', 'refunded_at', 'currency'])),
+        ];
     }
 
     /**
@@ -1264,7 +1338,7 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             return;
         }
 
-        Payment::create([
+        Payment::create(array_merge([
             'name' => $this->resolvePaymentName($metadata['name'] ?? null, $contractUuid),
             'amount' => $this->normalizeGatewayAmount($gatewayPayment['amount'] ?? 0),
             'contract_uuid' => $contractUuid,
@@ -1273,7 +1347,7 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             'payment_brand' => $this->resolvePaymentBrand($source),
             'status' => $status,
             'payment_date' => now(),
-        ]);
+        ], $this->gatewayIdColumn($gatewayPayment['id'] ?? null)));
     }
 
     /**
@@ -1352,6 +1426,16 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
                 );
             } catch (\Throwable $e) {
                 Log::warning('Failed to record paid status history', [
+                    'contract_id' => $contract->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            // دفعة (د) — ب2/ب13: الطلب المدفوع ينتقل إلى «قيد المراجعة» (+ الإسناد التلقائي إن كان مفعّلاً).
+            try {
+                app(\App\Services\Orders\OrderFlowService::class)->afterPayment($contract);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to move paid contract to under_review', [
                     'contract_id' => $contract->id,
                     'error' => $e->getMessage(),
                 ]);
@@ -1469,6 +1553,9 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             'contract_id' => $contract?->id,
             'cart_amount' => $amount,
             'is_paid' => true,
+            'refund' => $refund = ($contract ? \App\Services\Payments\PaymentRefundService::summaryFor($contract) : ['status' => 'none', 'amount' => 0.0, 'refunded_at' => null]),
+            'refunded_amount' => $refund['amount'],
+            ...($contract ? \App\Support\MeterFees::countFields(\App\Support\MeterFees::forContract($contract)) : []),
             'payment' => $payment ? [
                 'id' => $payment->id,
                 'amount' => (float) $payment->amount,

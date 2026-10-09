@@ -97,3 +97,67 @@ Route::get('/health', function () {
         'reference_data_ok' => $databaseOk && count($issues) === 0,
     ], $healthy ? 200 : 503)->header('Cache-Control', 'no-store');
 });
+
+/*
+| دفعة (د) — ب20: بيانات صفحة الحالة العامة (contractejar.com/status). عامة ومختصرة:
+| الخادم، قاعدة البيانات، المجدول، وبوابة الدفع (فحص الوصول مخزّن 5 دقائق). بلا أي تفاصيل داخلية.
+*/
+Route::get('/status', function () {
+    $components = [];
+
+    $components[] = ['key' => 'api', 'label' => 'الخادم (API)', 'status' => 'ok'];
+
+    $dbOk = true;
+    try {
+        DB::select('select 1');
+    } catch (\Throwable) {
+        $dbOk = false;
+    }
+    $components[] = ['key' => 'db', 'label' => 'قاعدة البيانات', 'status' => $dbOk ? 'ok' : 'down'];
+
+    $scheduler = 'unknown';
+    try {
+        $last = Cache::get('scheduler.last_run');
+        if (is_string($last) && $last !== '') {
+            $scheduler = now()->diffInMinutes(\Illuminate\Support\Carbon::parse($last)) > 20 ? 'degraded' : 'ok';
+        }
+    } catch (\Throwable) {
+        $scheduler = 'unknown';
+    }
+    $components[] = ['key' => 'scheduler', 'label' => 'المهام المجدولة (الإشعارات والنسخ الاحتياطي)', 'status' => $scheduler];
+
+    $gateway = Cache::remember('status.gateway_reachable', now()->addMinutes(5), function () {
+        try {
+            if (app(\App\Services\MoyasarPaymentService::class)->isTestMode()) {
+                return 'test_mode';
+            }
+            $base = rtrim((string) config('services.moyasar.base_url', 'https://api.moyasar.com'), '/');
+            $response = \Illuminate\Support\Facades\Http::timeout(4)->connectTimeout(3)->get($base.'/v1/');
+
+            // أي رد HTTP (حتى 401/404) يعني أن البوابة متاحة؛ 5xx = عطل.
+            return $response->status() >= 500 ? 'degraded' : 'ok';
+        } catch (\Throwable) {
+            return 'down';
+        }
+    });
+    $components[] = ['key' => 'payments', 'label' => 'بوابة الدفع (Moyasar)', 'status' => $gateway];
+
+    $statuses = array_column($components, 'status');
+    $overall = ! $dbOk ? 'down' : (count(array_intersect($statuses, ['down', 'degraded'])) > 0 ? 'degraded' : 'ok');
+    $labels = ['ok' => 'كل الأنظمة تعمل', 'degraded' => 'بعض الخدمات متأثرة', 'down' => 'عطل في الخدمة'];
+
+    return response()->json([
+        'status' => $overall,
+        'status_label' => $labels[$overall],
+        'components' => $components,
+        // متابعة دفعة (د): نفس الحالات كخريطة مختصرة (يقرؤها الموقع).
+        'checks' => [
+            'api' => 'ok',
+            'db' => $dbOk ? 'ok' : 'down',
+            'database' => $dbOk ? 'ok' : 'down',
+            'scheduler' => $scheduler,
+            'gateway' => $gateway,
+        ],
+        'checked_at' => now()->toIso8601String(),
+    ], $dbOk ? 200 : 503)->header('Cache-Control', 'public, max-age=30');
+})->middleware('throttle:60,1');

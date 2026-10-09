@@ -450,16 +450,22 @@ class AnalysisSeeder extends Seeder
      */
     private function seedRefundableContracts(array $contracts, array $employeeIds): void
     {
-        // The return-orders page only lists refund requests whose contract is in
-        // RETURN status (contract_status_id = ContractStatus::RETURN_ID) — the same
-        // set the orders report counts as "returned". Attaching refund requests to
-        // those contracts is what makes the two views agree, instead of leaving the
-        // return-orders page empty while the report shows returned contracts.
+        // The return-orders page only lists refund requests whose contract is in the
+        // «مسترجع» status (status_key = refunded) — the same set the orders report counts
+        // as "returned". We move a sample of PAID contracts to that status and attach the
+        // refund requests to them so both views agree. (دفعة د: «قيد المراجعة» لم تعد حالة استرجاع.)
+        $refundedId = ContractStatus::refundedId();
+        if ($refundedId === null) {
+            return;
+        }
         $returnable = array_values(array_filter(
             $contracts,
-            fn (Contract $c) => (int) $c->contract_status_id === ContractStatus::RETURN_ID
+            fn (Contract $c) => (bool) $c->is_completed
         ));
         $sample = array_slice($returnable, 0, min(24, count($returnable)));
+        foreach ($sample as $contract) {
+            $contract->forceFill(['contract_status_id' => $refundedId])->saveQuietly();
+        }
 
         // Spread refund requests across the four workflow states the return-orders
         // page buckets by, and date several of them today so the page shows real

@@ -167,17 +167,15 @@ class EmployeeRefreshTokenTest extends TestCase
             ->assertJsonPath('data.is_system_admin', true)
             ->assertJsonPath('data.has_all_permissions', true);
 
-        $expectedCount = count(config('permissions.sections')) * count(config('permissions.actions'));
+        // دفعة (د): بعض الإجراءات خاصة بأقسام (payments.refund) ⇒ العدد من الكتالوج نفسه.
+        $expectedCount = count(app(\App\Modules\Employees\Services\RolePermissionResolver::class)->configuredPermissionNames());
 
         $this->assertCount($expectedCount, $response->json('data.permission_names'));
-        $this->assertSame(
-            array_keys(config('permissions.actions')),
-            $response->json('data.permission_matrix.analytics')
-        );
-        $this->assertSame(
-            array_keys(config('permissions.actions')),
-            $response->json('data.permission_matrix.seo_crawl')
-        );
+        $common = ['view', 'create', 'edit', 'delete', 'retrieve'];
+        $this->assertSame($common, $response->json('data.permission_matrix.analytics'));
+        $this->assertSame($common, $response->json('data.permission_matrix.seo_crawl'));
+        // دفعة (د) — ب8: payments.refund خاص بقسم المدفوعات.
+        $this->assertSame([...$common, 'refund'], $response->json('data.permission_matrix.payments'));
         $this->assertNotEmpty($response->json('data.permission_modules'));
         $this->assertTrue(collect($response->json('data.permission_modules'))
             ->firstWhere('section_key', 'analytics')['actions'][0]['granted']);
@@ -241,7 +239,7 @@ class EmployeeRefreshTokenTest extends TestCase
         ]);
         $role->permissions()->attach($legacyPermission);
         $resolver = app(RolePermissionResolver::class);
-        $configuredCount = count(config('permissions.sections')) * count(config('permissions.actions'));
+        $configuredCount = count($resolver->configuredPermissionNames());
 
         $this->assertSame($configuredCount, $resolver->grantAllPermissionsToFullAccessRoles());
         $this->assertSame(0, $resolver->grantAllPermissionsToFullAccessRoles());

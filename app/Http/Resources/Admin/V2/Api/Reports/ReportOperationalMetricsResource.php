@@ -19,7 +19,8 @@ class ReportOperationalMetricsResource extends JsonResource
         $longestWait = (int) ($this->resource['longest_wait_seconds'] ?? $this->resource['max_wait_seconds'] ?? 0);
         $lateOverSla = (int) ($this->resource['late_over_15m'] ?? $this->resource['late_over_15_count'] ?? 0);
         $lateOverLimit = (int) ($this->resource['late_over_30m'] ?? $this->resource['late_over_30_count'] ?? 0);
-        $slaPercent = (int) ($this->resource['sla_percent'] ?? $this->resource['sla_15m_percent'] ?? 0);
+        $rawSla = $this->resource['sla_percent'] ?? $this->resource['sla_15m_percent'] ?? null;
+        $slaPercent = $rawSla === null ? null : (int) $rawSla;
 
         return [
             'total_orders' => (int) ($this->resource['total_orders'] ?? 0),
@@ -35,7 +36,7 @@ class ReportOperationalMetricsResource extends JsonResource
             'late_over_30m' => $lateOverLimit,
             'late_over_30_count' => (int) ($this->resource['late_over_30_count'] ?? $lateOverLimit),
             'sla_percent' => $slaPercent,
-            'sla_15m_percent' => (int) ($this->resource['sla_15m_percent'] ?? $slaPercent),
+            'sla_15m_percent' => $slaPercent,
             'unclaim_count' => (int) ($this->resource['unclaim_count'] ?? 0),
             'unreceive_count' => (int) ($this->resource['unreceive_count'] ?? 0),
             'delayed_over_24h_count' => (int) ($this->resource['delayed_over_24h_count'] ?? 0),

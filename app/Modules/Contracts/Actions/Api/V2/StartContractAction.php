@@ -92,6 +92,8 @@ class StartContractAction
             'real_id' => $validated['real_id'] ?? null,
             'real_units_id' => $primaryUnitId,
             'user_id' => $userId,
+            // متابعة دفعة (د): القناة الحقيقية (الموقع/التطبيق) — لا تُستبدل في الخطوات اللاحقة.
+            'app_or_web' => \App\Support\ClientChannel::fromRequest($request),
             'step' => Contract::shouldSkipInitialSteps($instrumentType) ? 3 : 1,
         ]);
 

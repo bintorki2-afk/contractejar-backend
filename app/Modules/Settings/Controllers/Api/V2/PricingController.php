@@ -70,6 +70,7 @@ class PricingController extends Controller
                     'water' => $meter('water_meter_fee_commercial_tenant', 25.0),
                 ],
                 'label' => 'رسوم نقل العداد باسم المستأجر (لكل عداد)',
+                'per_meter' => true,
             ],
             'lessor_change_fee' => $lessorChangeFee,
             'vat_rate' => $setting && is_numeric($setting->vat_rate) ? (float) $setting->vat_rate : 0.0,

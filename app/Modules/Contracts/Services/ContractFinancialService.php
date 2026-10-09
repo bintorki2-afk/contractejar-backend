@@ -29,6 +29,7 @@ class ContractFinancialService
             'vat_label' => $pricing['vat_label'],
             'electricity_meter_fee' => $meterFees['electricity_meter_fee'],
             'water_meter_fee' => $meterFees['water_meter_fee'],
+            ...\App\Support\MeterFees::countFields($meterFees),
         ];
 
         // الفاتورة الرسمية لها بنودها في `items[]` (ContractInvoiceService). جدول
@@ -76,6 +77,7 @@ class ContractFinancialService
             'vat_label' => $pricing['vat_label'],
             'electricity_meter_fee' => $meterFees['electricity_meter_fee'],
             'water_meter_fee' => $meterFees['water_meter_fee'],
+            ...\App\Support\MeterFees::countFields($meterFees),
             'document_surcharge' => $pricing['document_surcharge'],
             'document_surcharge_applies' => $pricing['document_surcharge_applies'],
             'shared_meters' => $meterFees['shared_meters'] ?? null,
@@ -111,6 +113,9 @@ class ContractFinancialService
             'total_price' => $pricing['total'],
             // التطبيق يقرأ ملخص الدفع من هنا: حالة «حفظ بيانات العقار».
             'saved_property' => \App\Support\SavedPropertyState::forContract($contract),
+            ...\App\Support\MeterFees::countFields($meterFees),
+            'refund' => $refund = \App\Services\Payments\PaymentRefundService::summaryFor($contract),
+            'refunded_amount' => $refund['amount'],
         ];
 
         if ($docFeeSummary) {

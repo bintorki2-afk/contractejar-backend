@@ -111,7 +111,7 @@ class MarketingAttributionTest extends TestCase
         $contract = Contract::query()->create([
             'user_id' => $user->id,
             'contract_type' => 'housing',
-            'step' => 3,
+            'step' => 4,
             'is_delete' => 0,
         ]);
 
@@ -138,14 +138,14 @@ class MarketingAttributionTest extends TestCase
         $paid = Contract::query()->create([
             'user_id' => $user->id,
             'contract_type' => 'housing',
-            'step' => 3,
+            'step' => 4,
             'is_delete' => 0,
             'is_completed' => 1,
         ]);
         Contract::query()->create([
             'user_id' => $user->id,
             'contract_type' => 'housing',
-            'step' => 3,
+            'step' => 4,
             'is_delete' => 0,
             'is_completed' => 0,
         ]);

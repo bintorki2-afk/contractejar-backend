@@ -157,9 +157,11 @@ class EmployeeRolePrivilegeEscalationTest extends TestCase
         $this->assertDatabaseHas('contracts', ['id' => $contract->id]);
         $this->assertSame(1, DB::table('payments')->where('contract_uuid', $contract->uuid)->count());
 
-        // مدير النظام مع force=1 → يُحذف.
+        // مدير النظام مع force=1 → يُنقل للسلة (دفعة د — ب12) والدفعة تبقى.
         $this->postJson('/api/admin/orders/'.$contract->id.'/delete', ['force' => true])->assertOk();
-        $this->assertDatabaseMissing('contracts', ['id' => $contract->id]);
+        $this->assertDatabaseHas('contracts', ['id' => $contract->id, 'is_delete' => 1]);
+        $this->assertNotNull(DB::table('contracts')->where('id', $contract->id)->value('trashed_at'));
+        $this->assertSame(1, DB::table('payments')->where('contract_uuid', $contract->uuid)->count());
     }
 
     public function test_admin_can_modify_another_system_admin_employee(): void

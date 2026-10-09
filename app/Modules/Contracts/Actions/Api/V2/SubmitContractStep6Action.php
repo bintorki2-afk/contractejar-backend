@@ -62,7 +62,8 @@ class SubmitContractStep6Action
         $data['tenant_role_values'] = $this->normalizeTenantRoleValuesFromStep6Request($request, $tenantRoleIds);
 
         $otherConditionsList = $request->resolvedOtherConditionsList();
-        if ((bool) $request->input('conditions') && $otherConditionsList !== []) {
+        // متابعة دفعة (د) — QA: التطبيق يرسل conditions=false مع additional_terms + other_conditions — النص يُحفظ متى وُجد.
+        if ($otherConditionsList !== []) {
             $data['other_conditions_list'] = $otherConditionsList;
             $data['other_conditions'] = $otherConditionsList[0];
         } else {
@@ -84,9 +85,52 @@ class SubmitContractStep6Action
             $data['deposit'] = $request->input('deposit');
         }
 
+        // متابعة دفعة (د) — QA: التطبيق يرسل الضمان/الغرامة/العربون كقيم صفات المستأجر فقط ⇒ نشتق الأعمدة منها
+        // (قاعدة واحدة للموقع والتطبيق) عندما لا يُرسل الحقل المخصّص.
+        foreach ($this->amountsFromTenantRoles($tenantRoleIds, $data['tenant_role_values'] ?? null) as $column => $value) {
+            if (! array_key_exists($column, $data)) {
+                $data[$column] = $value;
+            }
+        }
+
         $contract->update($data);
 
         return ['ok' => true, 'contract' => $contract->fresh(['realEstate', 'contractStatus', 'contractTermInYears'])];
+    }
+
+    /**
+     * صفة «مبلغ الضمان» ⇒ Guarantee_amount، «غرامة يومية» ⇒ daily_fine، «عربون» ⇒ deposit (بالنص لا بالرقم).
+     *
+     * @param  list<int>  $roleIds
+     * @param  array<string, string>|null  $values
+     * @return array<string, string>
+     */
+    private function amountsFromTenantRoles(array $roleIds, ?array $values): array
+    {
+        if ($roleIds === [] || $values === null || $values === []) {
+            return [];
+        }
+
+        $out = [];
+        foreach (TenantRole::query()->whereIn('id', $roleIds)->get(['id', 'text_of_reason']) as $role) {
+            $value = $values[(string) $role->id] ?? null;
+            if ($value === null || $value === '' || ! is_numeric(strtr($value, ['٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4', '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9']))) {
+                continue;
+            }
+            $value = strtr($value, ['٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4', '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9']);
+            $text = (string) $role->text_of_reason;
+            $column = match (true) {
+                str_contains($text, 'ضمان') => 'Guarantee_amount',
+                str_contains($text, 'غرام') => 'daily_fine',
+                str_contains($text, 'عربون') => 'deposit',
+                default => null,
+            };
+            if ($column !== null && ! isset($out[$column])) {
+                $out[$column] = $value;
+            }
+        }
+
+        return $out;
     }
 
     /**

@@ -25,6 +25,8 @@ class PerformanceKpisResource extends JsonResource
             'active_count' => $active,
             'canceled_count' => (int) ($this->resource['canceled_count'] ?? 0),
             'refunded_count' => (int) ($this->resource['refunded_count'] ?? 0),
+            'refunded_orders' => (int) ($this->resource['refunded_orders'] ?? $this->resource['refunded_count'] ?? 0),
+            'refund_requests_confirmed' => (int) ($this->resource['refund_requests_confirmed'] ?? 0),
             'revenue' => $this->resource['revenue'] ?? 0,
             'paid' => (int) ($this->resource['paid'] ?? 0),
             'delayed_count' => (int) ($this->resource['delayed_count'] ?? 0),

@@ -66,6 +66,8 @@ Route::prefix('reports')->name('reports.')
     ->controller(ReportController::class)
     ->middleware('auth:sanctum')
     ->group(function () {
+        // دفعة (د) — ب21: «نظرة عامة» بستة أرقام.
+        Route::get('/overview', 'overview')->middleware('permission:analytics.view')->name('overview');
         Route::get('/orders', 'orders')->middleware('permission:analytics.view')->name('orders');
         Route::get('/sales', 'sales')->middleware('permission:analytics.view')->name('sales');
         Route::get('/profits', 'profits')->middleware('permission:analytics.view')->name('profits');

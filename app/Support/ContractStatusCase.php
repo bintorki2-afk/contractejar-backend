@@ -5,11 +5,9 @@ namespace App\Support;
 /**
  * Extra fields required when an admin changes a contract / draft status.
  *
- * Production IDs (also matched by Arabic name as a fallback):
- * - 9  توثيق العقد في إيجار
- * - 10 بانتظار المشرف
- * - 2  استرجاع / مسترجع
- * - 8  إرسال مسودة العقد لكم عبر واتساب
+ * يُحدَّد بالمفتاح الثابت للحالة (`status_key`) أولاً ثم بالاسم العربي.
+ * دفعة (د): لا أرقام ثابتة لـ «مسترجع» (كانت 2) أو «بانتظار المشرف» (كانت 10) — الرقم 2 في الكتالوج
+ * المزروع هو «قيد المراجعة». يبقى 8/9 احتياطاً فقط للمسودة/التوثيق.
  */
 class ContractStatusCase
 {
@@ -23,40 +21,51 @@ class ContractStatusCase
 
     public const EJAR_AUTHENTICATION_ID = 9;
 
-    public const WAITING_SUPERVISOR_ID = 10;
-
-    public const RETURN_ID = 2;
-
     public const SEND_DRAFT_ID = 8;
 
     public const DEED_TYPES = ['paper', 'electronic', 'other'];
 
     public const CONTACT_MODES = ['same', 'another'];
 
-    public static function resolve(?int $statusId, ?string $statusName): ?string
+    public static function resolve(?int $statusId, ?string $statusName, ?string $statusKey = null): ?string
     {
         $normalized = self::normalizeName($statusName);
 
-        if ($statusId === self::EJAR_AUTHENTICATION_ID || str_contains($normalized, 'توثيق العقد في ايجار')) {
+        if ($statusKey !== null && $statusKey !== '') {
+            $byKey = match ($statusKey) {
+                'ejar_authenticated' => self::EJAR_AUTHENTICATION,
+                'waiting_supervisor' => self::WAITING_SUPERVISOR,
+                'whatsapp_draft' => self::SEND_DRAFT,
+                'refunded' => self::RETURN,
+                default => null,
+            };
+            if ($byKey !== null) {
+                return $byKey;
+            }
+            // حالة بمفتاح معروف آخر (جديد/قيد المراجعة/…) لا تحتاج حقولاً إضافية — لا نعود للرقم.
+            if (in_array($statusKey, \App\Models\ContractStatus::KEYS, true)) {
+                return null;
+            }
+        }
+
+        $hasName = $normalized !== '';
+
+        if (str_contains($normalized, 'توثيق العقد في ايجار') || (! $hasName && $statusId === self::EJAR_AUTHENTICATION_ID)) {
             return self::EJAR_AUTHENTICATION;
         }
 
-        if ($statusId === self::WAITING_SUPERVISOR_ID || str_contains($normalized, 'بانتظار المشرف')) {
+        if (str_contains($normalized, 'بانتظار المشرف')) {
             return self::WAITING_SUPERVISOR;
         }
 
         if (
-            $statusId === self::SEND_DRAFT_ID
-            || (str_contains($normalized, 'مسودة') && str_contains($normalized, 'واتساب'))
+            (str_contains($normalized, 'مسودة') && str_contains($normalized, 'واتساب'))
+            || (! $hasName && $statusId === self::SEND_DRAFT_ID)
         ) {
             return self::SEND_DRAFT;
         }
 
-        if (
-            $statusId === self::RETURN_ID
-            || str_contains($normalized, 'استرجاع')
-            || str_contains($normalized, 'مسترجع')
-        ) {
+        if (str_contains($normalized, 'استرجاع') || str_contains($normalized, 'مسترجع')) {
             return self::RETURN;
         }
 
@@ -68,9 +77,9 @@ class ContractStatusCase
      *
      * @return array{key: string, fields: list<array<string, mixed>>}|null
      */
-    public static function schemaFor(?int $statusId, ?string $statusName): ?array
+    public static function schemaFor(?int $statusId, ?string $statusName, ?string $statusKey = null): ?array
     {
-        $key = self::resolve($statusId, $statusName);
+        $key = self::resolve($statusId, $statusName, $statusKey);
         if ($key === null) {
             return null;
         }

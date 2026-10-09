@@ -28,6 +28,15 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/notifications-dispatch.log'));
 
+        // دفعة (د) — ب11: علامات تأخير الطلبات + إشعار الموظفين بالتأخير الجديد.
+        $schedule->command('orders:flag-delays')
+            ->everyFifteenMinutes()
+            ->withoutOverlapping(30)
+            ->appendOutputTo(storage_path('logs/orders-flag-delays.log'));
+
+        // دفعة (د) — ب12: تفريغ السلة (أقدم من 30 يوماً) يومياً 04:00.
+        $schedule->command('trash:purge')->dailyAt('04:00')->timezone('Asia/Riyadh')->withoutOverlapping(60);
+
         // ف21: نسخة احتياطية يومية لقاعدة البيانات 03:10 بتوقيت الرياض.
         $schedule->command('aqdi:db-backup')
             ->dailyAt('03:10')
@@ -36,6 +45,12 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo(storage_path('logs/db-backup.log'));
 
         $schedule->command('ads:sync-spend --days=3')->dailyAt('06:00');
+
+        // دفعة (د) — ب19: فحص يومي اصطناعي لمسار العميل (06:00 الرياض) + تيليجرام.
+        $schedule->command('qa:daily-smoke')->dailyAt('06:00')->timezone('Asia/Riyadh')->withoutOverlapping(30);
+
+        // دفعة (د) — ب18: تقرير المالك الأسبوعي (الأحد 09:00 الرياض) عبر تيليجرام.
+        $schedule->command('reports:weekly-owner')->weeklyOn(0, '09:00')->timezone('Asia/Riyadh')->withoutOverlapping(30);
     }
 
     /**

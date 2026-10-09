@@ -54,5 +54,14 @@ class Setting extends Model
         'doc_fee_commercial_extra_year',
         'document_surcharge_fee',
         'lessor_change_fee',
+        // دفعة (د) — ب13: الإسناد التلقائي
+        'auto_assign_orders',
+        'auto_assign_strategy',
+        'auto_assign_employee_ids',
+    ];
+
+    protected $casts = [
+        'auto_assign_orders' => 'boolean',
+        'auto_assign_employee_ids' => 'array',
     ];
 }

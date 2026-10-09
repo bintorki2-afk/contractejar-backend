@@ -63,6 +63,11 @@ class ContractResource extends JsonResource
             'draft_contract_status_color' => optional($this->draftContractStatus)->color,
             'journey' => ContractFrontendStatus::journey($this->resource),
             'status_timeline' => ContractFrontendStatus::statusTimeline($this->resource),
+            // دفعة (د) — ب9: ما تم على طلبك (نسخة آمنة: بلا أسماء موظفين أو ملاحظات داخلية).
+            'activities' => app(\App\Services\Orders\ContractActivityLogger::class)->forCustomer($this->resource),
+            // متابعة دفعة (د): مبلغ الاسترجاع للعميل.
+            'refund' => $refund = \App\Services\Payments\PaymentRefundService::summaryFor($this->resource),
+            'refunded_amount' => $refund['amount'],
             'journey_status' => ContractFrontendStatus::journeyStatus($this->resource),
             'journey_status_label' => ContractFrontendStatus::journeyStatusLabel($this->resource),
             'number_of_units_in_realestate' => $this->numberOfUnitsInRealestate(),

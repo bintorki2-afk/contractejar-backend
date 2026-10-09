@@ -193,14 +193,14 @@ class MarketingTrackingTest extends TestCase
         $paid = Contract::query()->create(array_merge([
             'user_id' => $user->id,
             'contract_type' => 'housing',
-            'step' => 3,
+            'step' => 4,
             'is_delete' => 0,
             'is_completed' => 1,
         ], $attribution));
         $unpaid = Contract::query()->create(array_merge([
             'user_id' => $user->id,
             'contract_type' => 'housing',
-            'step' => 3,
+            'step' => 4,
             'is_delete' => 0,
             'is_completed' => 0,
         ], $attribution));

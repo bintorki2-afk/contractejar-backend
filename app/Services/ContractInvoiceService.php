@@ -49,6 +49,7 @@ class ContractInvoiceService
 
         $breakdown = $this->resolveBreakdown($contract, $payment, $invoice, $persist);
         $status = $this->resolveStatus($contract);
+        $status['refund'] = \App\Services\Payments\PaymentRefundService::summaryFor($contract);
         $issuedAt = $this->resolveIssuedAt($contract, $payment, $invoice);
         $total = (float) $breakdown['total'];
 
@@ -233,11 +234,21 @@ class ContractInvoiceService
         if ((float) $pricing['document_surcharge'] > 0) {
             $items[] = $this->line('document_surcharge', 'رسوم المستندات الإضافية', (float) $pricing['document_surcharge']);
         }
-        if ((float) ($meter['electricity_meter_fee'] ?? 0) > 0) {
-            $items[] = $this->line('electricity_meter', 'رسوم نقل عداد الكهرباء باسم المستأجر', (float) $meter['electricity_meter_fee']);
-        }
-        if ((float) ($meter['water_meter_fee'] ?? 0) > 0) {
-            $items[] = $this->line('water_meter', 'رسوم نقل عداد المياه باسم المستأجر', (float) $meter['water_meter_fee']);
+        // دفعة (د) — ب1: لكل عداد (الكمية = عدد العدادات باسم المستأجر).
+        foreach (['electricity' => 'الكهرباء', 'water' => 'المياه'] as $kind => $label) {
+            $amount = (float) ($meter[$kind.'_meter_fee'] ?? 0);
+            if ($amount <= 0) {
+                continue;
+            }
+            $count = max(1, (int) ($meter[$kind.'_meter_count'] ?? 1));
+            $unit = (float) ($meter[$kind.'_meter_unit_fee'] ?? $amount);
+            $description = "رسوم نقل عداد {$label} باسم المستأجر";
+            if ($count > 1) {
+                $description .= ' ('.$count.' عدادات × '.rtrim(rtrim(number_format($unit, 2, '.', ''), '0'), '.').' ر.س)';
+            }
+            $line = $this->line($kind.'_meter', $description, $amount);
+            $line['quantity'] = $count;
+            $items[] = $line;
         }
 
         $subtotal = round(array_sum(array_map(static fn (array $i) => (float) $i['amount'], $items)), 2);
@@ -475,6 +486,11 @@ class ContractInvoiceService
             'print_label' => 'طباعة / تحميل الفاتورة',
             'is_paid' => $isPaid,
             'is_refunded' => $status['status'] === 'refunded',
+            // دفعة (د) — ب8: المبلغ المسترجع عبر Moyasar.
+            'refunded_amount' => $status['refunded_amount'] ?? 0.0,
+            'refunded_amount_label' => $this->formatAmountLabel((float) ($status['refunded_amount'] ?? 0)),
+            'is_partially_refunded' => $status['status'] === 'partially_refunded',
+            'refund' => $status['refund'] ?? ['status' => 'none', 'amount' => 0.0, 'refunded_at' => null],
         ];
     }
 
@@ -558,6 +574,20 @@ class ContractInvoiceService
      */
     private function resolveStatus(Contract $contract): array
     {
+        // دفعة (د) — ب8: استرجاع Moyasar (كلي/جزئي).
+        $moyasarRefunded = \App\Services\Payments\PaymentRefundService::refundedTotalFor($contract);
+        if ($moyasarRefunded > 0) {
+            $paid = \App\Services\Payments\PaymentRefundService::paidTotalFor($contract);
+            $full = $paid <= 0 || $moyasarRefunded + 0.009 >= $paid;
+
+            return [
+                'status' => $full ? 'refunded' : 'partially_refunded',
+                'status_label' => $full ? 'مُسترجعة' : 'مُسترجعة جزئياً',
+                'status_color' => '#DC2626',
+                'refunded_amount' => round($moyasarRefunded, 2),
+            ];
+        }
+
         $refund = $contract->relationLoaded('refundableContract')
             ? $contract->refundableContract
             : RefundableContract::query()->where('contract_id', $contract->id)->latest('id')->first();
@@ -570,7 +600,7 @@ class ContractInvoiceService
             ];
         }
 
-        if ((int) $contract->contract_status_id === ContractStatus::RETURN_ID) {
+        if ($contract->contract_status_id && (int) $contract->contract_status_id === ContractStatus::refundedId()) {
             return [
                 'status' => 'returned',
                 'status_label' => 'مسترجع',

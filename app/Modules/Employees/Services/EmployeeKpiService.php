@@ -420,7 +420,8 @@ class EmployeeKpiService
                         'key' => 'receive_sla_within_5m',
                         'label_ar' => 'التزام الاستلام ≤'.$slaMinutes.'د',
                         'percent' => $receiveStats['sla_percent'],
-                        'tone' => $receiveStats['sla_percent'] >= 90 ? 'success' : ($receiveStats['sla_percent'] >= 50 ? 'warning' : 'danger'),
+                        'value_label' => $receiveStats['sla_percent'] === null ? '—' : $receiveStats['sla_percent'].'%',
+                        'tone' => $receiveStats['sla_percent'] === null ? null : ($receiveStats['sla_percent'] >= 90 ? 'success' : ($receiveStats['sla_percent'] >= 50 ? 'warning' : 'danger')),
                     ],
                     [
                         'key' => 'avg_process_minutes',
@@ -465,7 +466,7 @@ class EmployeeKpiService
     {
         return ContractStatus::query()
             ->where(function ($q) {
-                $q->whereKey(ContractStatus::WAITING_SUPERVISOR_ID)
+                $q->whereKey(ContractStatus::idsFor([ContractStatus::KEY_WAITING_SUPERVISOR, ContractStatus::KEY_COMPLETED]) ?: [-1])
                     ->orWhere('name', 'مكتمل')
                     ->orWhere('name', 'like', '%بانتظار المشرف%');
             })
@@ -481,14 +482,14 @@ class EmployeeKpiService
     {
         $ids = $this->doneStatusIds();
 
-        $closed = ContractStatus::query()
-            ->where(function ($q) {
-                $q->whereKey(ContractStatus::RETURN_ID)
-                    ->orWhereIn('name', ['ملغى', 'مكتمل', 'مسترجع', 'استرجاع']);
-            })
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
-            ->all();
+        $closed = array_values(array_unique([
+            ...ContractStatus::idsFor([ContractStatus::KEY_REFUNDED, ContractStatus::KEY_CANCELLED, ContractStatus::KEY_COMPLETED]),
+            ...ContractStatus::query()
+                ->whereIn('name', ['ملغى', 'مكتمل', 'مسترجع', 'استرجاع'])
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all(),
+        ]));
 
         return array_values(array_unique([...$ids, ...$closed]));
     }
@@ -750,20 +751,17 @@ class EmployeeKpiService
      */
     private function returnStatusIds(): array
     {
-        $ids = ContractStatus::query()
-            ->where(function ($q) {
-                $q->whereKey(ContractStatus::RETURN_ID)
-                    ->orWhereIn('name', ['مسترجع', 'استرجاع']);
-            })
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
-            ->all();
+        $ids = array_values(array_unique([
+            ...ContractStatus::idsFor([ContractStatus::KEY_REFUNDED]),
+            ...ContractStatus::query()
+                ->whereIn('name', ['مسترجع', 'استرجاع'])
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all(),
+        ]));
 
-        if ($ids === []) {
-            return [ContractStatus::RETURN_ID];
-        }
-
-        return $ids;
+        // لا حالة استرجاع ⇒ لا شيء يطابق (كان يرجع الرقم 2 = «قيد المراجعة» خطأً).
+        return $ids === [] ? [-1] : $ids;
     }
 
     /**
@@ -808,7 +806,7 @@ class EmployeeKpiService
 
     /**
      * @param  Collection<int, object>  $rows
-     * @return array{avg: float|null, sla_percent: int, sla_met: int, sla_total: int}
+     * @return array{avg: float|null, sla_percent: int|null, sla_met: int, sla_total: int}
      */
     private function receiveWorkStats(Employee $employee, Collection $rows): array
     {
@@ -839,7 +837,8 @@ class EmployeeKpiService
 
         return [
             'avg' => $avg,
-            'sla_percent' => $total === 0 ? 100 : (int) round(($slaMet / $total) * 100),
+            // دفعة (د) — ب6: موظف بلا طلبات ⇒ null (تعرضه اللوحة «—») وليس 100%.
+            'sla_percent' => $total === 0 ? null : (int) round(($slaMet / $total) * 100),
             'sla_met' => $slaMet,
             'sla_total' => $total,
         ];
@@ -1156,7 +1155,7 @@ class EmployeeKpiService
 
         $items = [];
 
-        if ($row->source === 'receive' || (int) $row->status_id === ContractStatus::RECEIVED_ID) {
+        if ($row->source === 'receive' || in_array(ContractStatus::keyForId($row->status_id ? (int) $row->status_id : null), [ContractStatus::KEY_RECEIVED, ContractStatus::KEY_RECEIVED_BY_EMPLOYEE], true)) {
             $items[] = $base + [
                 'action' => 'received',
                 'title' => $employeeName.' استلم الطلب',

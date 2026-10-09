@@ -14,12 +14,13 @@ class UserAnalyticsService
 
     public function getNewUsersAnalytics(): array
     {
-        $getByPeriod = fn ($start, $end) => User::whereBetween('created_at', [$start, $end])->count();
+        // دفعة (د) — ب6: نفس نطاق صفحة العملاء (User::customers).
+        $getByPeriod = fn ($start, $end) => User::query()->customers()->whereBetween('users.created_at', [$start, $end])->count();
         $today = $getByPeriod(Carbon::today(), Carbon::tomorrow());
         $week = $getByPeriod(Carbon::now()->startOfWeek(), Carbon::now()->endOfWeek());
         $month = $getByPeriod(Carbon::now()->startOfMonth(), Carbon::now()->endOfMonth());
         $year = $getByPeriod(Carbon::now()->startOfYear(), Carbon::now()->endOfYear());
-        $total = User::count();
+        $total = User::query()->customers()->count();
 
         return [
             'today' => ['count' => $today, 'percentage_change' => $this->calculatePercentageChange($today, $getByPeriod(Carbon::yesterday(), Carbon::today()))],

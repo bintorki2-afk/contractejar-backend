@@ -9,11 +9,9 @@ use App\Http\Resources\Admin\V2\Api\ReceivedContractResource;
 use App\Http\Traits\Responser;
 use App\Enums\ReceivedContractStatus;
 use App\Models\Contract;
-use App\Models\ContractStatus;
 use App\Models\Employee;
 use App\Models\ReceivedContract;
-use App\Services\ContractStatusHistoryService;
-use App\Services\FirebaseNotificationService;
+use App\Services\Orders\OrderFlowService;
 use Illuminate\Database\QueryException;
 use Throwable;
 
@@ -67,23 +65,6 @@ class ReceivedContractController extends Controller
                 return $this->errorMessage(trans('api.contract_not_found'), 404);
             }
 
-            // الاستلام مسموح فقط للعقود بحالة "جديد" (1)
-            if ((int) $contract->contract_status_id !== ContractStatus::NEW_ID) {
-                return $this->errorMessage(
-                    'لا يمكن استلام العقد — الاستلام متاح فقط للعقود بحالة "جديد".',
-                    422
-                );
-            }
-
-            $existingReceived = ReceivedContract::query()
-                ->where('contract_id', $contractId)
-                ->with('employee')
-                ->first();
-
-            if ($existingReceived) {
-                return $this->contractAlreadyReceivedResponse($existingReceived);
-            }
-
             $validated = $request->validated();
             // Receiving the contract marks it as finish (مستلم), not pending.
             $status = ReceivedContractStatus::Finish;
@@ -96,34 +77,20 @@ class ReceivedContractController extends Controller
             /** @var Employee $employee */
             $employee = $request->user();
 
-            $dateReceived = $request->filled('date_of_received')
-                ? $request->date('date_of_received')->format('Y-m-d')
-                : now()->toDateString();
-
             $attributes = [
-                'contract_id' => $contractId,
-                'employee_id' => $employee->id,
                 'status' => $status,
-                'date_of_received' => $dateReceived,
+                'date_of_received' => $request->filled('date_of_received')
+                    ? $request->date('date_of_received')->format('Y-m-d')
+                    : now()->toDateString(),
             ];
             if ($request->has('notes')) {
                 $attributes['notes'] = $request->input('notes');
             }
 
+            // دفعة (د): الاستلام متاح للطلبات «جديد» / «تم الدفع» / «قيد المراجعة»، ويضع الحالة «مستلم من الموظف».
             try {
-                $received = ReceivedContract::query()->create($attributes);
+                $result = app(OrderFlowService::class)->receive(Contract::query()->findOrFail($contractId), $employee, $attributes);
             } catch (QueryException $queryException) {
-                if ($this->isUniqueContractIdViolation($queryException)) {
-                    $conflictRow = ReceivedContract::query()
-                        ->where('contract_id', $contractId)
-                        ->with('employee')
-                        ->first();
-
-                    if ($conflictRow) {
-                        return $this->contractAlreadyReceivedResponse($conflictRow);
-                    }
-                }
-
                 if ($this->isMissingContractForeignKeyViolation($queryException)) {
                     return $this->errorMessage(trans('api.contract_not_found'), 404);
                 }
@@ -131,23 +98,15 @@ class ReceivedContractController extends Controller
                 throw $queryException;
             }
 
-            $contractModel = Contract::query()->whereKey($contractId)->first();
-            if ($contractModel) {
-                $contractModel->update([
-                    'contract_status_id' => ContractStatus::RECEIVED_ID,
-                ]);
-                $contractModel->refresh();
-                $contractModel->loadMissing(['contractStatus', 'draftContractStatus']);
-
-                try {
-                    app(ContractStatusHistoryService::class)->record($contractModel, ['source' => 'receive']);
-                    app(FirebaseNotificationService::class)
-                        ->notifyContractReceivedByEmployee($contractModel, $employee);
-                } catch (Throwable $notifyError) {
-                    report($notifyError);
+            if (! $result['ok']) {
+                if (($result['code'] ?? 0) === 409 && isset($result['existing'])) {
+                    return $this->contractAlreadyReceivedResponse($result['existing']);
                 }
+
+                return $this->errorMessage((string) ($result['message'] ?? ''), (int) ($result['code'] ?? 422));
             }
 
+            $received = $result['received'];
             $received->load('employee');
 
             return $this->apiResponse(

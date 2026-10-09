@@ -46,6 +46,20 @@ return [
     */
     'fixed_code' => env('OTP_FIXED_CODE'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Store-review number (دفعة د — ب4)
+    |--------------------------------------------------------------------------
+    |
+    | OTP_REVIEW_MOBILE (e.g. 0597500013) always receives OTP_REVIEW_CODE — in
+    | every environment INCLUDING production — and ONLY that number. All other
+    | numbers get a random code. Same hashing, attempts, lockout and send limits.
+    |
+    */
+    'review_mobile' => env('OTP_REVIEW_MOBILE'),
+
+    'review_code' => env('OTP_REVIEW_CODE'),
+
     'ttl_minutes' => (int) env('OTP_TTL_MINUTES', 10),
 
     'max_attempts' => (int) env('OTP_MAX_ATTEMPTS', 5),

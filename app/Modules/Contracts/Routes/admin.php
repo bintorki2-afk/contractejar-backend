@@ -60,6 +60,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // Orders Management
     Route::prefix('orders')->name('orders.')->controller(OrderController::class)->group(function () {
         Route::get('/', 'orders')->middleware('permission:all_requests.view')->name('index');
+        // دفعة (د) — ب3: عدّادات تبويبات «جميع الطلبات».
+        Route::get('/status-counts', 'statusCounts')->middleware('permission:all_requests.view')->name('status-counts');
+        // دفعة (د) — ب11: لوحة «عليك الحين» (بانتظار الاستلام/المسودة/التوثيق + المتأخرة).
+        Route::get('/attention', 'attention')->middleware('permission:all_requests.view')->name('attention');
         Route::get('/return', 'returnOrders')->middleware('permission:returned_request.view')->name('return');
         Route::get('/received', 'receivedOrders')->middleware('permission:request_classification.view')->name('received');
         Route::get('/status/{statusId}', 'byStatus')->whereNumber('statusId')->middleware('permission:request_classification.view')->name('by-status');
@@ -71,12 +75,26 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/complete/list', 'complete')->middleware('permission:completed_request.view')->name('complete');
         Route::get('/{id}', 'show')->whereNumber('id')->middleware('permission:all_requests.view')->name('show');
         Route::post('/{id}', 'update')->whereNumber('id')->middleware('permission:all_requests.edit')->name('update');
+        // دفعة (د) — ب17: تعديل الحقول الصغيرة مع التدقيق.
+        Route::patch('/{id}', 'patchFields')->whereNumber('id')->middleware('permission:all_requests.edit')->name('patch');
+        Route::get('/editable-fields', 'editableFields')->middleware('permission:all_requests.view')->name('editable-fields');
+        // دفعة (د) — ب14: أزرار المراحل «استلمت» → «أرسلت المسودة» → «وثّقت».
+        Route::post('/{id}/stage/{stage}', 'stage')->whereNumber('id')->whereIn('stage', ['received', 'draft_sent', 'notarized'])->middleware('permission:all_requests.edit')->name('stage');
+        // دفعة (د) — ب15: «نسخ بيانات إيجار».
+        Route::get('/{id}/ejar-copy', 'ejarCopy')->whereNumber('id')->middleware('permission:all_requests.view')->name('ejar-copy');
+        Route::get('/{id}/stages', 'stages')->whereNumber('id')->middleware('permission:all_requests.view')->name('stages');
+        // دفعة (د) — ب10: إشعار العميل من تفاصيل الطلب (بيانات ناقصة / إعادة إرسال آخر حالة).
+        Route::post('/{id}/notify', 'notifyCustomer')->whereNumber('id')->middleware('permission:all_requests.edit')->name('notify');
         Route::post('/{id}/status', 'updateStatus')->whereNumber('id')->middleware('permission:all_requests.edit')->name('update-status');
         Route::post('/{id}/contract-status', 'updateContractStatus')->whereNumber('id')->middleware('permission:all_requests.edit')->name('update-contract-status');
         Route::post('/{id}/draft-contract-status', 'updateDraftContractStatus')->whereNumber('id')->middleware('permission:all_requests.edit')->name('update-draft-contract-status');
         Route::post('/{id}/return-contract-status', 'updateReturnContractAcceptance')->whereNumber('id')->middleware('permission:returned_request.retrieve')->name('return-contract-status');
         // حذف طلب — صلاحية حذف صريحة (كان «تعديل» فقط)، ويرفض حذف طلب مدفوع. (DASHBOARD-3)
         Route::post('/{id}/delete', 'destroy')->whereNumber('id')->middleware('permission:all_requests.delete')->name('destroy');
+        // دفعة (د) — ب12: سلة المحذوفات (30 يوماً).
+        Route::delete('/{id}', 'destroy')->whereNumber('id')->middleware('permission:all_requests.delete')->name('trash');
+        Route::get('/trash', 'trash')->middleware('permission:all_requests.delete')->name('trash.index');
+        Route::post('/{id}/restore', 'restore')->whereNumber('id')->middleware('permission:all_requests.delete')->name('restore');
     });
 
     // Contract comments (employee-authenticated)
