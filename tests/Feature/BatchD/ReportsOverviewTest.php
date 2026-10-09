@@ -31,7 +31,9 @@ class ReportsOverviewTest extends BatchDTestCase
         $data = $this->getJson('/api/admin/reports/overview?range=week')->assertOk()->json('data');
         $cards = collect($data['cards'])->keyBy('key');
 
-        $this->assertCount(6, $data['cards']);
+        // دفعة (هـ): 6 بطاقات + 4 بطاقات مالية (رسوم إضافية / فروقات / استرجاعات / صافي).
+        $this->assertCount(10, $data['cards']);
+        $this->assertSame(['orders_today', 'orders_week', 'revenue', 'extra_fees', 'price_differences', 'refunds', 'net_revenue', 'avg_notarization_hours', 'completion_rate', 'top_source'], $cards->keys()->all());
         $this->assertSame(3, $cards['orders_today']['value']);
         $this->assertSame(3, $cards['orders_week']['value']);
         $this->assertEquals(598, $cards['revenue']['value']);

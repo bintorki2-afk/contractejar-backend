@@ -472,7 +472,7 @@ class OrderDetailExtras
         if ($model === null) {
             return null;
         }
-        foreach (['name_trans', 'name_ar', 'name', 'name_en'] as $attr) {
+        foreach (['name_ar', 'name', 'name_trans', 'name_en'] as $attr) {
             $v = $model->{$attr} ?? null;
             if (is_string($v) && trim($v) !== '') {
                 return trim($v);

@@ -206,7 +206,7 @@ class OrderController extends Controller
         $received = $contract->receivedContract()->exists();
         $current = match (true) {
             in_array($key, ['ejar_authenticated', 'completed'], true) => 'notarized',
-            $received || $key === 'whatsapp_draft' => 'received',
+            $received || in_array($key, ['received', 'received_by_employee', 'whatsapp_draft'], true) => 'received',
             default => null,
         };
         $next = $current === null ? 'received' : \App\Services\Orders\OrderStageService::NEXT[$current];
