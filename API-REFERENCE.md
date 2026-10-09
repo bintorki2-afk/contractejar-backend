@@ -221,6 +221,22 @@ reports:weekly-owner                                   سطور «رسوم إض�
 ```
 القوالب الجديدة: `data_request`, `data_request_reminder`, `charge_payment_request`, `bank_transfer_instructions` (حُذف `draft_sent`/`stage_draft_sent`). الصلاحيات الجديدة: `payments.record_transfer`, `payments.add_fee`.
 
+### متابعة ملاحظات اللوحة/الموقع/التطبيق (2026-10-10)
+```
+POST /api/v2/contract/uncompleted-contract {uuid}     طلب مدفوع له طلب مرفق ناقص معلّق ⇒ 200 «وضع التصحيح»:
+                                                     {step, contract_id, uuid, fix_mode: true, pending_data_requests[], editable_steps[], step1..step6 (كل الخطوات المطبّقة)}
+                                                     مكتمل بلا طلب معلّق ⇒ 400 كما كان · غير مكتمل ⇒ كما كان (fix_mode: false، الخطوات السابقة فقط)
+GET  /api/v2/contracts/{id}                           + حقول الخطوات 1/2/3/4 للتعبئة المسبقة (بلا أسماء): instrument_number, instrument_history, type_instrument_history,
+                                                     property_type_id, property_usages_id, number_of_floors, العنوان (neighborhood, street, building_number, postal_code, extra_figure, property_city_id…),
+                                                     property_owner_dob (+ _day/_month/_year), type_dob_property_owner, property_owner_mobile, الوكيل…, tenant_dob (+ أجزاؤه), type_tenant_dob, tenant_mobile, tenant_entity…
+GET  /api/v2/payment/result/{chg-uuid-id}             مفتاح رسم ⇒ kind: charge + charge{id, kind, amount, message, status} + contract_id/payment/is_completed للطلب الأصل (لصاحب الطلب أو عودة بوابة موثّقة؛ غيرهم: paid/kind فقط)
+GET  /api/admin/employees/{id}/kpis                   revenue = «إيراد التوثيق» (دفعات الطلبات المستلمة المنجزة فقط) · revenue_total = «الإجمالي (توثيق + رسوم + حوالات)»
+                                                     {key: revenue_total_sar, value, parts[{notarization|fees|bank_transfers}]} · في metrics[] المفتاحان revenue_sar و revenue_total_sar
+GET  /api/admin/employees/kpis                        summary + revenue_total_sar_total + revenue_labels
+```
+- Push (FCM): كل قيم `data` نصوص — المصفوفات تُرمَّز JSON (مثل `items` في `data_missing`)، المنطقي `1/0`.
+- قالب `payment_reminder`: «… لنبدأ توثيق عقدك» (ترحيل يحدّث النص الافتراضي القديم فقط إن لم يعدّله المالك).
+
 ## كيف تستكشف المزيد
 - مسارات أي module: `app/Modules/<Name>/Routes/{api_v2,admin,api}.php`
 - المنطق: `app/Modules/<Name>/` (Controllers / Services / Models)

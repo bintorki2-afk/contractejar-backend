@@ -180,6 +180,7 @@ class EmployeeKpiService
         $receiveAvgs = [];
         $processAvgs = [];
         $revenue = 0.0;
+        $revenueTotal = 0.0;
 
         foreach ($items as $item) {
             $cards = collect($item['cards'] ?? [])->keyBy('key');
@@ -200,6 +201,7 @@ class EmployeeKpiService
             }
 
             $revenue += (float) ($item['revenue']['value'] ?? 0);
+            $revenueTotal += (float) ($item['revenue_total']['value'] ?? ($item['revenue']['value'] ?? 0));
         }
 
         return [
@@ -212,6 +214,9 @@ class EmployeeKpiService
             'avg_receive_work_minutes' => $this->averageOrNull($receiveAvgs),
             'avg_process_minutes' => $this->averageOrNull($processAvgs),
             'revenue_sar_total' => $this->moneyValue($revenue),
+            // دفعة (هـ)
+            'revenue_total_sar_total' => $this->moneyValue($revenueTotal),
+            'revenue_labels' => ['revenue_sar' => 'إيراد التوثيق', 'revenue_total_sar' => 'الإجمالي (توثيق + رسوم + حوالات)'],
         ];
     }
 
@@ -431,9 +436,23 @@ class EmployeeKpiService
                 ],
                 'revenue' => [
                     'key' => 'revenue_sar',
-                    'label_ar' => 'إيراد محقق',
+                    'label_ar' => 'إيراد التوثيق',
+                    'description_ar' => 'دفعات الطلبات التي استلمها الموظف وأُنجزت في الفترة (بلا الرسوم الإضافية والحوالات)',
                     'value' => $this->moneyValue($revenue),
                     'currency' => 'SAR',
+                ],
+                // دفعة (هـ) — متابعة #2: الإجمالي الواضح = إيراد التوثيق + الرسوم التي أضافها + الحوالات التي سجّلها.
+                'revenue_total' => [
+                    'key' => 'revenue_total_sar',
+                    'label_ar' => 'الإجمالي (توثيق + رسوم + حوالات)',
+                    'description_ar' => 'إيراد التوثيق + الرسوم الإضافية التي أضافها الموظف + الحوالات البنكية التي سجّلها',
+                    'value' => $this->moneyValue($revenue + (float) ($batchE[$employeeId]['fees_added_amount'] ?? 0) + (float) ($batchE[$employeeId]['bank_transfers_amount'] ?? 0)),
+                    'currency' => 'SAR',
+                    'parts' => [
+                        ['key' => 'notarization', 'label_ar' => 'إيراد التوثيق', 'value' => $this->moneyValue($revenue)],
+                        ['key' => 'fees', 'label_ar' => 'رسوم إضافية', 'value' => (float) ($batchE[$employeeId]['fees_added_amount'] ?? 0)],
+                        ['key' => 'bank_transfers', 'label_ar' => 'حوالات بنكية', 'value' => (float) ($batchE[$employeeId]['bank_transfers_amount'] ?? 0)],
+                    ],
                 ],
                 'receive_sla' => [
                     'key' => 'receive_sla_within_5m',
@@ -469,8 +488,14 @@ class EmployeeKpiService
                     ],
                     [
                         'key' => 'revenue_sar',
-                        'label_ar' => 'إيراد محقق',
+                        'label_ar' => 'إيراد التوثيق',
                         'value' => $this->moneyValue($revenue),
+                        'currency' => 'SAR',
+                    ],
+                    [
+                        'key' => 'revenue_total_sar',
+                        'label_ar' => 'الإجمالي (توثيق + رسوم + حوالات)',
+                        'value' => $this->moneyValue($revenue + (float) ($batchE[$employeeId]['fees_added_amount'] ?? 0) + (float) ($batchE[$employeeId]['bank_transfers_amount'] ?? 0)),
                         'currency' => 'SAR',
                     ],
                 ],

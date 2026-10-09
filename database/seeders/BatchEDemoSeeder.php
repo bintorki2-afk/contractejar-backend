@@ -106,8 +106,12 @@ class BatchEDemoSeeder extends Seeder
         $bank = $this->contract($prefix.'7', array_merge($base, ['is_completed' => 1, 'contract_status_id' => ContractStatus::idFor('received_by_employee')]));
         $this->units($bank, $user, 1);
         $this->received($bank, $employee);
+        $receiptPath = 'payments/receipts/'.$bank->id.'/demo-receipt.png';
+        if (Storage::disk('local')->exists($receiptPath) && Storage::disk('local')->size($receiptPath) < 2048) {
+            Storage::disk('local')->put($receiptPath, self::placeholderPng(self::ATTACHMENT_TITLES['receipt'], 'Order '.$bank->uuid.' · 264 SAR', 'receipt'));
+        }
         if (! Payment::query()->where('contract_uuid', (string) $bank->uuid)->where('status', 'success')->exists()) {
-            Storage::disk('local')->put('payments/receipts/'.$bank->id.'/demo-receipt.png', base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='));
+            Storage::disk('local')->put('payments/receipts/'.$bank->id.'/demo-receipt.png', self::placeholderPng(self::ATTACHMENT_TITLES['receipt'], 'Order '.$bank->uuid.' · 264 SAR', 'receipt'));
             Payment::query()->create([
                 'name' => 'Bank transfer '.$bank->uuid, 'amount' => ContractPricing::total($bank), 'contract_uuid' => (string) $bank->uuid, 'contract_id' => $bank->id,
                 'kind' => 'bank_transfer', 'tran_currency' => 'SAR', 'payment_method' => 'bank_transfer', 'payment_brand' => 'bank', 'status' => 'success',
@@ -163,23 +167,82 @@ class BatchEDemoSeeder extends Seeder
         }
     }
 
-    /** @param list<string>|null $only */
+    /** @var array<string, string> */
+    private const ATTACHMENT_TITLES = [
+        'image_instrument' => 'DEED / TITLE DOCUMENT',
+        'image_address' => 'NATIONAL ADDRESS',
+        'copy_of_the_authorization_or_agency' => 'POWER OF ATTORNEY',
+        'copy_of_the_owner_record' => 'TENANT ID / RECORD',
+        'copy_of_the_endowment_registration_certificate' => 'ENDOWMENT CERTIFICATE',
+        'copy_of_the_trusteeship_deed' => 'TRUSTEESHIP DEED',
+        'receipt' => 'BANK TRANSFER RECEIPT',
+    ];
+
+    /**
+     * @param list<string>|null $only
+     * متابعة دفعة (هـ) #3: صور placeholder حقيقية المظهر (600×800 PNG بعنوان المرفق ورقم الطلب) — تُعاد كتابة الصور الصغيرة (1×1) القديمة.
+     */
     private function attachments(Contract $contract, ?array $only = null): void
     {
-        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
         $fields = $only ?? ['image_instrument', 'image_address', 'copy_of_the_authorization_or_agency', 'copy_of_the_owner_record', 'copy_of_the_endowment_registration_certificate', 'copy_of_the_trusteeship_deed'];
         $update = [];
         foreach ($fields as $field) {
-            if (filled($contract->getAttributes()[$field] ?? null)) {
-                continue;
+            $existing = $contract->getAttributes()[$field] ?? null;
+            $path = filled($existing) ? ltrim((string) $existing, '/') : 'contracts/deeds/'.$contract->id.'/'.$field.'.png';
+            if (! filled($existing) || Storage::disk('local')->size($path) < 2048) {
+                Storage::disk('local')->put($path, self::placeholderPng(self::ATTACHMENT_TITLES[$field] ?? strtoupper($field), 'Order '.$contract->uuid, $field));
             }
-            $path = 'contracts/deeds/'.$contract->id.'/'.$field.'.png';
-            Storage::disk('local')->put($path, $png);
-            $update[$field] = $path;
+            if (! filled($existing)) {
+                $update[$field] = $path;
+            }
         }
         if ($update !== []) {
             DB::table('contracts')->where('id', $contract->id)->update($update);
         }
+    }
+
+    /** صورة مستند تجريبية 600×800 (GD) — عنوان + رقم الطلب + سطور + ختم. */
+    public static function placeholderPng(string $title, string $subtitle, string $key, int $w = 600, int $h = 800): string
+    {
+        $im = imagecreatetruecolor($w, $h);
+        $paper = imagecolorallocate($im, 250, 248, 240);
+        $ink = imagecolorallocate($im, 40, 40, 40);
+        $muted = imagecolorallocate($im, 150, 150, 150);
+        $brand = imagecolorallocate($im, 15, 118, 110);
+        $stamp = imagecolorallocate($im, 185, 28, 28);
+        imagefilledrectangle($im, 0, 0, $w, $h, $paper);
+        imagerectangle($im, 14, 14, $w - 15, $h - 15, $brand);
+        imagerectangle($im, 18, 18, $w - 19, $h - 19, $brand);
+        for ($y = 220; $y < $h - 160; $y += 34) {
+            imageline($im, 50, $y, $w - 50, $y, $muted);
+        }
+        imagerectangle($im, $w - 190, $h - 150, $w - 50, $h - 60, $stamp);
+        imagerectangle($im, $w - 186, $h - 146, $w - 54, $h - 64, $stamp);
+
+        $font = null;
+        foreach (['/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf'] as $candidate) {
+            if (is_file($candidate)) {
+                $font = $candidate;
+                break;
+            }
+        }
+        if ($font !== null && function_exists('imagettftext')) {
+            imagettftext($im, 26, 0, 50, 90, $brand, $font, $title);
+            imagettftext($im, 18, 0, 50, 130, $ink, $font, $subtitle);
+            imagettftext($im, 12, 0, 50, 165, $muted, $font, 'DEMO PLACEHOLDER — '.$key);
+            imagettftext($im, 14, 0, $w - 178, $h - 100, $stamp, $font, 'DEMO STAMP');
+            imagettftext($im, 11, 0, 50, $h - 40, $muted, $font, 'contractejar.com · batch E fixture · not a real document');
+        } else {
+            imagestring($im, 5, 50, 70, $title, $brand);
+            imagestring($im, 4, 50, 110, $subtitle, $ink);
+            imagestring($im, 3, 50, 150, 'DEMO PLACEHOLDER - '.$key, $muted);
+        }
+
+        ob_start();
+        imagepng($im);
+        imagedestroy($im);
+
+        return (string) ob_get_clean();
     }
 
     private function moyasarPayment(Contract $contract, ?float $amount = null): void

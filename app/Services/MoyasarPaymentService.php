@@ -442,10 +442,18 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
         $uuid = $this->normalizeContractUuid($uuid);
         $sync = $this->syncGatewayPaymentStatus($uuid, $paymentId, $invoiceId);
 
+        // دفعة (هـ) — E5 (A-2): مفتاح رسم chg-{uuid}-{id} ⇒ الطلب الأصل + الرسم.
+        $chargeKey = Payment::parseChargeKey($uuid);
+        $charge = $chargeKey !== null && \App\Support\SchemaCache::hasTable('contract_charges')
+            ? \App\Models\ContractCharge::query()->find($chargeKey['charge_id'])
+            : null;
+
         $employeePaidRecord = ContractPaidByEmployee::query()
             ->where('contract_uuid', $uuid)
             ->first();
-        $contract = Contract::where('uuid', $uuid)->first();
+        $contract = $charge !== null
+            ? Contract::query()->find($charge->contract_id)
+            : Contract::where('uuid', $uuid)->first();
         $lessorChange = (! $contract && ! $employeePaidRecord)
             ? \App\Models\LessorChangeRequest::findByUuid($uuid)
             : null;
@@ -466,11 +474,19 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             || ($employeePaidRecord ? (bool) $employeePaidRecord->is_paid : false)
             || (($sync['synced'] ?? false) && ($sync['status'] ?? null) === 'success');
 
-        if (! $paymentConfirmed) {
+        if (! $paymentConfirmed && $charge === null) {
             $this->revertContractCompletionWithoutSuccessfulPayment($uuid);
             $contract = $contract?->fresh();
         } else {
             $contract = $contract?->fresh();
+        }
+        if ($charge !== null && $paymentConfirmed && $charge->status !== \App\Models\ContractCharge::STATUS_PAID) {
+            try {
+                app(\App\Services\Charges\ChargeService::class)->settleFromPaymentKey($uuid);
+                $charge = $charge->fresh();
+            } catch (\Throwable $e) {
+                Log::warning('charge settlement from status payload failed', ['key' => $uuid, 'error' => $e->getMessage()]);
+            }
         }
 
         $resolvedResult = $paymentConfirmed
@@ -485,9 +501,17 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
         return [
             'result' => $result,
             'resolved_result' => $resolvedResult,
-            'contract_uuid' => $uuid,
-            'kind' => $lessorChange ? 'lessor_change' : 'contract',
+            'contract_uuid' => $charge !== null ? (string) $contract?->uuid : $uuid,
+            'payment_key' => $uuid,
+            'kind' => $charge !== null ? 'charge' : ($lessorChange ? 'lessor_change' : 'contract'),
             'lessor_change' => $lessorChange?->toClientArray(),
+            'charge' => $charge !== null ? [
+                'id' => $charge->id,
+                'kind' => $charge->kind,
+                'amount' => (float) $charge->amount,
+                'message' => $charge->message,
+                'status' => $charge->fresh()?->status ?? $charge->status,
+            ] : null,
             'contract_id' => $contract?->id,
             'is_completed' => $contract ? (bool) $contract->is_completed : false,
             'payment_confirmed' => $paymentConfirmed,

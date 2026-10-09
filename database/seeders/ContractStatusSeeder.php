@@ -17,7 +17,8 @@ class ContractStatusSeeder extends Seeder
             ['name' => 'معلق', 'color' => '#6B7280', 'color_text' => '#FFFFFF', 'description' => 'العقد معلق حتى استكمال المستندات', 'client_explanation' => 'طلبك معلق حالياً حتى استكمال المطلوب.', 'order' => 5],
             ['name' => 'مستلم', 'color' => '#8B5CF6', 'color_text' => '#FFFFFF', 'description' => 'تم استلام العقد من الموظف', 'client_explanation' => 'تم استلام طلبك من الموظف وجاري العمل عليه.', 'order' => 6],
             ['name' => 'مستلم من الموظف', 'color' => '#F97316', 'color_text' => '#FFFFFF', 'description' => 'الحالة الآن - يراجع فريقنا بيانات طلبك', 'client_explanation' => 'الحالة الآن - يراجع فريقنا بيانات طلبك.', 'order' => 7],
-            ['name' => 'إرسال مسودة العقد لكم عبر واتساب', 'color' => '#22C55E', 'color_text' => '#FFFFFF', 'description' => 'تصلك المسودة للاطلاع والمراجعة قبل التوثيق', 'client_explanation' => 'تصلك المسودة عبر واتساب للاطلاع والمراجعة قبل التوثيق.', 'order' => 8],
+            // دفعة (هـ): حالة قديمة (أُلغيت مرحلة المسودة) — تبقى معطّلة للبيانات التاريخية فقط.
+            ['name' => 'إرسال مسودة العقد لكم عبر واتساب', 'color' => '#22C55E', 'color_text' => '#FFFFFF', 'description' => 'حالة قديمة (أُلغيت) — لا تُستخدم', 'client_explanation' => 'الحالة الآن - يراجع فريقنا بيانات طلبك.', 'order' => 8, 'is_active' => false],
             ['name' => 'توثيق العقد في إيجار', 'color' => '#0EA5E9', 'color_text' => '#FFFFFF', 'description' => 'يُوثّق العقد ويصبح جاهزاً للتحميل', 'client_explanation' => 'يُوثّق العقد في إيجار ويصبح جاهزاً للتحميل.', 'order' => 9],
             // دفعة (د): حالة الاسترجاع المستقلة (كانت «قيد المراجعة» تُستخدم لها خطأً).
             ['name' => 'مسترجع', 'color' => '#DC2626', 'color_text' => '#FFFFFF', 'description' => 'تم استرجاع مبلغ الطلب للعميل', 'client_explanation' => 'تم استرجاع مبلغ طلبك.', 'order' => 10],
@@ -27,7 +28,7 @@ class ContractStatusSeeder extends Seeder
             $key = \App\Support\ContractFrontendStatus::knownKeyFromName($status['name']);
             ContractStatus::updateOrCreate(
                 ['name' => $status['name']],
-                array_merge($status, ['is_active' => true], $key !== null ? ['status_key' => $key] : [])
+                array_merge(['is_active' => true], $status, $key !== null ? ['status_key' => $key] : [])
             );
         }
         ContractStatus::flushKeyCache();

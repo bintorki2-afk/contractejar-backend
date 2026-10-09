@@ -32,6 +32,8 @@ class ContractResource extends JsonResource
             'tenant_id_num' => $this->tenant_id_num,
             'instrument_type' => $this->instrument_type,
             ...Contract::instrumentTypeImageRequirements($this->instrument_type),
+            // دفعة (هـ) — E4 (A-1): حقول الخطوات 1/2/3/4 للتعبئة المسبقة في وضع التصحيح (بيانات العميل نفسه).
+            ...$this->fixModeScalarFields(),
             'image_instrument' => \App\Support\DeedImage::signedUrl($this->resource, 'image_instrument'),
             'image_instrument_pages' => \App\Support\DeedImage::signedPageUrls($this->resource),
             'age_of_the_property' => $this->age_of_the_property,
@@ -89,6 +91,102 @@ class ContractResource extends JsonResource
             ),
             'created_at' => optional($this->created_at)->format('Y-m-d'),
         ]);
+    }
+
+    /**
+     * الحقول العددية/النصية للخطوات 1 (الصك والعقار) و2 (العنوان) و3 (المالك) و4 (المستأجر) — نفس المجموعة الآمنة
+     * الموجودة في تفاصيل الطلب باللوحة، بلا أسماء أو ملفات (الملفات روابط موقّعة أعلاه).
+     *
+     * @return array<string, mixed>
+     */
+    private function fixModeScalarFields(): array
+    {
+        $c = $this->resource;
+        $ownerDob = \App\Support\HijriDobParts::split($c->property_owner_dob);
+        $tenantDob = \App\Support\HijriDobParts::split($c->tenant_dob);
+        $agentDob = \App\Support\HijriDobParts::split($c->dob_of_property_owner_agent);
+        $tenantAgentDob = \App\Support\HijriDobParts::split($c->dob_of_property_tenant_agent);
+
+        return [
+            // الخطوة 1
+            'instrument_number' => $c->instrument_number,
+            'instrument_history' => $c->instrument_history,
+            'type_instrument_history' => $c->type_instrument_history,
+            'real_estate_registry_number' => $c->real_estate_registry_number,
+            'date_first_registration' => $c->date_first_registration,
+            'type_date_first_registration' => $c->type_date_first_registration,
+            'property_type_id' => $c->property_type_id,
+            'property_usages_id' => $c->property_usages_id,
+            'number_of_floors' => $c->number_of_floors,
+            'is_multiple_trusteeship_deed_copy' => (bool) $c->is_multiple_trusteeship_deed_copy,
+            'copy_of_the_endowment_registration_certificate' => \App\Support\DeedImage::signedUrl($c, 'copy_of_the_endowment_registration_certificate'),
+            'copy_of_the_trusteeship_deed' => \App\Support\DeedImage::signedUrl($c, 'copy_of_the_trusteeship_deed'),
+            'copy_of_guardians_power_of_attorney_for_agent' => \App\Support\DeedImage::signedUrl($c, 'copy_of_guardians_power_of_attorney_for_agent'),
+            // الخطوة 2
+            'property_place_id' => $c->property_place_id,
+            'property_city_id' => $c->property_city_id,
+            'neighborhood' => $c->neighborhood,
+            'street' => $c->street,
+            'building_number' => $c->building_number,
+            'postal_code' => $c->postal_code,
+            'extra_figure' => $c->extra_figure,
+            // الخطوة 3 — المالك (بلا اسم)
+            'property_owner_dob' => $c->property_owner_dob,
+            'property_owner_dob_day' => $ownerDob['day'] ?? null,
+            'property_owner_dob_month' => $ownerDob['month'] ?? null,
+            'property_owner_dob_year' => $ownerDob['year'] ?? null,
+            'type_dob_property_owner' => $c->type_dob_property_owner,
+            'property_owner_mobile' => $c->property_owner_mobile,
+            'property_owner_iban' => $c->property_owner_iban,
+            'add_legal_agent_of_owner' => (bool) $c->add_legal_agent_of_owner,
+            'id_num_of_property_owner_agent' => $c->id_num_of_property_owner_agent,
+            'dob_of_property_owner_agent' => $c->dob_of_property_owner_agent,
+            'dob_of_property_owner_agent_day' => $agentDob['day'] ?? null,
+            'dob_of_property_owner_agent_month' => $agentDob['month'] ?? null,
+            'dob_of_property_owner_agent_year' => $agentDob['year'] ?? null,
+            'type_dob_property_owner_agent' => $c->type_dob_property_owner_agent,
+            'mobile_of_property_owner_agent' => $c->mobile_of_property_owner_agent,
+            'agency_number_in_instrument_of_property_owner' => $c->agency_number_in_instrument_of_property_owner,
+            'agency_instrument_date_of_property_owner' => $c->agency_instrument_date_of_property_owner,
+            'type_agency_instrument_date_of_property_owner' => $c->type_agency_instrument_date_of_property_owner,
+            'copy_of_the_authorization_or_agency' => $this->publicOrSignedUrl($c, 'copy_of_the_authorization_or_agency'),
+            // الخطوة 4 — المستأجر (بلا اسم)
+            'tenant_entity' => $c->tenant_entity,
+            'tenant_dob' => $c->tenant_dob,
+            'tenant_dob_day' => $tenantDob['day'] ?? null,
+            'tenant_dob_month' => $tenantDob['month'] ?? null,
+            'tenant_dob_year' => $tenantDob['year'] ?? null,
+            'type_tenant_dob' => $c->type_tenant_dob,
+            'tenant_mobile' => $c->tenant_mobile,
+            'tenant_entity_unified_registry_number' => $c->tenant_entity_unified_registry_number,
+            'authorization_type' => $c->authorization_type,
+            'is_there_a_legal_representative_of_the_tenant' => (bool) $c->is_there_a_legal_representative_of_the_tenant,
+            'id_num_of_property_tenant_agent' => $c->id_num_of_property_tenant_agent,
+            'dob_of_property_tenant_agent' => $c->dob_of_property_tenant_agent,
+            'dob_of_property_tenant_agent_day' => $tenantAgentDob['day'] ?? null,
+            'dob_of_property_tenant_agent_month' => $tenantAgentDob['month'] ?? null,
+            'dob_of_property_tenant_agent_year' => $tenantAgentDob['year'] ?? null,
+            'type_dob_tenant_agent' => $c->type_dob_tenant_agent,
+            'mobile_of_property_tenant_agent' => $c->mobile_of_property_tenant_agent,
+            'copy_of_the_owner_record' => $this->publicOrSignedUrl($c, 'copy_of_the_owner_record'),
+        ];
+    }
+
+    private function publicOrSignedUrl(Contract $c, string $field): ?string
+    {
+        if (\App\Support\DeedImage::isField($field)) {
+            return \App\Support\DeedImage::signedUrl($c, $field);
+        }
+        $raw = $c->getAttributes()[$field] ?? null;
+        if (! is_string($raw) || trim($raw) === '') {
+            return null;
+        }
+        $path = ltrim(trim($raw), '/');
+        if (preg_match('#^https?://#i', $path) === 1) {
+            return $path;
+        }
+
+        return url('storage/'.(str_starts_with($path, 'storage/') ? substr($path, 8) : $path));
     }
 }
 

@@ -28,7 +28,11 @@ trait RedactsPublicPaymentPayload
             return false;
         }
 
-        $contractOwner = Contract::query()->where('uuid', $uuid)->value('user_id');
+        // دفعة (هـ) — A-2: مفتاح رسم chg-{uuid}-{id} ⇒ مالك الطلب الأصل.
+        $charge = \App\Models\Payment::parseChargeKey($uuid);
+        $contractOwner = $charge !== null
+            ? Contract::query()->where('uuid', $charge['uuid'])->value('user_id')
+            : Contract::query()->where('uuid', $uuid)->value('user_id');
         if ($contractOwner !== null) {
             return (int) $contractOwner === (int) $user->id;
         }

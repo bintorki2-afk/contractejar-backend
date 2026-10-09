@@ -211,6 +211,9 @@ class PaymentController extends Controller
             'contract_id' => $detailed ? ($payload['contract_id'] ?? null) : null,
             'is_completed' => (bool) ($payload['is_completed'] ?? false),
             'payment' => $detailed ? ($payload['payment'] ?? null) : null,
+            // دفعة (هـ) — A-2: مفتاح رسم chg-{uuid}-{id} ⇒ kind=charge + ملخص الرسم لصاحب الطلب.
+            'kind' => $payload['kind'] ?? 'contract',
+            'charge' => $detailed ? ($payload['charge'] ?? null) : null,
             'content' => $message ? (new PaymentMessageResource($message))->resolve() : null,
             'message_type' => $type,
             'frontend_url' => $this->frontendPaymentRedirectUrl($paid ? 'success' : 'error', $uuid),
