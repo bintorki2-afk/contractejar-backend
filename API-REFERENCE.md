@@ -1,7 +1,7 @@
 # 🔌 مرجع الـ API — contractejar-backend
 
 > خريطة الـ API (Laravel 10). إجمالي ~573 endpoint موزّعة على 16 module.
-> آخر تحديث: 2026-10-09
+> آخر تحديث: 2026-10-10
 
 ## البنية
 الـ API مبني بنظام **Modules** — كل ميزة في مجلد مستقل تحت `app/Modules/<Name>/`.
@@ -59,12 +59,12 @@ GET  /api/v2/coupons/available       { available: bool }
 GET  /api/v2/app/version             { ios:{min_version,latest_version,store_url,force_update}, android:{...}, force_update_message }
 GET  /api/v2/health                  { status, time, db:'ok'|'error', scheduler_last_run, scheduler_stale, reference_data_ok } (503 عند الخلل)
                                      — لا يكشف أسماء الجداول/أعدادها (تبقى في السجلّات فقط).
-POST /api/v2/contract/track          { order, mobile } — 10 طلبات/دقيقة لكل IP — الرد يحوي journey (6 خطوات) + journey_sentence
+POST /api/v2/contract/track          { order, mobile } — 10 طلبات/دقيقة لكل IP — الرد يحوي journey (3 خطوات منذ دفعة هـ) + journey_sentence
 ```
 
 ### العميل (auth:sanctum)
 ```
-GET  /api/v2/contracts/{id}          يحوي journey: [{step,key,label,description,done,current,at}] (6 خطوات ثابتة)
+GET  /api/v2/contracts/{id}          يحوي journey: [{step,key,label,description,done,current,at,by}] (3 خطوات منذ دفعة هـ)
                                      + status_timeline (سجل الحالات الفعلي كما كان)
 GET  /api/v2/invoices                فواتير العقود + طلبات تغيير المؤجر (kind: contract | lessor_change) — مرقّمة
 GET  /api/v2/invoices/{contractId}   | /contracts/{contractId}/invoice | /invoices/number/{INV-..}
@@ -79,15 +79,14 @@ GET  /api/v2/notifications/unread-count          { unread_count }
 POST /api/v2/notifications/{id}/read             { id, is_read, read_at, unread_count }
 POST /api/v2/notifications/read-all              { updated, unread_count }
 ```
-أنواع الإشعارات (`kind`): `draft_sent`، `notarized` (+ data.ask_rating)، `payment_success`، `status_changed`، `lessor_change_status`،
+أنواع الإشعارات (`kind`): `notarized` (+ data.ask_rating)، `payment_success`، `status_changed`، `lessor_change_status`،
 `order_abandoned_24h`، `order_abandoned_3d`، `awaiting_payment_2h`، `renewal_60d`، `renewal_30d`، `offer`، `announcement`.
 بيانات الـ push (FCM data): `kind`, `url` (الرابط الذكي `https://contractejar.com/r/{order}`), `contract_uuid`, `order_number`, `notification_id` (+ `type` للتوافق).
 
 ### لوحة التحكم (auth:sanctum + permission)
 ```
-POST /api/admin/orders/{id}/status            { status_id, ... }  — 422 { message, errors } عند محاولة «توثيق العقد في إيجار»/«مكتمل»
-                                              قبل حالة «إرسال مسودة العقد عبر واتساب»؛ مدير النظام يتجاوز بـ force=1 (يُسجَّل).
-                                              الانتقال إلى المسودة يتطلب: ejar_contract_draft_number + contact_number_mode=same|another (+ contact_number)
+POST /api/admin/orders/{id}/status            { status_id, ... }  — 422 { code: payment_required|charge_pending, message, errors } عند محاولة «توثيق العقد في إيجار»/«مكتمل»
+                                              قبل الدفع الكامل (دفعة هـ — حلّت محل قاعدة المسودة)؛ مدير النظام يتجاوز بـ force=1 (يُسجَّل).
                                               الانتقال إلى التوثيق يتطلب: deed_number + deed_type=paper|electronic|other
 GET  /api/admin/orders/{id}                   قسم invoice بنفس شكل فاتورة العميل (items/subtotal/discount/vat/total)
 POST /api/admin/notifications/{user|all-users|send}   + kind: offer|announcement (افتراضي offer) + url اختياري — يُخزَّن في صندوق العميل
@@ -110,18 +109,18 @@ aqdi:db-restore {file}     يدوي — الاستعادة (خارج الإنت�
 
 ### حالات الطلب (ب2)
 كل صف في `contract_statuses` يحمل `status_key` ثابتاً: `new, under_review, received, received_by_employee, whatsapp_draft,
-ejar_authenticated, completed, cancelled, on_hold, refunded` (+ `paid` افتراضية = جديد مدفوع). لا تعتمد على أرقام الحالات.
+ejar_authenticated, completed, cancelled, on_hold, refunded` (+ `paid` افتراضية = جديد مدفوع؛ `whatsapp_draft` بيانات قديمة فقط منذ دفعة هـ). لا تعتمد على أرقام الحالات.
 الدفع ⇒ `under_review` تلقائياً؛ الاستلام ⇒ `received_by_employee`؛ «مسترجع» حالة مستقلة.
 
 ### لوحة التحكم (auth:sanctum + permission)
 ```
 GET    /api/admin/orders?status_key=a,b|tab=all|incomplete|<key>   كل الحالات افتراضياً (طلب = الخطوة ≥ 4)
 GET    /api/admin/orders/status-counts          all/paid/unpaid/incomplete/by_key/statuses/tabs (نفس فلاتر القائمة)
-GET    /api/admin/orders/attention              «عليك الحين»: awaiting_receive/draft/notarize + delayed (الأقدم أولاً)
+GET    /api/admin/orders/attention              «عليك الحين»: awaiting_receive/notarize/customer + delayed (الأقدم أولاً)
 GET    /api/admin/orders/trash                  السلة (30 يوماً) · DELETE /api/admin/orders/{id} · POST /api/admin/orders/{id}/restore
 PATCH  /api/admin/orders/{id}                   تعديل حقول صغيرة مع سجل قبل/بعد · GET /api/admin/orders/editable-fields
 GET    /api/admin/orders/{id}/stages            المرحلة الحالية/التالية وحقولها
-POST   /api/admin/orders/{id}/stage/{received|draft_sent|notarized}   + رسالة واتساب جاهزة (wa.me)
+POST   /api/admin/orders/{id}/stage/{received|notarized}   + رسالة واتساب جاهزة (wa.me) — draft_sent ⇒ 410 منذ دفعة هـ
 GET    /api/admin/orders/{id}/ejar-copy[?format=text]               كتل بيانات إيجار بالترتيب (هجري + ميلادي)
 POST   /api/admin/orders/{id}/notify            { kind: data_missing|status_changed, message?, step? }
 GET    /api/admin/orders/{id}                   + activities[] · notifications_sent[] · applied_discount · payments[] · refunds[] · delay_flags[] · status_key
@@ -151,6 +150,76 @@ qa:daily-smoke         يومياً 06:00 — فحص اصطناعي لمسار �
 reports:weekly-owner   الأحد 09:00 — تقرير المالك الأسبوعي عبر تيليجرام
 docs:field-mapping     يدوي — يولّد docs/field-mapping.md
 ```
+
+## نقاط دفعة (هـ) — 2026-10-10
+> التفاصيل بالأمثلة الحقيقية: `docs/field-mapping.md` (أقسام دفعة هـ) و`OWNER-GUIDE.md` §4.2. **الخادم هو المصدر الوحيد** لحالة الدفع والأسعار والرحلة.
+
+### الرحلة والمراحل (E3 — بلا مرحلة مسودة)
+```
+GET  /api/admin/orders/{id}/stages              current_stage: null|received|notarized · next_stage_locked + next_stage_lock_reason (payment_required|charge_pending)
+                                                + journey (3 خطوات) + journey_side_state + payment_state + warnings[] (data_request_pending)
+POST /api/admin/orders/{id}/stage/received      كما هو
+POST /api/admin/orders/{id}/stage/notarized     {deed_number, deed_type} — 422 {code: payment_required|charge_pending} حتى الدفع الكامل (مدير النظام force=1)
+POST /api/admin/orders/{id}/stage/draft_sent    410 — أُلغيت
+```
+`journey[]` = `{step, key: under_review|received_by_employee|ejar_authenticated, label, done, current, at, by}` · `journey_side_state` = `null | {key: cancelled|refunded, label, color, at}` (اللوحة + `/api/v2/contracts/{id}` + `/contract/track`).
+
+### حالة الدفع (2.1) — في تفاصيل الطلب والعميل والتتبّع والفاتورة
+```
+payment_state   {status: unpaid|paid|partially_paid|partially_refunded|refunded, method: null|moyasar|bank_transfer|mixed,
+                 due_total, original_due, extra_due, paid_total, outstanding, refunded_total, net_total, refund_due,
+                 pending_charges_count/total, label «مدفوع · Moyasar · 279 ر.س», can_notarize, notarize_block_reason, notarize_block_message}
+payment_details {lines[{key,label,amount,kind: fee|document|meter|discount|vat|extra_fee|price_difference|refund}],
+                 transactions[{id, kind: original|price_difference|extra_fee|bank_transfer|refund, amount, method, status, paid_at, reference, employee, reason, receipt_url, charge_id}],
+                 charges[], invoice_number, invoice_url (HTML موقّع 7 أيام), totals{original, extra, refunded, net, due, outstanding, refund_due}}
+GET  /api/admin/orders/{id}/payment-state       نفس الكائنين
+GET  /api/v2/invoices/print/{contract}          صفحة فاتورة قابلة للطباعة (رابط موقّع فقط)
+GET  /api/v2/payments/{payment}/receipt         إيصال الحوالة (رابط موقّع فقط)
+```
+
+### الحوالة البنكية (2.2) — صلاحية payments.record_transfer
+```
+GET  /api/admin/orders/{id}/bank-transfer-message?amount=&charge_id=   رسالة القالب bank_transfer_instructions + wa.me + bank{...}
+POST /api/admin/orders/{id}/payments/bank-transfer   multipart {amount, receipt ≤4MB, reference?, paid_at?, note?, charge_id?}
+                                                     → {payment_state, transaction, payment_details, charge, contract}
+GET/POST /api/admin/settings                         قسم bank_transfer {bank_name, bank_iban, bank_account_name, is_configured}
+```
+
+### الرسوم بعد الدفع (2.3)
+```
+GET  /api/admin/orders/{id}/charges                    items[{id, kind: price_difference|extra_fee, amount, message, status, payment_url, paid_at, created_by_name}] + payment_state
+POST /api/admin/orders/{id}/charges                    {amount, message, internal_reason?} — صلاحية payments.add_fee (الرسالة تصل للعميل كما هي)
+POST /api/admin/orders/{id}/charges/{cid}/payment-link {payment_url (Moyasar بمبلغ الرسم فقط، مفتاح chg-{uuid}-{id}), whatsapp_url, message}
+POST /api/admin/orders/{id}/charges/{cid}/cancel
+PATCH/POST /api/admin/orders/{id}                      تعديل يغيّر السعر (instrument_type, duration_*, total_months, *_meter_ownership) ⇒ price_difference {difference, refund_due, reason, charge}
+POST /api/status/{chg-key}/success                     webhook/callback Moyasar ⇒ الرسم مدفوع + الفاتورة + الإشعارات + النشاط
+GET  /api/v2/contracts/{uuid|id}/charges/{cid}/pay     رابط دفع رسم العميل المعلّق (توكن المالك/الزائر)
+GET  /api/v2/contracts/{id} · /contract/track · /invoices/{id}   charges[] + فاتورة تراكمية (original_total, extra_total, refunded_total, net_total, is_cumulative, transactions)
+GET  /api/admin/orders?attention=charge_pending|awaiting_customer|unpaid   فلاتر القائمة · الصفوف: payment_state, paid_original/paid_extra/refunded_total/net_total, awaiting_charge, data_request_pending
+```
+
+### طلب مرفق ناقص / تصحيح (2.4)
+```
+GET  /api/admin/data-requests/catalogue                sections[lessor|property|tenant].items[{key,label,step,fields}]
+POST /api/admin/orders/{id}/data-requests              {section, items[keys], note?} → {request, whatsapp_url, message} (يستبدل المعلّق لنفس القسم؛ إشعار data_missing برابط ?fix=ID&step=N)
+GET  /api/admin/orders/{id}/data-requests · POST …/{rid}/resolve · …/cancel · …/remind
+POST /api/v2/contract/step1..6 (طلب مدفوع)            مسموح فقط للخطوات التي لها طلب معلّق؛ الرد يحوي fix{fix_mode, changed_fields, resolved_request_ids, pending_data_requests, message}
+GET  /api/admin/orders/attention                       + awaiting_customer{count, items[]} + unpaid_received{...}؛ القواعد: paid_not_received(2h) · received_not_notarized(24h) · customer_no_reply_24h · customer_no_reply_72h
+GET  /api/admin/employee-notifications?unread=1        إشعارات اللوحة للموظف (data_request_resolved, charge_paid) · POST …/{id}/read · …/read-all
+```
+
+### تفاصيل الطلب (2.6) — GET /api/admin/orders/{id}
+`creator_mobile{local,dial,whatsapp_url}` · `customer_orders_summary{count_paid,count_unpaid,items[]}` · `address_entry_mode: map|manual|image` + `address{...}` · `document{type_key,type_label,deed_number,deed_date_hijri,deed_date_gregorian}` · `units[]` مهيكلة (`ac_count, furnished, meters[]`) · `ejar_entry_progress` (+ `PUT /api/admin/orders/{id}/ejar-entry-progress {section, done}`) · `attachments[]` · `charges[]` · `data_requests[]` · `payment_state/payment_details`.
+
+### التقارير والتصدير (2.7)
+```
+GET  /api/admin/reports/overview|sales|performance     + extra_fees, price_differences, refunds, net_revenue (+ original_revenue, bank_transfers)
+GET  /api/admin/employees/{id}/kpis                    + fees_added_count/amount, price_difference_count, data_requests_count, bank_transfers_recorded
+GET  /api/admin/payments                               الصفوف تحمل kind/kind_label/charge_id/receipt_url
+GET  /api/admin/orders/export?format=xlsx|csv          أعمدة: المدفوع الأصلي / إضافي / مسترجع / الصافي / طريقة الدفع (+ فلاتر القائمة)
+reports:weekly-owner                                   سطور «رسوم إضافية · فروقات · استرجاعات» و«طلبات مرفق ناقص مفتوحة»
+```
+القوالب الجديدة: `data_request`, `data_request_reminder`, `charge_payment_request`, `bank_transfer_instructions` (حُذف `draft_sent`/`stage_draft_sent`). الصلاحيات الجديدة: `payments.record_transfer`, `payments.add_fee`.
 
 ## كيف تستكشف المزيد
 - مسارات أي module: `app/Modules/<Name>/Routes/{api_v2,admin,api}.php`

@@ -291,7 +291,7 @@ class CustomerNotificationService
     // ───────────────────────── الأحداث (فورية) ─────────────────────────
 
     /**
-     * تغيّرت حالة الطلب من اللوحة: مسودة واتساب / توثيق / تحديث عام.
+     * تغيّرت حالة الطلب من اللوحة: توثيق / تحديث عام (دفعة هـ: بلا مرحلة مسودة).
      */
     public function contractStatusChanged(Contract $contract): ?Offer
     {
@@ -710,7 +710,7 @@ class CustomerNotificationService
             $user,
             self::KIND_AWAITING_PAYMENT_2H,
             'طلبك جاهز للدفع',
-            'طلبك جاهز للدفع — ادفع الآن لنبدأ بإعداد مسودة عقدك',
+            'طلبك جاهز للدفع — ادفع الآن لنبدأ توثيق عقدك',
             ['type' => 'payment_reminder'],
             contract: $contract,
         );

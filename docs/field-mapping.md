@@ -91,3 +91,40 @@
 | `mobile` | الجوال | `lessor_change_requests.mobile` | `mobile` | — |
 | `notes` | ملاحظات | `lessor_change_requests.notes` | `notes` | — |
 | `platform (web|app)` | المنصة | `lessor_change_requests.platform` | `platform` | — |
+
+## الرسوم بعد الدفع — دفعة (هـ) (POST /api/admin/orders/{id}/charges · فرق السعر تلقائي بعد PATCH)
+
+| المصدر | الحقل | عمود قاعدة البيانات | مفتاح اللوحة | مفتاح العميل |
+|---|---|---|---|---|
+| `amount` | مبلغ الرسم | `contract_charges.amount` | `charges[].amount / payment_details.charges[].amount` | `charges[].amount` |
+| `message (يراه العميل كما هو)` | رسالة الرسم | `contract_charges.message` | `charges[].message` | `charges[].message` |
+| `kind (price_difference|extra_fee)` | نوع الرسم | `contract_charges.kind` | `charges[].kind` | `charges[].kind` |
+| `status (pending|paid|cancelled)` | حالة الرسم | `contract_charges.status` | `charges[].status / payment_state.pending_charges_count` | `charges[].status / charges[].payment_url` |
+| `دفعة Moyasar (webhook بمفتاح chg-{uuid}-{id})` | دفعة الرسم | `payments (kind, charge_id, contract_id, contract_uuid=chg-…)` | `payment_details.transactions[] (kind=extra_fee|price_difference)` | `payment_details.transactions[] / invoice items[].kind` |
+
+## الحوالة البنكية — دفعة (هـ) (POST /api/admin/orders/{id}/payments/bank-transfer)
+
+| المصدر | الحقل | عمود قاعدة البيانات | مفتاح اللوحة | مفتاح العميل |
+|---|---|---|---|---|
+| `amount` | مبلغ الحوالة | `payments.amount (payment_method=bank_transfer, kind=bank_transfer)` | `payment_details.transactions[].amount / payments[].amount` | `payment_details.transactions[].amount` |
+| `receipt (ملف)` | صورة الإيصال | `payments.receipt_path (القرص الخاص payments/receipts/{contract})` | `payment_details.transactions[].receipt_url (رابط موقّع 30 دقيقة)` | — |
+| `reference` | مرجع الحوالة | `payments.reference` | `payment_details.transactions[].reference` | `payment_details.transactions[].reference` |
+| `paid_at` | تاريخ الحوالة | `payments.payment_date` | `payment_details.transactions[].paid_at` | `payment_details.transactions[].paid_at` |
+| `note` | ملاحظة | `payments.note` | `payments[].note` | — |
+| `الموظف المسجِّل` | من سجّل | `payments.employee_id` | `payment_details.transactions[].employee` | — |
+
+## طلب مرفق ناقص / تصحيح — دفعة (هـ) (POST /api/admin/orders/{id}/data-requests)
+
+| المصدر | الحقل | عمود قاعدة البيانات | مفتاح اللوحة | مفتاح العميل |
+|---|---|---|---|---|
+| `section (lessor|property|tenant)` | القسم | `contract_data_requests.section` | `data_requests[].section / data_request_pending.section` | `pending_data_requests[].section` |
+| `items[] (مفاتيح من config/data_requests.php)` | البنود | `contract_data_requests.items (json {key,label,step,fields})` | `data_requests[].items / data_request_pending.items` | `pending_data_requests[].items / banner` |
+| `note` | ملاحظة حرة | `contract_data_requests.note` | `data_requests[].note` | `pending_data_requests[].note` |
+| `الحل (تلقائي عند تغيّر أي حقل من fields عبر step1..6، أو يدوي)` | الحالة | `contract_data_requests.status / resolved_by / resolved_fields` | `data_requests[].status / resolved_by / resolved_fields` | `fix.resolved_request_ids (رد الخطوة)` |
+| `الرابط العميق` | رابط التصحيح | `— (محسوب)` | `data_requests[].deep_link ({smart_link}?fix={id}&step={n})` | `pending_data_requests[].deep_link / إشعار data_missing (data.deep_link)` |
+
+## إدخال إيجار — دفعة (هـ) (PUT /api/admin/orders/{id}/ejar-entry-progress)
+
+| المصدر | الحقل | عمود قاعدة البيانات | مفتاح اللوحة | مفتاح العميل |
+|---|---|---|---|---|
+| `section (lessor|property|unit|tenant|financial|conditions) + done` | أدخلتها في إيجار | `contracts.ejar_entry_progress (json)` | `ejar_entry_progress.{section}.{done,by,by_name,at}` | — |
