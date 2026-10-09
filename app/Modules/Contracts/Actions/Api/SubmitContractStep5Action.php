@@ -28,7 +28,8 @@ class SubmitContractStep5Action
             'split_ac' => $request->split_ac,
             'electricity_meter_number' => $request->electricity_meter_number,
             'water_meter_number' => $request->water_meter_number,
-            'app_or_web' => 'app',
+            // متابعة دفعة (د) — QA: القناة من العميل الحقيقي (لا تُفرض «app»).
+            'app_or_web' => \App\Support\ClientChannel::fromRequest($request),
         ];
 
         $contract->update($data);
