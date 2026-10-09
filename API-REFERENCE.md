@@ -169,7 +169,7 @@ POST /api/admin/orders/{id}/stage/draft_sent    410 — أُلغيت
 payment_state   {status: unpaid|paid|partially_paid|partially_refunded|refunded, method: null|moyasar|bank_transfer|mixed,
                  due_total, original_due, extra_due, paid_total, outstanding, refunded_total, net_total, refund_due,
                  pending_charges_count/total, label «مدفوع · Moyasar · 279 ر.س», can_notarize, notarize_block_reason, notarize_block_message}
-payment_details {lines[{key,label,amount,kind: fee|document|meter|discount|vat|extra_fee|price_difference|refund}],
+payment_details {lines[{key,label,amount,kind: fee|document|meter|discount|vat|extra_fee|price_difference|refund|adjustment}]  ← مدفوع: الأصل من لقطة الفاتورة (كما دُفع) + الرسوم المدفوعة − الاسترجاعات؛ مجموعها = totals.net. غير مدفوع: السعر الحي = totals.due,
                  transactions[{id, kind: original|price_difference|extra_fee|bank_transfer|refund, amount, method, status, paid_at, reference, employee, reason, receipt_url, charge_id}],
                  charges[], invoice_number, invoice_url (HTML موقّع 7 أيام), totals{original, extra, refunded, net, due, outstanding, refund_due}}
 GET  /api/admin/orders/{id}/payment-state       نفس الكائنين

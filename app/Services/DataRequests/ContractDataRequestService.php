@@ -397,6 +397,12 @@ class ContractDataRequestService
         $items = $rows->take($limit)->map(function (ContractDataRequest $r) {
             $c = $r->contract;
             $since = $r->requested_at ?? $r->created_at;
+            $hoursWaiting = $since ? (int) Carbon::parse($since)->diffInHours(now()) : 0;
+            // B-8: علم 72 ساعة يظهر للعنصر حتى يميّز الموظف الحالات الأقدم (وفق قاعدة customer_no_reply_72h).
+            $flags = ['customer_no_reply_24h'];
+            if ($hoursWaiting >= (int) config('data_requests.owner_alert_after_hours', 72)) {
+                $flags[] = 'customer_no_reply_72h';
+            }
 
             return [
                 'request_id' => $r->id,
@@ -413,11 +419,12 @@ class ContractDataRequestService
                 'items' => $r->itemLabels(),
                 'note' => $r->note,
                 'since' => $since?->toIso8601String(),
-                'hours_waiting' => $since ? (int) Carbon::parse($since)->diffInHours(now()) : 0,
+                'hours_waiting' => $hoursWaiting,
                 'reminded_at' => $r->reminded_at?->toIso8601String(),
                 'whatsapp_url' => $this->whatsapp($c, $r, 'data_request_reminder')['url'],
                 'deep_link' => $this->deepLink($c, $r),
-                'delay_flags' => ['customer_no_reply_24h'],
+                'delay_flags' => $flags,
+                'owner_alerted_at' => $r->owner_alerted_at?->toIso8601String(),
                 'is_delayed' => true,
             ];
         })->values()->all();
@@ -426,7 +433,12 @@ class ContractDataRequestService
     }
 
     /**
-     * تنبيه المالك عبر تيليجرام بعد 72 ساعة بلا رد (مرة واحدة لكل طلب). يرجع عدد التنبيهات المرسلة.
+     * تنبيه المالك عبر تيليجرام بعد 72 ساعة بلا رد (مرة واحدة لكل طلب). يرجع عدد التنبيهات المرسلة
+     * (وفي وضع المعاينة: عدد الطلبات المرشّحة).
+     *
+     * B-4: `owner_alerted_at` يُضبط فقط عند نجاح الإرسال فعلاً — إن كان تيليجرام غير مضبوط أو فشل الإرسال
+     * تبقى القيمة فارغة فتُعاد المحاولة في التشغيل التالي، ويُسجَّل نشاط `delay_flagged` مرة واحدة فقط
+     * لكل طلب مرفق (B-5: هذا هو النشاط الوحيد لحدث الـ72 ساعة؛ أمر flag-delays لا يكرّره).
      */
     public function alertOwnerForStale(bool $dryRun = false): int
     {
@@ -441,29 +453,72 @@ class ContractDataRequestService
             ->where(fn ($q) => $q->where('requested_at', '<=', $threshold)->orWhere(fn ($w) => $w->whereNull('requested_at')->where('created_at', '<=', $threshold)))
             ->orderBy('id')->get();
 
+        $telegram = app(\App\Services\TelegramService::class);
         $sent = 0;
         foreach ($rows as $r) {
             $c = $r->contract;
             if ($c === null) {
                 continue;
             }
+            if ($dryRun) {
+                $sent++;
+
+                continue;
+            }
+
             $text = "⚠️ عميل لم يرد منذ {$hours} ساعة\n"
                 .'الطلب #'.$c->uuid.' — '.($c->user?->name ?: 'عميل').' ('.($c->user?->contact_mobile ?: $c->user?->mobile ?: '—').")\n"
                 .'المطلوب: '.implode('، ', $r->itemLabels())."\n"
                 .'افتح الطلب: '.rtrim((string) config('app.dashboard_url', 'https://dashboard.contractejar.com'), '/').'/home/orders/'.$c->id;
-            if (! $dryRun) {
-                try {
-                    app(\App\Services\TelegramService::class)->send($text);
-                } catch (\Throwable $e) {
-                    Log::warning('data request owner alert failed', ['request_id' => $r->id, 'error' => $e->getMessage()]);
-                }
-                $r->forceFill(['owner_alerted_at' => now()])->save();
-                $this->flow->activity($c, 'delay_flagged', null, null, ['delay_flags' => ['customer_no_reply_72h'], 'request_id' => $r->id], 'system', 'عميل لم يرد على طلب المرفق منذ '.$hours.' ساعة — تم تنبيه المالك');
+
+            $delivered = false;
+            try {
+                $delivered = $telegram->configured() && $telegram->send($text);
+            } catch (\Throwable $e) {
+                Log::warning('data request owner alert failed', ['request_id' => $r->id, 'error' => $e->getMessage()]);
             }
-            $sent++;
+
+            if ($delivered) {
+                $r->forceFill(['owner_alerted_at' => now()])->save();
+                $sent++;
+            } else {
+                Log::warning('data request owner alert not delivered; will retry', [
+                    'request_id' => $r->id,
+                    'telegram_configured' => $telegram->configured(),
+                ]);
+            }
+
+            if (! $this->delayActivityLogged($c, $r)) {
+                $this->flow->activity(
+                    $c,
+                    'delay_flagged',
+                    null,
+                    null,
+                    ['delay_flags' => ['customer_no_reply_72h'], 'request_id' => $r->id, 'owner_alerted' => $delivered],
+                    'system',
+                    'عميل لم يرد على طلب المرفق منذ '.$hours.' ساعة — '.($delivered ? 'تم تنبيه المالك' : 'تعذّر تنبيه المالك عبر تيليجرام (ستُعاد المحاولة)')
+                );
+            }
         }
 
         return $sent;
+    }
+
+    /** هل سُجّل نشاط الـ72 ساعة لهذا الطلب من قبل؟ (منع التكرار عند إعادة المحاولة). */
+    private function delayActivityLogged(Contract $contract, ContractDataRequest $request): bool
+    {
+        if (! SchemaCache::hasTable('contract_activities')) {
+            return false;
+        }
+        try {
+            return \App\Models\ContractActivity::query()
+                ->where('contract_id', $contract->id)
+                ->where('action', 'delay_flagged')
+                ->where('after->request_id', $request->id)
+                ->exists();
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     private function notifyEmployeesResolved(Contract $contract, ContractDataRequest $request): void

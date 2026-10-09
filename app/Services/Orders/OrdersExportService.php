@@ -36,6 +36,9 @@ class OrdersExportService
         'data_request_pending' => 'بانتظار العميل',
     ];
 
+    /** الأعمدة الرقمية الوحيدة في xlsx — ما عداها نص (رقم الطلب والجوال تبقى بأصفارها البادئة). */
+    public const NUMERIC_COLUMNS = ['paid_original', 'paid_extra', 'refunded', 'net', 'outstanding'];
+
     public function __construct(
         private readonly AdminOrderQueryService $orders,
         private readonly ContractPaymentState $paymentState,
@@ -119,10 +122,12 @@ class OrdersExportService
             $sheetRows[] = array_values(array_map(static fn ($v) => $v === null ? '' : (string) $v, array_merge(array_fill_keys(array_keys(self::COLUMNS), null), $row)));
         }
 
+        // B-1: `rightToLeft` سمة لـ sheetView فقط (CT_SheetView) — وضعها على workbookView يخالف مخطط OOXML
+        // ويرفضه openpyxl ويطلب Excel «إصلاح» الملف. اتجاه الورقة يُضبط في sheet1.xml.
         $files = [
             '[Content_Types].xml' => '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>',
             '_rels/.rels' => '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
-            'xl/workbook.xml' => '<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView rightToLeft="1"/></bookViews><sheets><sheet name="orders" sheetId="1" r:id="rId1"/></sheets></workbook>',
+            'xl/workbook.xml' => '<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView activeTab="0"/></bookViews><sheets><sheet name="orders" sheetId="1" r:id="rId1"/></sheets></workbook>',
             'xl/_rels/workbook.xml.rels' => '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>',
             'xl/worksheets/sheet1.xml' => $this->sheetXml($sheetRows),
         ];
@@ -144,11 +149,14 @@ class OrdersExportService
     private function sheetXml(array $rows): string
     {
         $xml = '<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView rightToLeft="1" workbookViewId="0"/></sheetViews><sheetData>';
+        $columnKeys = array_keys(self::COLUMNS);
         foreach ($rows as $r => $cols) {
             $xml .= '<row r="'.($r + 1).'">';
             foreach ($cols as $c => $value) {
                 $cell = $this->cellName($c).($r + 1);
-                if ($r > 0 && is_numeric($value) && $value !== '') {
+                // B-2: الأعمدة المالية فقط أرقام؛ الجوال/رقم الطلب نص حتى لا يضيع الصفر البادئ (0598…).
+                $numericColumn = in_array($columnKeys[$c] ?? '', self::NUMERIC_COLUMNS, true);
+                if ($r > 0 && $numericColumn && is_numeric($value) && $value !== '' && ! preg_match('/^0\d/', (string) $value)) {
                     $xml .= '<c r="'.$cell.'"><v>'.htmlspecialchars((string) $value, ENT_XML1).'</v></c>';
                 } else {
                     $xml .= '<c r="'.$cell.'" t="inlineStr"><is><t>'.htmlspecialchars((string) $value, ENT_XML1).'</t></is></c>';

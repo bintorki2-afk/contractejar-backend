@@ -11,7 +11,7 @@ use App\Support\ContractPricing;
 use App\Support\SchemaCache;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\URL;
+use App\Support\CustomerLinks;
 
 /**
  * حالة الدفع للطلب (دفعة هـ — 2.1): المصدر الوحيد لـ payment_state و payment_details
@@ -123,7 +123,17 @@ class ContractPaymentState
         $payments = $this->allPayments($contract);
         $refunds = $this->refunds($contract);
 
-        $lines = $this->pricingLines($contract);
+        $originalPaid = round((float) $payments->filter(fn (Payment $p) => $p->status === 'success' && $this->paymentKind($p) === Payment::KIND_ORIGINAL)->sum('amount'), 2)
+            + round((float) $payments->filter(fn (Payment $p) => $p->status === 'success' && $this->paymentKind($p) === Payment::KIND_BANK_TRANSFER && empty($p->charge_id))->sum('amount'), 2);
+        $extraPaid = round((float) $payments->filter(fn (Payment $p) => $p->status === 'success' && ! empty($p->charge_id))->sum('amount'), 2);
+
+        $invoice = SchemaCache::hasTable('invoices')
+            ? \App\Models\Invoice::query()->where('contract_id', $contract->id)->latest('id')->first()
+            : null;
+
+        // B-3: بنود «ما دفعه العميل» = لقطة الفاتورة (الأصل كما دُفع) + الرسوم المدفوعة − الاسترجاعات،
+        // لا السعر الحي (الذي يتضمن بالفعل أثر التعديل الذي غطّاه رسم فرق السعر). مجموعها = totals.net.
+        $lines = $this->originalLines($contract, $invoice, $originalPaid);
         foreach ($charges->where('status', ContractCharge::STATUS_PAID) as $charge) {
             $lines[] = [
                 'key' => $charge->kind.'_'.$charge->id,
@@ -169,14 +179,6 @@ class ContractPaymentState
             ];
         }
         usort($transactions, static fn ($a, $b) => strcmp((string) ($a['paid_at'] ?? ''), (string) ($b['paid_at'] ?? '')));
-
-        $originalPaid = round((float) $payments->filter(fn (Payment $p) => $p->status === 'success' && $this->paymentKind($p) === Payment::KIND_ORIGINAL)->sum('amount'), 2)
-            + round((float) $payments->filter(fn (Payment $p) => $p->status === 'success' && $this->paymentKind($p) === Payment::KIND_BANK_TRANSFER && empty($p->charge_id))->sum('amount'), 2);
-        $extraPaid = round((float) $payments->filter(fn (Payment $p) => $p->status === 'success' && ! empty($p->charge_id))->sum('amount'), 2);
-
-        $invoice = SchemaCache::hasTable('invoices')
-            ? \App\Models\Invoice::query()->where('contract_id', $contract->id)->latest('id')->first()
-            : null;
 
         return [
             'lines' => $lines,
@@ -261,7 +263,7 @@ class ContractPaymentState
     public static function invoiceUrl(Contract $contract, int $days = 7): ?string
     {
         try {
-            return URL::temporarySignedRoute('v2.invoices.print', now()->addDays($days), ['contract' => $contract->getKey()]);
+            return CustomerLinks::temporarySignedRoute('v2.invoices.print', now()->addDays($days), ['contract' => $contract->getKey()]);
         } catch (\Throwable) {
             return null;
         }
@@ -284,7 +286,7 @@ class ContractPaymentState
             'internal_reason' => $charge->internal_reason,
             'status' => $charge->status,
             'status_label' => $charge->statusLabel(),
-            'payment_url' => $pending && $contract !== null ? route('v2.contracts.charges.pay', ['uuid' => (string) $contract->uuid, 'cid' => $charge->id]) : null,
+            'payment_url' => $pending && $contract !== null ? CustomerLinks::route('v2.contracts.charges.pay', ['uuid' => (string) $contract->uuid, 'cid' => $charge->id]) : null,
             'payment_id' => $charge->payment_id,
             'paid_at' => $charge->paid_at?->toIso8601String(),
             'created_by' => $charge->created_by,
@@ -413,10 +415,56 @@ class ContractPaymentState
             return null;
         }
         try {
-            return URL::temporarySignedRoute('v2.payments.receipt', now()->addMinutes($minutes), ['payment' => $payment->getKey()]);
+            return CustomerLinks::temporarySignedRoute('v2.payments.receipt', now()->addMinutes($minutes), ['payment' => $payment->getKey()]);
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    /**
+     * بنود الأصل (B-3):
+     *  - غير مدفوع ⇒ السعر الحي (المستحق).
+     *  - مدفوع ولقطة الفاتورة محفوظة ⇒ بنود اللقطة (ما دُفع فعلاً، لا تتأثر بالتعديلات اللاحقة).
+     *  - مدفوع بلا لقطة ⇒ السعر الحي إن طابق المدفوع الأصلي، وإلا بند واحد «الدفعة الأصلية».
+     *  وفي كل حالة مدفوعة يُضاف بند تسوية إن اختلف مجموع البنود عن المدفوع الأصلي (حوالة بمبلغ مختلف مثلاً)
+     *  حتى يبقى مجموع lines = totals.net دائماً.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function originalLines(Contract $contract, ?\App\Models\Invoice $invoice, float $originalPaid): array
+    {
+        if ($originalPaid <= 0.009) {
+            return $this->pricingLines($contract);
+        }
+
+        $snapshot = $invoice && is_array($invoice->lines) && ! empty($invoice->lines['items'])
+            ? $this->mapPricingItems((array) $invoice->lines['items'])
+            : null;
+
+        $lines = $snapshot ?? $this->pricingLines($contract);
+        $sum = round((float) array_sum(array_map(static fn (array $l) => (float) $l['amount'], $lines)), 2);
+
+        if ($snapshot === null && abs($sum - $originalPaid) > 0.01) {
+            return [[
+                'key' => 'original_payment',
+                'label' => 'الدفعة الأصلية',
+                'amount' => $originalPaid,
+                'quantity' => 1,
+                'kind' => 'fee',
+            ]];
+        }
+
+        if (abs($sum - $originalPaid) > 0.01) {
+            $lines[] = [
+                'key' => 'payment_adjustment',
+                'label' => 'تسوية — فرق مبلغ الدفعة عن بنود الفاتورة',
+                'amount' => round($originalPaid - $sum, 2),
+                'quantity' => 1,
+                'kind' => 'adjustment',
+            ];
+        }
+
+        return $lines;
     }
 
     /**
@@ -432,8 +480,20 @@ class ContractPaymentState
             return [];
         }
 
+        return $this->mapPricingItems($breakdown['items'] ?? []);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $items  بنود بصيغة ContractInvoiceService (key/description/amount/quantity)
+     * @return list<array<string, mixed>>
+     */
+    private function mapPricingItems(array $items): array
+    {
         $lines = [];
-        foreach ($breakdown['items'] ?? [] as $item) {
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
             $key = (string) ($item['key'] ?? '');
             $lines[] = [
                 'key' => $key,

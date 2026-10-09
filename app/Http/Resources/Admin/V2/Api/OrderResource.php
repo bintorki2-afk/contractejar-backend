@@ -98,6 +98,10 @@ class OrderResource extends JsonResource
         if ($pending !== null && (int) $pending['hours'] >= (int) config('data_requests.reminder_after_hours', 24) && ! in_array('customer_no_reply_24h', $flags, true)) {
             $flags[] = 'customer_no_reply_24h';
         }
+        // B-8: علم 72 ساعة حيّ أيضاً لصفوف القائمة.
+        if ($pending !== null && (int) $pending['hours'] >= (int) config('data_requests.owner_alert_after_hours', 72) && ! in_array('customer_no_reply_72h', $flags, true)) {
+            $flags[] = 'customer_no_reply_72h';
+        }
 
         return $flags;
     }

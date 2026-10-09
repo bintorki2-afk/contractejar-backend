@@ -36,7 +36,12 @@ class FlagOrderDelaysCommand extends Command
         foreach ($flagged as $item) {
             $contract = $item['contract'];
             $labels = array_map(static fn ($f) => OrderAttentionService::RULES[$f]['label'], $item['new_flags']);
-            $flow->activity($contract, 'delay_flagged', null, null, ['delay_flags' => $item['new_flags']], 'system', implode('، ', $labels));
+            // B-5: نشاط الـ72 ساعة يسجّله ContractDataRequestService::alertOwnerForStale وحده (يحمل request_id).
+            $activityFlags = array_values(array_diff($item['new_flags'], ['customer_no_reply_72h']));
+            if ($activityFlags !== []) {
+                $activityLabels = array_map(static fn ($f) => OrderAttentionService::RULES[$f]['label'], $activityFlags);
+                $flow->activity($contract, 'delay_flagged', null, null, ['delay_flags' => $activityFlags], 'system', implode('، ', $activityLabels));
+            }
             try {
                 $firebase->sendToAllEmployees(
                     '⏰ طلب متأخر',

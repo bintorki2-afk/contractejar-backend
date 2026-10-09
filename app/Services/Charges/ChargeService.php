@@ -346,9 +346,10 @@ class ChargeService
         return $this->paymentState->charges($contract)->map(fn (ContractCharge $c) => $this->paymentState->chargeArray($c, $contract))->values()->all();
     }
 
+    /** رابط دفع الرسم للعميل — جذر ثابت من APP_URL لا من مضيف الطلب (B-6). */
     public function customerPayUrl(Contract $contract, ContractCharge $charge): string
     {
-        return route('v2.contracts.charges.pay', ['uuid' => (string) $contract->uuid, 'cid' => $charge->id]);
+        return \App\Support\CustomerLinks::route('v2.contracts.charges.pay', ['uuid' => (string) $contract->uuid, 'cid' => $charge->id]);
     }
 
     /** الصفحة التي يعود إليها العميل بعد الدفع (الرابط الذكي للطلب مع معرّف الرسم). */

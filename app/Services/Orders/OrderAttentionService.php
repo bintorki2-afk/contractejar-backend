@@ -23,7 +23,7 @@ class OrderAttentionService
         'paid_not_received' => ['hours' => 2, 'label' => 'مدفوع ولم يُستلم (+ساعتين)'],
         'received_not_notarized' => ['hours' => 24, 'label' => 'مستلم بلا توثيق (+24 ساعة)'],
         'customer_no_reply_24h' => ['hours' => 24, 'label' => 'عميل لم يرد على طلب مرفق (+24 ساعة)'],
-        'customer_no_reply_72h' => ['hours' => 72, 'label' => 'عميل لم يرد منذ 72 ساعة (نُبّه المالك)'],
+        'customer_no_reply_72h' => ['hours' => 72, 'label' => 'عميل لم يرد على طلب مرفق (+72 ساعة) — يُنبَّه المالك'],
     ];
 
     private const CLOSED = [

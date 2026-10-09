@@ -1550,6 +1550,17 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
                 ]);
             }
 
+            // دفعة (هـ) — B-3: لقطة بنود الفاتورة تُحفظ لحظة الدفع (ما دُفع فعلاً)، حتى لا يعيد
+            // تعديل لاحق للسعر كتابة «الأصل» ويُحتسب فرق السعر مرتين في الفاتورة وpayment_details.
+            try {
+                app(\App\Services\ContractInvoiceService::class)->forContract($contract->fresh());
+            } catch (\Throwable $e) {
+                Log::warning('Failed to snapshot invoice lines after payment', [
+                    'contract_id' => $contract->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             // دفعة (د) — ب2/ب13: الطلب المدفوع ينتقل إلى «قيد المراجعة» (+ الإسناد التلقائي إن كان مفعّلاً).
             try {
                 app(\App\Services\Orders\OrderFlowService::class)->afterPayment($contract);
