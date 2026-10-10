@@ -135,6 +135,9 @@ class ContractResource extends JsonResource
             'Guarantee_amount' => $c->Guarantee_amount,
             'daily_fine' => $c->daily_fine,
             'other_conditions_list' => $otherConditions,
+            'other_conditions' => $c->other_conditions,
+            // APP-17: معرّف المدة المختارة (contract_periods.id) لإعادة تعبئة الخطوة 6 — ليس عدد سنوات؛ للعرض استخدم contract_period.
+            'contract_term_in_years' => $c->contract_term_in_years,
             'total_price' => $due > 0 ? $dueValue : null,
             'total_price_label' => $due > 0 ? rtrim(rtrim(number_format($due, 2, '.', ''), '0'), '.').' ر.س' : null,
         ];

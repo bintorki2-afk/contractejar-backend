@@ -86,7 +86,10 @@ class ContractTrackController extends Controller
             'journey_side_state' => \App\Support\ContractJourney::sideState($contract),
             'journey_sentence' => \App\Support\ContractJourney::RULE_SENTENCE,
             // دفعة (هـ) — 2.1/2.3/2.4: حالة الدفع + التفاصيل + الرسوم + طلبات المرفق الناقص.
-            'payment_state' => ($paymentState = app(\App\Services\Payments\ContractPaymentState::class))->state($contract),
+            'payment_state' => $trackState = ($paymentState = app(\App\Services\Payments\ContractPaymentState::class))->state($contract),
+            // QA-F W-30: is_paid = الدفعة الأصلية فقط؛ هذا الحقل يقول إن على العميل مبلغاً متبقياً (رسم معلّق/فرق).
+            'has_outstanding' => (float) ($trackState['outstanding'] ?? 0) > 0.009,
+            'outstanding' => (float) ($trackState['outstanding'] ?? 0),
             'payment_details' => $paymentState->details($contract),
             'charges' => app(\App\Services\Charges\ChargeService::class)->forCustomer($contract),
             'pending_data_requests' => app(\App\Services\DataRequests\ContractDataRequestService::class)->pendingForCustomer($contract),

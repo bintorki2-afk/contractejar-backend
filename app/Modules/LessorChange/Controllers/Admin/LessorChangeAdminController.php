@@ -152,7 +152,14 @@ class LessorChangeAdminController extends Controller
         if ($withImages) {
             $base['old_deed_image_url'] = $r->signedImageUrl('old_deed_image');
             $base['new_deed_image_url'] = $r->signedImageUrl('new_deed_image');
+            // QA-F PROPS-16: الصك PDF لا يُعرض كـ <img>.
+            $base['old_deed_is_pdf'] = str_ends_with(strtolower((string) ($r->getAttributes()['old_deed_image'] ?? '')), '.pdf');
+            $base['new_deed_is_pdf'] = str_ends_with(strtolower((string) ($r->getAttributes()['new_deed_image'] ?? '')), '.pdf');
         }
+        // PROPS-4: الانتقالات التي يقبلها الخادم (مدفوع لا يعود «بانتظار الدفع»؛ طلب في السلة لا يتغيّر).
+        $base['allowed_statuses'] = (bool) $r->is_delete
+            ? []
+            : array_values(array_filter(LessorChangeRequest::STATUSES, static fn (string $s) => ! ($s === 'pending_payment' && $r->paid_at !== null)));
 
         return $base;
     }

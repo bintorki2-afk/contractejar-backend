@@ -259,4 +259,30 @@ class RemainingQaFixesTest extends BatchETestCase
         $this->assertStringNotContainsString('ادفع من الرابط', $offer->body);
         $this->assertTrue($offer->data['cancelled']);
     }
+
+    public function test_orders_res4_attachment_file_type_and_res7_furnished_label(): void
+    {
+        $this->assertSame(['mime' => 'application/pdf', 'extension' => 'pdf', 'is_pdf' => true], \App\Services\Orders\OrderDetailExtras::fileType('contracts/deeds/9/x.PDF'));
+        $this->assertSame('jpg', \App\Services\Orders\OrderDetailExtras::fileType('a/b.jpeg')['extension']);
+
+        $m = new \ReflectionMethod(\App\Services\Orders\OrderDetailExtras::class, 'furnishedLabel');
+        $m->setAccessible(true);
+        $svc = app(\App\Services\Orders\OrderDetailExtras::class);
+        $this->assertSame('نعم — أثاث جديد', $m->invoke($svc, '1'));
+        $this->assertSame('نعم — أثاث مستعمل', $m->invoke($svc, '0'));
+    }
+
+    public function test_web5_refunded_status_without_refund_is_flagged_pending(): void
+    {
+        $contract = $this->paidContract(['contract_status_id' => $this->statusId('refunded')]);
+        $this->payFull($contract);
+        $state = app(\App\Services\Payments\ContractPaymentState::class)->state($contract->fresh());
+        $this->assertTrue($state['refund_pending']);
+        $this->assertStringStartsWith('مسترجع — بانتظار إعادة المبلغ', $state['refund_pending_label']);
+    }
+
+    public function test_orders_res14_payment_status_for_unknown_order_is_404(): void
+    {
+        $this->getJson('/api/v2/status/success/999999')->assertStatus(404)->assertJsonPath('data.exists', false);
+    }
 }

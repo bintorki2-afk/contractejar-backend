@@ -383,6 +383,7 @@ class ContractDataRequestService
             'requested_at' => $r->requested_at?->toIso8601String(),
             'step' => $steps !== [] ? min($steps) : $r->step(),
             'steps' => $steps,
+            'remaining_steps' => $remainingSteps === [] ? $r->steps() : array_values(array_unique($remainingSteps)),
             'deep_link' => $this->deepLink($contract, $r),
             'banner' => 'مطلوب منك: '.implode('، ', $hasProgress && $remaining !== [] ? array_map(static fn ($i) => (string) $i['label'], $remaining) : $r->itemLabels()).(filled($r->note) ? ' — '.$r->note : ''),
             ];

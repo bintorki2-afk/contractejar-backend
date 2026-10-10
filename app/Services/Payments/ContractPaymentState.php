@@ -122,7 +122,38 @@ class ContractPaymentState
             'notarize_block_reason' => $blockReason,
             'notarize_block_message' => $blockReason !== null ? self::BLOCK_MESSAGES[$blockReason] : null,
             'is_paid' => in_array($status, [self::STATUS_PAID, self::STATUS_PARTIALLY_REFUNDED], true),
+            ...$this->refundPending($contract, $refundedTotal),
         ];
+    }
+
+    /**
+     * QA-F WEB-5 / DASH-25: حالة الطلب «مسترجع» بلا أي استرجاع منفّذ فعلاً ⇒ «بانتظار إعادة المبلغ»
+     * (لا نعرض «مدفوع» بجوار «تم الاسترجاع · 0»). لا تغيير في status/الأرقام — الأرقام من الدفعات الفعلية فقط.
+     *
+     * @return array{refund_pending: bool, refund_pending_amount: float|null, refund_pending_label: string|null}
+     */
+    private function refundPending(Contract $contract, float $refundedTotal): array
+    {
+        $none = ['refund_pending' => false, 'refund_pending_amount' => null, 'refund_pending_label' => null];
+        try {
+            $refundedId = \App\Models\ContractStatus::refundedId();
+            if (! $refundedId || (int) $contract->contract_status_id !== (int) $refundedId || $refundedTotal > 0.009) {
+                return $none;
+            }
+            $amount = null;
+            if (SchemaCache::hasTable('refundable_contracts')) {
+                $row = \App\Models\RefundableContract::query()->where('contract_id', $contract->id)->latest('id')->first();
+                $amount = $row && (float) $row->refund_amount > 0 ? round((float) $row->refund_amount, 2) : null;
+            }
+
+            return [
+                'refund_pending' => true,
+                'refund_pending_amount' => $amount,
+                'refund_pending_label' => 'مسترجع — بانتظار إعادة المبلغ'.($amount !== null ? ' · '.rtrim(rtrim(number_format($amount, 2, '.', ''), '0'), '.').' ر.س' : ''),
+            ];
+        } catch (\Throwable) {
+            return $none;
+        }
     }
 
     /**
