@@ -83,6 +83,11 @@ class StartContractAction
         if (! empty($validated['real_id'])) {
             $realEstate = RealEstate::query()->find($validated['real_id']);
             $realEstate?->syncNumberOfUnitsInRealestate($primaryUnitId);
+            // QA-F PROPS-5: عقار محفوظ بلا نوع (الموقع لم يكن يرسل contract_type) يأخذ نوع أول عقد عليه.
+            if ($realEstate !== null && blank($realEstate->contract_type)
+                && in_array($validated['contract_type'] ?? null, ['housing', 'commercial'], true)) {
+                $realEstate->forceFill(['contract_type' => $validated['contract_type']])->save();
+            }
         }
 
         $contract = Contract::create([

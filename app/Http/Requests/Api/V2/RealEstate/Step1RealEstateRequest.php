@@ -25,6 +25,10 @@ class Step1RealEstateRequest extends BaseApiV2Request
     {
         $this->normalizeCoordinateInputs();
         $this->normalizeInstrumentTypeInput();
+        // QA-F PROPS-5: الموقع يسمّي السكني residential.
+        if (in_array(strtolower((string) $this->input('contract_type')), ['residential', 'residence'], true)) {
+            $this->merge(['contract_type' => 'housing']);
+        }
         $this->normalizeDateFirstRegistrationParts();
     }
 

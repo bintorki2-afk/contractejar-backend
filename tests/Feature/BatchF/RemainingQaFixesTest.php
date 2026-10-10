@@ -102,4 +102,87 @@ class RemainingQaFixesTest extends BatchETestCase
         $csv = $this->get('/api/admin/orders/export?format=csv')->assertOk()->getContent();
         $this->assertStringContainsString('الصافي', $csv);
     }
+
+    private function property(\App\Models\User $user, array $attrs = []): \App\Models\RealEstate
+    {
+        $re = new \App\Models\RealEstate();
+        $re->forceFill(array_merge(['user_id' => $user->id, 'name_real_estate' => 'عقار اختبار', 'step' => 3], $attrs))->save();
+
+        return $re;
+    }
+
+    private function unitFor(\App\Models\RealEstate $re, \App\Models\User $user): \App\Models\UnitsReal
+    {
+        $u = new \App\Models\UnitsReal();
+        $u->forceFill(['user_id' => $user->id, 'unit_number' => (string) random_int(1, 9999), 'real_estates_units_id' => $re->id])->save();
+
+        return $u;
+    }
+
+    public function test_props1_property_with_linked_unit_cannot_be_deleted_and_props13_count_follows_unit_delete(): void
+    {
+        $user = $this->customer('0551112240');
+        $re = $this->property($user);
+        $linked = $this->unitFor($re, $user);
+        $free1 = $this->unitFor($re, $user);
+        $free2 = $this->unitFor($re, $user);
+        $re->forceFill(['number_of_units_in_realestate' => '3'])->save();
+        $this->contract(['real_id' => $re->id, 'real_units_id' => $linked->id, 'is_real' => 1], $user);
+
+        Sanctum::actingAs($user);
+        $this->deleteJson('/api/v2/realstate/delete/'.$re->id)->assertStatus(422);
+        $this->assertNotNull(\App\Models\RealEstate::query()->find($re->id));
+
+        $this->deleteJson('/api/v2/unit/delete/'.$free1->id)->assertOk();
+        $this->assertSame('2', (string) $re->fresh()->number_of_units_in_realestate);
+    }
+
+    public function test_props7_9_admin_real_estate_exposes_attachments_and_gregorian_dob(): void
+    {
+        $user = $this->customer('0551112241');
+        $re = $this->property($user, [
+            'image_instrument' => 'real-estates/deed.png', 'dob_hijri' => '12-05-1985', 'type_dob_property_owner' => 'gregorian',
+            'instrument_type' => 'sale_agreement', 'mobile' => '551000901',
+        ]);
+        $this->employee('admin');
+        $d = $this->getJson('/api/admin/real-estates/'.$re->id)->assertOk()->json('data');
+        $this->assertNotNull($d['image_instrument']);
+        $this->assertSame('image_instrument', $d['attachments'][0]['key']);
+        $this->assertSame('12-05-1985', $d['DOB']);
+        $this->assertNull($d['dob_hijri']);
+        $this->assertSame('gregorian', $d['type_dob_property_owner']);
+        $this->assertSame('ورقة مبايعة مختومة من مكتب عقاري', $d['instrument_type_label']);
+        $this->assertSame('966551000901', $d['mobile_international']);
+    }
+
+    public function test_props6_coordinates_from_map_url_and_placeholder_dropped(): void
+    {
+        $this->assertSame([21.3891, 39.8579], \App\Support\MapUrlCoordinates::fromUrl('https://maps.google.com/?q=21.3891,39.8579'));
+        $this->assertSame([21.5, 39.2], \App\Support\MapUrlCoordinates::fromUrl('https://www.google.com/maps/place/x/@21.5,39.2,15z'));
+        $this->assertNull(\App\Support\MapUrlCoordinates::fromUrl('https://maps.app.goo.gl/abc'));
+        $this->assertTrue(\App\Support\MapUrlCoordinates::isPlaceholder('24.7136', '46.6753'));
+    }
+
+    public function test_props18_lessor_change_rejects_invalid_id_and_dob(): void
+    {
+        Sanctum::actingAs($this->customer('0551112242'));
+        $base = [
+            'old_deed_image' => $this->fakePng('old.png'), 'new_deed_image' => $this->fakePng('new.png'),
+            'new_owner_id_number' => '1098765432', 'new_owner_dob_day' => 10, 'new_owner_dob_month' => 5,
+            'new_owner_dob_year' => 1985, 'new_owner_dob_type' => 'gregorian', 'acknowledged' => 1,
+        ];
+        $this->post('/api/v2/lessor-change', array_merge($base, ['new_owner_id_number' => '0000000000']), ['Accept' => 'application/json'])
+            ->assertStatus(422)->assertJsonPath('message', 'رقم الهوية غير صحيح — يبدأ بـ1 (مواطن) أو 2 (مقيم) أو 7 (منشأة).');
+        $base['old_deed_image'] = $this->fakePng('old.png');
+        $base['new_deed_image'] = $this->fakePng('new.png');
+        $this->post('/api/v2/lessor-change', array_merge($base, ['new_owner_dob_day' => 29, 'new_owner_dob_month' => 2, 'new_owner_dob_year' => 1301]), ['Accept' => 'application/json'])
+            ->assertStatus(422)->assertJsonPath('message', 'تاريخ ميلاد المالك الجديد غير صحيح.');
+    }
+
+    public function test_orders_com5_instrument_labels_match_customer_choice(): void
+    {
+        $this->assertSame('صك ملكية إلكتروني من السجل العقاري', \App\Models\Contract::instrumentTypeLabel('electronic_tax_register', 'ar'));
+        $this->assertSame('حجة استحكام', \App\Models\Contract::instrumentTypeLabel('strong_argument', 'ar'));
+        $this->assertSame('ورقة مبايعة مختومة من مكتب عقاري', \App\Models\Contract::instrumentTypeLabel('sale_agreement', 'ar'));
+    }
 }

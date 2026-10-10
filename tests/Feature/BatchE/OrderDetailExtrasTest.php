@@ -66,7 +66,7 @@ class OrderDetailExtrasTest extends BatchETestCase
         $this->assertSame('الرياض · الرياض · النرجس · الأمير', $d['address']['line1']);
         $this->assertNull($d['address']['map_url']);
         $this->assertSame('old_handwritten', $d['document']['type_key']);
-        $this->assertSame('صك يدوي قديم', $d['document']['type_label']);
+        $this->assertSame('صك ملكية ورقي', $d['document']['type_label']);
         $this->assertSame('440123456789', $d['document']['deed_number']);
         $this->assertSame('10/05/1440', $d['document']['deed_date_hijri']);
         $this->assertSame('2019-01-16', $d['document']['deed_date_gregorian']);

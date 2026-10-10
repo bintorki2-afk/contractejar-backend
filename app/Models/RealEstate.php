@@ -157,6 +157,32 @@ class RealEstate extends Model
     {
         return $this->hasMany(Contract::class, 'real_id');
     }
+
+    /** QA-F PROPS-1/22: هل لأي وحدة من وحدات العقار طلب مرتبط؟ (حذفها يمحو وحدات الطلب) */
+    public function unitsHaveContracts(): bool
+    {
+        foreach ($this->units()->get() as $unit) {
+            if ($unit->contracts()->exists() || $unit->linkedContracts()->exists()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * QA-F PROPS-13: بعد حذف وحدة — إن كان «عدد الوحدات» مشتقاً تلقائياً (= العدد قبل الحذف) يُحدَّث للعدد الفعلي.
+     * القيمة التي أدخلها العميل لعدد وحدات المبنى (مختلفة عن العدد المضاف) لا تُمس.
+     */
+    public function syncUnitsCountAfterRemoval(int $countBefore): void
+    {
+        $stored = $this->number_of_units_in_realestate;
+        if ($stored === null || $stored === '' || (int) $stored !== $countBefore) {
+            return;
+        }
+        $now = $this->units()->count();
+        $this->forceFill(['number_of_units_in_realestate' => $now > 0 ? (string) $now : null])->save();
+    }
     
  
 

@@ -29,7 +29,8 @@ class StoreLessorChangeRequest extends FormRequest
         return [
             'old_deed_image' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:10240'],
             'new_deed_image' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:10240'],
-            'new_owner_id_number' => ['required', 'digits:10'],
+            // QA-F PROPS-18: هوية وطنية (1) / إقامة (2) / رقم موحّد للمنشأة (7).
+            'new_owner_id_number' => ['required', 'digits:10', 'regex:/^[127]\d{9}$/'],
             'new_owner_dob_day' => ['required', 'integer', 'min:1', 'max:31'],
             'new_owner_dob_month' => ['required', 'integer', 'min:1', 'max:12'],
             'new_owner_dob_year' => ['required', 'integer', 'min:1300', 'max:2100'],
@@ -41,9 +42,35 @@ class StoreLessorChangeRequest extends FormRequest
         ];
     }
 
+    /** QA-F PROPS-18: تاريخ ميلاد منطقي (يوم صالح، ليس في المستقبل، ضمن مدى معقول للتقويم المختار). */
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($v) {
+            if ($v->errors()->hasAny(['new_owner_dob_day', 'new_owner_dob_month', 'new_owner_dob_year', 'new_owner_dob_type'])) {
+                return;
+            }
+            $d = (int) $this->input('new_owner_dob_day');
+            $m = (int) $this->input('new_owner_dob_month');
+            $y = (int) $this->input('new_owner_dob_year');
+            if ($this->input('new_owner_dob_type') === 'gregorian') {
+                $max = (int) now()->year;
+                $ok = $y >= 1900 && $y <= $max && checkdate($m, $d, $y)
+                    && \Illuminate\Support\Carbon::create($y, $m, $d)->lessThanOrEqualTo(now());
+            } else {
+                // السنة الهجرية الحالية ≈ (الميلادية − 622) × 33/32.
+                $maxHijri = (int) floor(((int) now()->year - 622) * 33 / 32) + 1;
+                $ok = $y >= 1320 && $y <= $maxHijri && $d <= 30;
+            }
+            if (! $ok) {
+                $v->errors()->add('new_owner_dob_year', 'تاريخ ميلاد المالك الجديد غير صحيح.');
+            }
+        });
+    }
+
     public function messages(): array
     {
         return [
+            'new_owner_id_number.regex' => 'رقم الهوية غير صحيح — يبدأ بـ1 (مواطن) أو 2 (مقيم) أو 7 (منشأة).',
             'old_deed_image.required' => 'أرفق صك المالك القديم.',
             'new_deed_image.required' => 'أرفق صك المالك الجديد.',
             'new_owner_id_number.required' => 'رقم هوية المالك الجديد مطلوب.',

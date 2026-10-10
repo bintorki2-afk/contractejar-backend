@@ -252,7 +252,11 @@ class UnitEstateController extends Controller
         if ($realEstate->contracts()->exists() || $realEstate->linkedContracts()->exists()) {
             return $this->errorMessage(trans('api.unit_has_contracts'), 422);
         }
+        $property = $realEstate->realEstate;
+        $countBefore = $property ? $property->units()->count() : 0;
         $realEstate->delete();
+        // QA-F PROPS-13: عدّاد وحدات العقار يتبع الحذف.
+        $property?->syncUnitsCountAfterRemoval($countBefore);
         return $this->successMessage( trans('api.success'), 200);
     }
 

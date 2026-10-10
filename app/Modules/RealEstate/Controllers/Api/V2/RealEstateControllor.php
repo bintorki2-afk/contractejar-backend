@@ -280,6 +280,11 @@ class RealEstateControllor extends ApiRealEstateControllor
                 ->where('user_id', $user->id)
                 ->findOrFail($id);
 
+            // QA-F PROPS-1/22: عقار له وحدة مرتبطة بطلب لا يُحذف (كان يمحو وحدات الطلبات بلا تحذير).
+            if ($realEstate->unitsHaveContracts()) {
+                return $this->errorMessage(trans('api.property_has_contracts'), 422);
+            }
+
             if ($realEstate->units->isNotEmpty()) {
                 foreach ($realEstate->units as $unit) {
                     $unit->delete();

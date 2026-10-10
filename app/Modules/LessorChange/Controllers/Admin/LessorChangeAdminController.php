@@ -70,6 +70,11 @@ class LessorChangeAdminController extends Controller
 
         $row = LessorChangeRequest::query()->findOrFail($id);
 
+        // QA-F PROPS-15: طلب في السلة لا تُغيَّر حالته (كان يُرسل للعميل إشعاراً عن طلب لا يراه).
+        if ((bool) $row->is_delete) {
+            return $this->errorMessage('هذا الطلب في السلة — استعده أولاً ثم غيّر حالته.', 422);
+        }
+
         // QA-F C8: طلب مدفوع لا يُعاد إلى «بانتظار الدفع» (كان يعيد رابط الدفع ⇒ دفع مكرر).
         if ($data['status'] === 'pending_payment' && $row->paid_at !== null) {
             return $this->errorMessage('لا يمكن إعادة طلب مدفوع إلى «بانتظار الدفع».', 422);

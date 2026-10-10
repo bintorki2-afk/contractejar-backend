@@ -135,7 +135,7 @@ class ReportsPerformanceTest extends TestCase
         ], $result['by_employee']);
 
         $this->assertSame([
-            ['label' => 'صك إلكتروني', 'value' => 2, 'revenue' => self::HOUSING_PAYMENT],
+            ['label' => 'صك ملكية إلكتروني من وزارة العدل', 'value' => 2, 'revenue' => self::HOUSING_PAYMENT],
             ['label' => 'تجديد عقد إيجار', 'value' => 1, 'revenue' => self::COMMERCIAL_PAYMENT],
         ], $result['by_document_type']);
 
@@ -194,7 +194,7 @@ class ReportsPerformanceTest extends TestCase
             ['label' => 'سكني', 'value' => 3, 'revenue' => self::HOUSING_PAYMENT],
         ], $housing['by_contract_type']);
         $this->assertSame([
-            ['label' => 'صك إلكتروني', 'value' => 2, 'revenue' => self::HOUSING_PAYMENT],
+            ['label' => 'صك ملكية إلكتروني من وزارة العدل', 'value' => 2, 'revenue' => self::HOUSING_PAYMENT],
         ], $housing['by_document_type']);
 
         $employee = $this->performance(employeeId: 2);

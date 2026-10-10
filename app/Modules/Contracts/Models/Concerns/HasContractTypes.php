@@ -96,7 +96,7 @@ trait HasContractTypes
         if ($locale === 'en') {
             return match ($instrumentType) {
                 'electronic' => 'Electronic deed',
-                'electronic_tax_register' => 'Electronic tax register',
+                'electronic_tax_register' => 'Electronic deed from the Real Estate Registry',
                 'property_ownership_owner_are_deceased_endowment' => 'Owner deceased endowment ownership deed',
                 'property_ownership_owner_is_endowment' => 'Ownership deed; property owner is endowment (waqf)',
                 'sale_agreement' => 'Sale agreement',
@@ -105,26 +105,28 @@ trait HasContractTypes
                 'property_ownership_owner_are_deceased' => 'Owner deceased property ownership deed',
                 'property_ownership_owner_are_suspended' => 'Ownership deed (owner suspended)',
                 'old_handwritten' => 'Old handwritten deed',
-                'strong_argument' => 'Strong argument deed',
+                'strong_argument' => 'Adverse possession deed (Hujjat Istihkam)',
                 'sublease_agreement' => 'Sublease agreement',
                 'lease_renewal' => 'Lease renewal',
                 default => $instrumentType,
             };
         }
 
+        // QA-F ORDERS-COM-5 / W-29: نفس التسميات التي يختارها العميل في الموقع/التطبيق
+        // (كانت electronic_tax_register ⇒ «سجل ضريبي» و strong_argument ⇒ «السجل العقاري» خطأً).
         return match ($instrumentType) {
-            'electronic' => 'صك إلكتروني',
-            'electronic_tax_register' => 'سجل ضريبي إلكتروني',
-            'property_ownership_owner_are_deceased_endowment' => 'صك ملكية وقف لمالك متوفى',
-            'property_ownership_owner_is_endowment' => 'صك ملكية ومالك العقار وقف',
-            'sale_agreement' => 'عقد بيع',
-            'electronic_deed_from_the_ministry_of_justice' => 'صك إلكتروني من وزارة العدل',
-            'economic_cities_authority_suspended' => 'هيئة المدن الاقتصادية (معلق)',
-            'property_ownership_owner_are_deceased' => 'صك ملكية لمالك متوفى',
-            'property_ownership_owner_are_suspended' => 'صك ملكية (مالك موقوف)',
-            'old_handwritten' => 'صك يدوي قديم',
-            'strong_argument' => 'صك ملكية إلكتروني من السجل العقاري',
-            'sublease_agreement' => 'اتفاقية إعارة من الباطن',
+            'electronic' => 'صك ملكية إلكتروني من وزارة العدل',
+            'electronic_tax_register' => 'صك ملكية إلكتروني من السجل العقاري',
+            'property_ownership_owner_are_deceased_endowment' => 'صك ملكية والمالك متوفى',
+            'property_ownership_owner_is_endowment' => 'صك ملكية والمالك وقف',
+            'sale_agreement' => 'ورقة مبايعة مختومة من مكتب عقاري',
+            'electronic_deed_from_the_ministry_of_justice' => 'صك ملكية إلكتروني من وزارة العدل',
+            'economic_cities_authority_suspended' => 'وثيقة هيئة المدن الاقتصادية',
+            'property_ownership_owner_are_deceased' => 'صك ملكية والمالك متوفى (حصر ورثة)',
+            'property_ownership_owner_are_suspended' => 'صك ملكية والمالك وقف',
+            'old_handwritten' => 'صك ملكية ورقي',
+            'strong_argument' => 'حجة استحكام',
+            'sublease_agreement' => 'عقد إيجار من الباطن',
             'lease_renewal' => 'تجديد عقد إيجار',
             default => $instrumentType,
         };

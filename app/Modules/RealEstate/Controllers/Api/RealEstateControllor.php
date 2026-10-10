@@ -142,7 +142,7 @@ class RealEstateControllor extends Controller
 
             return $this->apiResponse($data, trans('api.have_real'), 200);
         } catch (ModelNotFoundException $e) {
-            return $this->errorMessage(trans('api.not_have_real'));
+            return $this->errorMessage(trans('api.not_have_real'), 404); // QA-F PROPS-23: كان 400
         }
     }
     public function step1(Step1Request $request)
@@ -532,6 +532,11 @@ class RealEstateControllor extends Controller
         public function delete($id){
         try {
             $realEstate = RealEstate::with('units')->where('user_id', Auth::id())->findOrFail($id);
+
+            // QA-F PROPS-1/22: عقار له وحدة مرتبطة بطلب لا يُحذف (كان يمحو وحدات الطلبات بلا تحذير).
+            if ($realEstate->unitsHaveContracts()) {
+                return $this->errorMessage(trans('api.property_has_contracts'), 422);
+            }
 
             if ($realEstate->units->isNotEmpty()) {
                 foreach ($realEstate->units as $unit) {
