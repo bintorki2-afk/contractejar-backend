@@ -163,6 +163,8 @@ class ChargeService
         }
         $charge->forceFill(['status' => ContractCharge::STATUS_CANCELLED, 'cancelled_at' => now(), 'cancelled_by' => $employee?->id])->save();
         $this->flow->activity($contract, 'charge_cancelled', $employee, null, ['charge_id' => $charge->id, 'kind' => $charge->kind, 'amount' => (float) $charge->amount], 'employee', 'إلغاء '.$charge->kindLabel().' '.$this->money((float) $charge->amount).' ر.س');
+        // QA-F W-12: إشعار طلب الدفع لا يبقى يطالب العميل بعد الإلغاء.
+        $this->customers->chargeCancelled($contract, $charge);
 
         return $charge->fresh();
     }

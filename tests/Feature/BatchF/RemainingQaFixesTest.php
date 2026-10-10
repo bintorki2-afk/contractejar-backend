@@ -185,4 +185,78 @@ class RemainingQaFixesTest extends BatchETestCase
         $this->assertSame('حجة استحكام', \App\Models\Contract::instrumentTypeLabel('strong_argument', 'ar'));
         $this->assertSame('ورقة مبايعة مختومة من مكتب عقاري', \App\Models\Contract::instrumentTypeLabel('sale_agreement', 'ar'));
     }
+
+    /** @return array{0: \App\Models\Contract, 1: \App\Models\User, 2: \App\Models\Employee} */
+    private function paidReceivedOrder(): array
+    {
+        foreach (['ReaEstatTypeSeeder', 'ReaEstatUsageSeeder'] as $seeder) {
+            \Illuminate\Support\Facades\Artisan::call('db:seed', ['--class' => $seeder, '--force' => true]);
+        }
+        $employee = $this->employee('manager');
+        $user = $this->customer('0551112250');
+        $contract = $this->paidContract(['contract_status_id' => $this->statusId('under_review'), 'property_type_id' => 1, 'property_usages_id' => 1,
+            'instrument_number' => '440111222333', 'instrument_history' => '10-05-1440', 'type_instrument_history' => 'hijri', 'number_of_floors' => 2], $user);
+        $this->payFull($contract);
+        $this->postJson('/api/admin/orders/'.$contract->id.'/stage/received')->assertOk();
+
+        return [$contract, $user, $employee];
+    }
+
+    private function step1Payload(\App\Models\Contract $contract, array $over = []): array
+    {
+        return array_merge(['id' => $contract->id, 'instrument_type' => 'electronic', 'instrument_number' => '440111222333', 'instrument_history' => '10-05-1440', 'type_instrument_history' => 'hijri',
+            'property_type_id' => 1, 'property_usages_id' => 1, 'number_of_floors' => 2], $over);
+    }
+
+    public function test_app6_multi_item_request_is_not_resolved_by_one_item_and_app7_message(): void
+    {
+        [$contract, $user] = $this->paidReceivedOrder();
+        $rid = $this->postJson('/api/admin/orders/'.$contract->id.'/data-requests', ['section' => 'property', 'items' => ['deed_number', 'document_type']])->assertStatus(201)->json('data.request.id');
+
+        Sanctum::actingAs($user, ['*']);
+        $fix = $this->postJson('/api/v2/contract/step1', $this->step1Payload($contract, ['instrument_number' => '440999888777']))->assertOk()->json('fix');
+        $this->assertSame([], $fix['resolved_request_ids']);
+        $this->assertSame([$rid], $fix['partially_resolved_request_ids']);
+        $this->assertSame('partial', $fix['result']);
+        $this->assertSame(['نوع المستند'], $fix['remaining_items']);
+        $this->assertSame('pending', \App\Models\ContractDataRequest::query()->find($rid)->status);
+        $this->assertSame('مطلوب منك: نوع المستند', $fix['pending_data_requests'][0]['banner']);
+
+        $fix = $this->postJson('/api/v2/contract/step1', $this->step1Payload($contract, ['instrument_number' => '440999888777', 'instrument_type' => 'old_handwritten']))->assertOk()->json('fix');
+        $this->assertSame([$rid], $fix['resolved_request_ids']);
+        $this->assertSame('resolved', $fix['result']);
+        $this->assertSame('resolved', \App\Models\ContractDataRequest::query()->find($rid)->status);
+    }
+
+    public function test_w10_customer_edit_on_paid_order_is_logged_and_employee_notified(): void
+    {
+        [$contract, $user, $employee] = $this->paidReceivedOrder();
+        $this->postJson('/api/admin/orders/'.$contract->id.'/data-requests', ['section' => 'property', 'items' => ['deed_number']])->assertStatus(201);
+
+        Sanctum::actingAs($user, ['*']);
+        $fix = $this->postJson('/api/v2/contract/step1', $this->step1Payload($contract, ['number_of_floors' => 5]))->assertOk()->json('fix');
+        $this->assertSame('saved', $fix['result']);
+        $this->assertSame('تم حفظ تعديلك وإبلاغ الموظف.', $fix['message']);
+
+        $this->assertTrue(\App\Models\ContractActivity::query()->where('contract_id', $contract->id)->where('action', 'customer_edited')->exists());
+        $notif = \App\Models\EmployeeNotification::query()->where('contract_id', $contract->id)->where('kind', 'customer_edited')->firstOrFail();
+        $this->assertSame($employee->id, (int) $notif->employee_id);
+    }
+
+    public function test_w12_cancelling_a_charge_marks_its_payment_notification_cancelled(): void
+    {
+        $this->employee('admin');
+        $user = $this->customer('0551112260');
+        $contract = $this->paidContract(['contract_status_id' => $this->statusId('under_review')], $user);
+        $this->payFull($contract);
+        $cid = $this->postJson('/api/admin/orders/'.$contract->id.'/charges', ['amount' => 50, 'message' => 'رسوم وحدة'])->assertStatus(201)->json('data.charge.id');
+        $offer = \App\Models\Offer::query()->where('contract_id', $contract->id)->where('kind', 'charge_payment_request')->firstOrFail();
+        $this->assertStringContainsString('ادفع من الرابط', $offer->body);
+
+        $this->postJson('/api/admin/orders/'.$contract->id.'/charges/'.$cid.'/cancel')->assertOk();
+        $offer->refresh();
+        $this->assertSame('أُلغيت الرسوم', $offer->title);
+        $this->assertStringNotContainsString('ادفع من الرابط', $offer->body);
+        $this->assertTrue($offer->data['cancelled']);
+    }
 }

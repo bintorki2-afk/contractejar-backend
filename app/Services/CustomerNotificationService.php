@@ -482,6 +482,39 @@ class CustomerNotificationService
         );
     }
 
+    /**
+     * QA-F W-12: إلغاء الرسم من اللوحة ⇒ إشعار «ادفع من الرابط» يُعلَّم ملغى (لا يبقى يطالب العميل بالدفع).
+     */
+    public function chargeCancelled(Contract $contract, \App\Models\ContractCharge $charge): int
+    {
+        try {
+            $order = $this->orderNumber($contract);
+            $amountLabel = rtrim(rtrim(number_format((float) $charge->amount, 2, '.', ''), '0'), '.');
+            $updated = 0;
+            $rows = Offer::query()->where('contract_id', $contract->id)
+                ->whereIn('kind', [self::KIND_CHARGE_PAYMENT_REQUEST, self::KIND_PRICE_DIFFERENCE])->get();
+            foreach ($rows as $offer) {
+                $data = is_array($offer->data) ? $offer->data : [];
+                if ((int) ($data['charge_id'] ?? 0) !== (int) $charge->id) {
+                    continue;
+                }
+                $offer->forceFill([
+                    'title' => 'أُلغيت الرسوم',
+                    'body' => "طلبك رقم {$order}: أُلغيت ".$charge->kindLabel()." ({$amountLabel} ر.س) — لا يلزمك أي دفع لها.",
+                    'url' => SmartLink::for($contract),
+                    'data' => array_merge($data, ['cancelled' => true, 'payment_url' => null, 'charge_status' => 'cancelled']),
+                ])->save();
+                $updated++;
+            }
+
+            return $updated;
+        } catch (\Throwable $e) {
+            Log::warning('charge cancel notification update failed', ['contract_id' => $contract->id, 'error' => $e->getMessage()]);
+
+            return 0;
+        }
+    }
+
     /** دفعة (هـ) — E5: نجاح دفع رسوم (payment_success مع رسالة الرسوم). */
     public function chargePaid(Contract $contract, \App\Models\ContractCharge $charge): ?Offer
     {

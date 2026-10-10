@@ -47,6 +47,8 @@ class ContractActivityLogger
         'data_request_reminded' => 'تذكير بطلب المرفق',
         'data_request_resolved' => 'حل طلب المرفق',
         'data_request_cancelled' => 'إلغاء طلب المرفق',
+        'data_request_progress' => 'العميل أرسل جزءاً من المطلوب',
+        'customer_edited' => 'تعديل من العميل بعد الإرسال',
         'ejar_entry_progress' => 'إدخال في إيجار',
     ];
 
@@ -56,6 +58,8 @@ class ContractActivityLogger
         'cancelled', 'refunded', 'discount_applied',
         // دفعة (هـ)
         'bank_transfer_recorded', 'charge_created', 'charge_paid', 'data_request_sent', 'data_request_resolved',
+        // دفعة (و)
+        'data_request_progress', 'customer_edited',
     ];
 
     /**
@@ -228,6 +232,8 @@ class ContractActivityLogger
             'charge_paid' => 'تم استلام دفعتك'.(isset($after['amount']) ? ' ('.rtrim(rtrim(number_format((float) $after['amount'], 2, '.', ''), '0'), '.').' ر.س)' : ''),
             'data_request_sent' => 'طلبنا منك: '.implode('، ', (array) ($after['items'] ?? [])),
             'data_request_resolved' => 'أرسلت المطلوب — شكراً لك',
+            'data_request_progress' => 'استلمنا جزءاً من المطلوب — بقي: '.implode('، ', (array) ($after['remaining'] ?? [])),
+            'customer_edited' => 'عدّلت بيانات طلبك — سيراجعها الموظف',
             default => null,
         };
     }
