@@ -1,0 +1,7 @@
+# قالب تحويلات 301 — يُنسخ إلى /etc/nginx/aqdi/redirects.conf
+# ما نكتب هنا شي قبل اعتماد خريطة الروابط (docs/seo-baseline). كل سطر 301 دائم.
+#
+# مثال شكل القاعدة (للتوضيح فقط — لا تفعّله):
+# location = /blog/OLD_SLUG { return 301 https://aqdi.sa/NEW_PATH; }
+#
+# ملاحظة: الروابط عربية. اختبر كل قاعدة بـ curl -I وتأكد إن الـ Location مرمّز UTF-8 صحيح (percent-encoded).
