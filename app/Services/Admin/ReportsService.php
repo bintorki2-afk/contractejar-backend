@@ -496,7 +496,7 @@ class ReportsService
             'refund_requests_by_status' => ReportLabeledValueResource::collection(
                 $this->refundRequestsByStatus($range)
             ),
-            'refund_requests_total' => $this->moneyValue($this->refundsAmount($range)),
+            'refund_requests_total' => $this->moneyValue($this->refundRequestsAmount($range)),
         ]);
     }
 
@@ -945,12 +945,39 @@ class ReportsService
     /**
      * @param  array{0: Carbon, 1: Carbon}|null  $range
      */
-    private function refundsAmount(?array $range): float
+    /** مجموع طلبات الاسترجاع المعتمدة (قسم «طلبات الاسترجاع» فقط — ليس مالاً خرج فعلاً). */
+    private function refundRequestsAmount(?array $range): float
     {
         $query = RefundableContract::query()->where('admin_confirmed', true);
         $this->applyDateRange($query, 'created_at', $range);
 
         return $this->moneyValue((float) $query->sum('refund_amount'));
+    }
+
+    private function refundsAmount(?array $range): float
+    {
+        // QA-F C3: المسترجع = ما نُفّذ فعلاً فقط (جدول refunds بحالة «تم الاسترجاع»)،
+        // لا طلبات الاسترجاع «المعتمدة» غير المنفّذة (كانت تطرح 22,516 ر.س وهمية من الإيراد).
+        $total = 0.0;
+        $refundedContractIds = [];
+        if (Schema::hasTable('refunds')) {
+            $q = \App\Models\Refund::query()->where('status', \App\Models\Refund::STATUS_SUCCEEDED);
+            $this->applyDateRange($q, 'created_at', $range);
+            $total += (float) (clone $q)->sum('amount');
+            $refundedContractIds = (clone $q)->whereNotNull('contract_id')->pluck('contract_id')->unique()->all();
+        }
+
+        // طلبات استرجاع قديمة نُفّذت يدوياً (is_refunded) بلا صف في refunds.
+        if (Schema::hasColumn('refundable_contracts', 'is_refunded')) {
+            $legacy = RefundableContract::query()->where('is_refunded', true);
+            $this->applyDateRange($legacy, 'created_at', $range);
+            if ($refundedContractIds !== [] && Schema::hasColumn('refundable_contracts', 'contract_id')) {
+                $legacy->whereNotIn('contract_id', $refundedContractIds);
+            }
+            $total += (float) $legacy->sum('refund_amount');
+        }
+
+        return $this->moneyValue($total);
     }
 
     /**

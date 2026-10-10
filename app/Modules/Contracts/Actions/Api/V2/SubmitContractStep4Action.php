@@ -19,8 +19,33 @@ class SubmitContractStep4Action
             }
 
             $leaseRenewalData = ['step' => 5];
-            if ($request->has('notes_edits')) {
+            // QA-F C4 (APP-3): التطبيق يرسل notes_edits = null ⇒ كان يمسح تعديلات أدخلها العميل من الموقع.
+            if ($request->filled('notes_edits')) {
                 $leaseRenewalData['notes_edits'] = $request->input('notes_edits');
+            }
+
+            // QA-F C4: حفظ بيانات المستأجر المرسلة (المعبّأة فقط — قيمة فارغة لا تمحو المحفوظ).
+            foreach (['tenant_entity', 'tenant_id_num', 'tenant_mobile', 'tenant_entity_unified_registry_number', 'type_tenant_dob',
+                'authorization_type', 'id_num_of_property_tenant_agent', 'mobile_of_property_tenant_agent', 'type_dob_tenant_agent'] as $key) {
+                if ($request->filled($key)) {
+                    $leaseRenewalData[$key] = $request->input($key);
+                }
+            }
+            if ($request->filled('tenant_dob_day') && $request->filled('tenant_dob_month') && $request->filled('tenant_dob_year')) {
+                $leaseRenewalData['tenant_dob'] = HijriDobParts::combine(
+                    $request->input('tenant_dob_day'),
+                    $request->input('tenant_dob_month'),
+                    $request->input('tenant_dob_year')
+                );
+            } elseif ($request->filled('tenant_dob')) {
+                $leaseRenewalData['tenant_dob'] = $request->input('tenant_dob');
+            }
+            if ($request->filled('dobof_property_tenant_agent_day') && $request->filled('dobof_property_tenant_agent_month') && $request->filled('dobof_property_tenant_agent_year')) {
+                $leaseRenewalData['dob_of_property_tenant_agent'] = HijriDobParts::combine(
+                    $request->input('dobof_property_tenant_agent_day'),
+                    $request->input('dobof_property_tenant_agent_month'),
+                    $request->input('dobof_property_tenant_agent_year')
+                );
             }
 
             $contract->update($leaseRenewalData);

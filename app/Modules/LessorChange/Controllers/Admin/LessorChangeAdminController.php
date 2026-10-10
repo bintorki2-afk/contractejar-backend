@@ -69,6 +69,12 @@ class LessorChangeAdminController extends Controller
         ]);
 
         $row = LessorChangeRequest::query()->findOrFail($id);
+
+        // QA-F C8: طلب مدفوع لا يُعاد إلى «بانتظار الدفع» (كان يعيد رابط الدفع ⇒ دفع مكرر).
+        if ($data['status'] === 'pending_payment' && $row->paid_at !== null) {
+            return $this->errorMessage('لا يمكن إعادة طلب مدفوع إلى «بانتظار الدفع».', 422);
+        }
+
         $payload = [
             'status' => $data['status'],
             'status_note' => $data['status_note'] ?? $row->status_note,

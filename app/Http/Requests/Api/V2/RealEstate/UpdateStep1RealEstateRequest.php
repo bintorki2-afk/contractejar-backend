@@ -162,11 +162,15 @@ class UpdateStep1RealEstateRequest extends BaseApiV2Request
      */
     public function attributesForUpdate(): array
     {
-        $data = array_merge([
-            'name_real_estate' => $this->input('name_real_estate'),
-            'real_estate_registry_number' => $this->input('real_estate_registry_number'),
-            'step' => 1,
-        ], $this->locationAttributesForPayload());
+        $data = array_merge(['step' => 1], $this->locationAttributesForPayload());
+
+        // QA-F C9: خطوة الصك أثناء تعديل العقار لا ترسل الاسم ⇒ كان يُكتب NULL فيختفي العقار
+        // من «عقاراتي». نحدّث الاسم ورقم السجل فقط إذا وصلت قيمة فعلية.
+        foreach (['name_real_estate', 'real_estate_registry_number'] as $keepIfMissing) {
+            if ($this->filled($keepIfMissing)) {
+                $data[$keepIfMissing] = $this->input($keepIfMissing);
+            }
+        }
 
         $dateFirst = $this->resolvedDateFirstRegistration();
         if ($dateFirst !== null) {

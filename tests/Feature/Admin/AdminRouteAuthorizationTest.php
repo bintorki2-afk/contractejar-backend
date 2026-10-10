@@ -15,7 +15,6 @@ class AdminRouteAuthorizationTest extends TestCase
         'POST api/admin/payment-gateway/status/{uuid}',
         'GET api/admin/payment-gateway/status/success/{uuid}',
         'GET api/admin/payment-gateway/status/error/{uuid}',
-        'GET api/admin/payment-gateway/{uuid}',
         'GET api/admin/seo-google/callback',
     ];
 

@@ -84,7 +84,9 @@ class LessorChangeRequest extends Model
 
     public function isPaid(): bool
     {
-        return $this->status !== 'pending_payment' && $this->status !== 'cancelled';
+        // QA-F C8: «مدفوع» = دفع مسجّل فعلاً (paid_at)، لا مجرد حالة غير «بانتظار الدفع»
+        // (رفض طلب غير مدفوع كان يجعله مدفوعاً ويصدر فاتورة وهمية).
+        return $this->paid_at !== null || $this->status === 'paid';
     }
 
     /** يُستدعى من مسار الدفع عند تأكيد الدفع من البوابة. */

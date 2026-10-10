@@ -22,6 +22,10 @@ class AdminOrdersListTest extends BatchDTestCase
             'refunded' => $this->paidContract(['contract_status_id' => (int) ContractStatus::refundedId()], $user),
             'cancelled' => $this->contract(['contract_status_id' => $this->statusId('cancelled')], $user),
         ];
+        // QA-F C6: «مدفوع» يُحسب من الدفعات الفعلية — نسجّل دفعة لكل طلب مدفوع.
+        foreach (['paid_new', 'review', 'received', 'draft_sent', 'refunded'] as $paidKey) {
+            $this->payment($orders[$paidKey], 249.0, 'pay_'.$paidKey);
+        }
         // مسودات مبكرة (غير مكتملة) — لا تظهر في «جميع الطلبات».
         $orders['early1'] = $this->contract(['step' => 2, 'contract_status_id' => ContractStatus::NEW_ID], $user);
         $orders['early2'] = $this->contract(['step' => 3, 'contract_status_id' => ContractStatus::NEW_ID], $user);

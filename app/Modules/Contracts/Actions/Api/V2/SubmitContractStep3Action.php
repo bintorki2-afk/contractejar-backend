@@ -24,6 +24,15 @@ class SubmitContractStep3Action
         $shouldApplyAgentBlock = $contract->instrument_type !== 'lease_renewal'
             || $request->has('add_legal_agent_of_owner');
 
+        // QA-F C10: تصحيح خطوة المؤجر على طلب مدفوع من إصدار تطبيق لا يعيد تعبئة الوكيل يرسل
+        // add_legal_agent_of_owner=false بلا أي بيانات وكيل ⇒ كان يصفّر ٨ حقول. لا نمحو وكيلاً
+        // محفوظاً على طلب مدفوع ما لم تصل بيانات وكيل بديلة (التعديل الفعلي من اللوحة).
+        $existingAgent = in_array($contract->add_legal_agent_of_owner, [true, 1, '1', 'true'], true);
+        if ($shouldApplyAgentBlock && (bool) $contract->is_completed && $existingAgent
+            && ! $this->hasOwnerAgent($request) && ! $request->filled('id_num_of_property_owner_agent')) {
+            $shouldApplyAgentBlock = false;
+        }
+
         if ($shouldApplyAgentBlock) {
             $data = $this->hasOwnerAgent($request)
                 ? $this->appendStep3AgentData($data, $request, $contract)

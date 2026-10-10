@@ -248,6 +248,10 @@ class UnitEstateController extends Controller
     public function delete($id){
 
         $realEstate = UnitsReal::where('user_id', auth()->id())->findOrFail($id);
+        // QA-F C1: وحدة مرتبطة بطلب لا تُحذف — حذفها كان يمحو وحدات الطلبات المدفوعة.
+        if ($realEstate->contracts()->exists() || $realEstate->linkedContracts()->exists()) {
+            return $this->errorMessage(trans('api.unit_has_contracts'), 422);
+        }
         $realEstate->delete();
         return $this->successMessage( trans('api.success'), 200);
     }

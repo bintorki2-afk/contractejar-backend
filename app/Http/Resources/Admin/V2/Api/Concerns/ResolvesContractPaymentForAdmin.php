@@ -18,7 +18,8 @@ trait ResolvesContractPaymentForAdmin
      */
     protected function contractPaymentFields(): array
     {
-        $isPaid = (bool) $this->is_completed;
+        // QA-F C6: «مدفوع» من حالة الدفع الفعلية (نفس مصدر شارة الدفع payment_state) لا من is_completed.
+        $isPaid = $this->resolveIsPaidFromPaymentState();
         $successPayment = $this->resolveSuccessfulPayment();
 
         $amount = $this->resolvePaymentAmountFromPayments($successPayment);
@@ -31,6 +32,21 @@ trait ResolvesContractPaymentForAdmin
                 ? ($amount !== null && $amount !== '' ? round((float) $amount, 2) : 'تم الدفع')
                 : 'لم يتم الدفع',
         ];
+    }
+
+    private function resolveIsPaidFromPaymentState(): bool
+    {
+        try {
+            $summary = app(\App\Services\Payments\ContractPaymentState::class)->summaryForList($this->resource);
+
+            return in_array($summary['status'] ?? null, [
+                \App\Services\Payments\ContractPaymentState::STATUS_PAID,
+                \App\Services\Payments\ContractPaymentState::STATUS_PARTIALLY_PAID,
+                \App\Services\Payments\ContractPaymentState::STATUS_PARTIALLY_REFUNDED,
+            ], true);
+        } catch (\Throwable) {
+            return (bool) $this->is_completed;
+        }
     }
 
     private function resolvePaymentAmountFromPayments(?Payment $successPayment): mixed

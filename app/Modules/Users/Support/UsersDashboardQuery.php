@@ -68,10 +68,17 @@ class UsersDashboardQuery
                 ->join('contracts', 'payments.contract_uuid', '=', 'contracts.uuid')
                 ->whereColumn('contracts.user_id', 'users.id')
                 ->where('payments.status', 'success'),
-            'total_refunded_amount' => RefundableContract::query()
-                ->selectRaw('coalesce(sum(refund_amount), 0)')
-                ->whereColumn('refundable_contracts.user_id', 'users.id')
-                ->where('is_refunded', 1),
+            // QA-F C3: المسترجع الفعلي من جدول refunds (نفس مصدر «المدفوع») — لا طلبات الاسترجاع.
+            'total_refunded_amount' => \Illuminate\Support\Facades\Schema::hasTable('refunds')
+                ? \App\Models\Refund::query()
+                    ->selectRaw('coalesce(sum(refunds.amount), 0)')
+                    ->join('contracts', 'refunds.contract_id', '=', 'contracts.id')
+                    ->whereColumn('contracts.user_id', 'users.id')
+                    ->where('refunds.status', \App\Models\Refund::STATUS_SUCCEEDED)
+                : RefundableContract::query()
+                    ->selectRaw('coalesce(sum(refund_amount), 0)')
+                    ->whereColumn('refundable_contracts.user_id', 'users.id')
+                    ->where('is_refunded', 1),
         ]);
     }
 
@@ -83,9 +90,9 @@ class UsersDashboardQuery
         $query->withCount([
             // دفعة (د) — ب5: نفس نطاق «جميع الطلبات» (الخطوة ≥ 4) حتى تتطابق الأعداد في كل مكان.
             'contracts as orders_count' => fn ($q) => $q->adminListed(),
-            'contracts as completed_orders_count' => fn ($q) => $q->adminListed()->where('is_completed', 1),
+            'contracts as completed_orders_count' => fn ($q) => $q->adminListed()->paymentPaid(true),
             'contracts as draft_orders_count' => fn ($q) => $q->adminListed()->where('is_draft', true),
-            'contracts as incomplete_orders_count' => fn ($q) => $q->adminListed()->where('is_completed', 0),
+            'contracts as incomplete_orders_count' => fn ($q) => $q->adminListed()->paymentPaid(false),
             'contracts as incomplete_drafts_count' => fn ($q) => $q->incompleteDraft(),
             'realEstate as real_estate_count',
             'unitReal as units_count',

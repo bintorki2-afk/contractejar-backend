@@ -37,8 +37,9 @@ Route::prefix('payment-gateway')->name('payment-gateway.')->group(function () {
     Route::get('/{uuid}/payments', [ContractPaymentController::class, 'paymentsByContract'])
         ->middleware(['auth:sanctum', 'permission:payments.view'])
         ->name('payments');
+    // QA-F C5: كانت مفتوحة بلا توكن (حالة الدفع والمبلغ ورابط الدفع لأي رقم طلب). اللوحة فقط تستخدمها.
     Route::get('/{uuid}', [ContractPaymentController::class, 'paymentUrl'])
-        ->middleware('throttle:payment-public')
+        ->middleware(['auth:sanctum', 'permission:all_requests.view', 'throttle:payment-public'])
         ->name('show');
 });
 

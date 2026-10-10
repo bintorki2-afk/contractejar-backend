@@ -7,6 +7,40 @@ use App\Models\Payment;
 
 trait HasContractScopes
 {
+    /**
+     * QA-F C6: فلتر «مدفوع / غير مدفوع» من الدفعات الفعلية (نفس مصدر شارة الدفع)، لا من is_completed.
+     * مدفوع = مجموع الدفعات الناجحة > مجموع الاسترجاعات الناجحة.
+     */
+    public function scopePaymentPaid($query, bool $paid = true)
+    {
+        $payments = Payment::query()
+            ->selectRaw('coalesce(sum(payments.amount), 0)')
+            ->where('payments.status', 'success')
+            ->where(function ($q) {
+                $q->whereColumn('payments.contract_uuid', 'contracts.uuid')
+                    ->orWhereRaw(\Illuminate\Support\Facades\DB::getDriverName() === 'sqlite'
+                        ? "payments.contract_uuid LIKE (CAST(contracts.uuid AS TEXT) || '-%')"
+                        : "payments.contract_uuid LIKE CONCAT(CAST(contracts.uuid AS CHAR), '-%')");
+                if (\App\Support\SchemaCache::hasColumn('payments', 'contract_id')) {
+                    $q->orWhereColumn('payments.contract_id', 'contracts.id');
+                }
+            });
+
+        $sql = '('.$payments->toSql().')';
+        $bindings = $payments->getBindings();
+
+        if (\App\Support\SchemaCache::hasTable('refunds')) {
+            $refunds = \App\Models\Refund::query()
+                ->selectRaw('coalesce(sum(refunds.amount), 0)')
+                ->whereColumn('refunds.contract_id', 'contracts.id')
+                ->where('refunds.status', \App\Models\Refund::STATUS_SUCCEEDED);
+            $sql .= ' - ('.$refunds->toSql().')';
+            $bindings = array_merge($bindings, $refunds->getBindings());
+        }
+
+        return $query->whereRaw('('.$sql.') '.($paid ? '>' : '<=').' 0.009', $bindings);
+    }
+
     public function scopeNotDeleted($query)
     {
         return $query->where('is_delete', 0);

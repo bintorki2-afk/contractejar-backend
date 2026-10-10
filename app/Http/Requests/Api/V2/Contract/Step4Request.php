@@ -59,9 +59,27 @@ class Step4Request extends BaseApiV2Request
     public function rules(): array
     {
         if ($this->isLeaseRenewalContract()) {
+            // QA-F C4: تجديد العقد يجمع بيانات المستأجر أيضاً (الموقع يطلبها ويعرضها في المراجعة)
+            // — كانت تُتجاهل كلياً. اختيارية هنا بنفس صيغ التحقق، وتُحفظ إن وصلت.
             return [
                 'id' => 'required|exists:contracts,id',
                 'notes_edits' => 'nullable|string|max:20000',
+                'tenant_entity' => 'nullable|in:person,institution',
+                'tenant_id_num' => 'nullable|min:10|regex:/^[12]\d{9}$/',
+                'tenant_dob' => 'nullable',
+                'tenant_dob_day' => 'nullable',
+                'tenant_dob_month' => 'nullable',
+                'tenant_dob_year' => 'nullable',
+                'tenant_mobile' => 'nullable|min:9|regex:/^5[0-9]{8}$/',
+                'tenant_entity_unified_registry_number' => 'nullable|regex:/^7\d{9}$/',
+                'type_tenant_dob' => 'nullable|in:hijri,gregorian',
+                'authorization_type' => 'nullable|in:owner_and_representative_of_record,agent_for_the_tenant,agent_or_authorized_by_registry_owner',
+                'id_num_of_property_tenant_agent' => 'nullable|min:10|regex:/^[12]\d{9}$/',
+                'mobile_of_property_tenant_agent' => 'nullable|min:9|regex:/^5[0-9]{8}$/',
+                'dobof_property_tenant_agent_day' => 'nullable',
+                'dobof_property_tenant_agent_month' => 'nullable',
+                'dobof_property_tenant_agent_year' => 'nullable',
+                'type_dob_tenant_agent' => 'nullable|in:hijri,gregorian',
             ];
         }
 

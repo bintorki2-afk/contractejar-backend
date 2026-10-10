@@ -69,6 +69,11 @@ class ContractPaymentState
         $pending = $charges->where('status', ContractCharge::STATUS_PENDING);
 
         $originalDue = $this->originalDue($contract);
+        // QA-F C2: السعر الحي غير معروف (عقد قديم بلا مدة/رسوم) ⇒ لا نعتبر المستحق صفراً
+        // (كان يُظهر «مستحق للعميل» بكامل المدفوع وزر استرجاع). نأخذ لقطة الدفعة الأصلية.
+        if ($originalDue <= 0.009) {
+            $originalDue = $this->originalPaidSnapshot($payments);
+        }
         $extraDue = round((float) $charges->where('kind', ContractCharge::KIND_EXTRA_FEE)
             ->whereIn('status', [ContractCharge::STATUS_PENDING, ContractCharge::STATUS_PAID])->sum('amount'), 2);
         $dueTotal = round($originalDue + $extraDue, 2);
@@ -79,6 +84,13 @@ class ContractPaymentState
         $outstanding = round(max(0, $dueTotal - $netTotal), 2);
         $refundDue = $pending->isEmpty() ? round(max(0, $netTotal - $dueTotal), 2) : 0.0;
         $pendingTotal = round((float) $pending->sum('amount'), 2);
+
+        // QA-F C12: رسم معلّق = المتبقي على العميل دائماً، بنفس منطق summaryForList (القائمة/التتبّع)
+        // — كانت الصفحة تقول «مدفوع» والقائمة «مدفوع جزئياً» لنفس الطلب.
+        if ($pending->isNotEmpty()) {
+            $outstanding = round(max($outstanding, $pendingTotal), 2);
+        }
+        $labelDue = $pending->isNotEmpty() ? round($netTotal + $outstanding, 2) : $dueTotal;
 
         $status = $this->status($paidTotal, $refundedTotal, $outstanding);
         $method = $this->method($payments);
@@ -105,7 +117,7 @@ class ContractPaymentState
             'refund_due' => $refundDue,
             'pending_charges_count' => $pending->count(),
             'pending_charges_total' => $pendingTotal,
-            'label' => $this->label($status, $method, $paidTotal, $dueTotal, $refundedTotal, $netTotal),
+            'label' => $this->label($status, $method, $paidTotal, $labelDue, $refundedTotal, $netTotal),
             'can_notarize' => $blockReason === null,
             'notarize_block_reason' => $blockReason,
             'notarize_block_message' => $blockReason !== null ? self::BLOCK_MESSAGES[$blockReason] : null,
@@ -350,6 +362,19 @@ class ContractPaymentState
         } catch (\Throwable) {
             return 0.0;
         }
+    }
+
+    /**
+     * مجموع الدفعات الأصلية الناجحة (غير المرتبطة برسم) — بديل السعر الحي حين يتعذّر حسابه.
+     *
+     * @param  Collection<int, Payment>  $payments
+     */
+    private function originalPaidSnapshot(Collection $payments): float
+    {
+        return round((float) $payments
+            ->filter(fn (Payment $p) => empty($p->charge_id)
+                && in_array($this->paymentKind($p), [Payment::KIND_ORIGINAL, Payment::KIND_BANK_TRANSFER], true))
+            ->sum('amount'), 2);
     }
 
     public function paymentKind(Payment $p): string

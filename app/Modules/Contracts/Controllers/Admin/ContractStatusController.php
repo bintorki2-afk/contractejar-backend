@@ -19,7 +19,8 @@ class ContractStatusController extends Controller
     public function index(Request $request)
     {
         try {
-            $query = ContractStatus::query();
+            // QA-F C13 / قرار E3: حالة «إرسال المسودة» الملغاة لا تظهر في إدارة الحالات.
+            $query = ContractStatus::query()->where(fn ($q) => $q->whereNull('status_key')->orWhereNotIn('status_key', ContractStatus::LEGACY_KEYS));
             $contractStatuses = $query->paginate($this->perPageFromRequest($request));
             return $this->apiResponse(
                 [
@@ -75,6 +76,11 @@ class ContractStatusController extends Controller
                 );
             }
 
+            // QA-F C13: الحالة الملغاة بيانات تاريخية فقط — لا تُعدّل ولا يُعاد تفعيلها.
+            if (in_array($contractStatus->status_key, ContractStatus::LEGACY_KEYS, true)) {
+                return $this->errorMessage('هذه الحالة ملغاة (مرحلة «إرسال المسودة») ولا يمكن تعديلها.', 422);
+            }
+
             $contractStatus->update($request->validated());
 
             return $this->apiResponse(
@@ -125,6 +131,7 @@ class ContractStatusController extends Controller
     {
         try {
             $contractStatuses = ContractStatus::where('is_active', true)
+                ->where(fn ($q) => $q->whereNull('status_key')->orWhereNotIn('status_key', ContractStatus::LEGACY_KEYS))
                 ->orderBy('id', 'asc')
                 ->get();
 
