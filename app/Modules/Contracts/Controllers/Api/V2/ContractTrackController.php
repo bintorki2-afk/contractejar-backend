@@ -90,7 +90,16 @@ class ContractTrackController extends Controller
             // QA-F W-30: is_paid = الدفعة الأصلية فقط؛ هذا الحقل يقول إن على العميل مبلغاً متبقياً (رسم معلّق/فرق).
             'has_outstanding' => (float) ($trackState['outstanding'] ?? 0) > 0.009,
             'outstanding' => (float) ($trackState['outstanding'] ?? 0),
-            'payment_details' => $paymentState->details($contract),
+            'payment_details' => $trackDetails = $paymentState->details($contract),
+            // دفعة (و) — D4/B16: PDF الفاتورة بعد الدفع فقط.
+            'has_invoice' => (bool) ($trackDetails['has_invoice'] ?? false),
+            'invoice_url' => $trackDetails['invoice_url'] ?? null,
+            'invoice_pdf_url' => $trackDetails['invoice_pdf_url'] ?? null,
+            // دفعة (و) — B14 + D9.
+            'is_submitted' => \App\Support\ContractSubmission::isSubmitted($contract),
+            'is_resumable_draft' => \App\Support\ContractSubmission::isResumableDraft($contract),
+            ...\App\Services\Orders\DraftDocumentService::customerFields($contract),
+            'pay_after_draft_enabled' => \App\Models\Setting::payAfterDraftEnabled(),
             'charges' => app(\App\Services\Charges\ChargeService::class)->forCustomer($contract),
             'pending_data_requests' => app(\App\Services\DataRequests\ContractDataRequestService::class)->pendingForCustomer($contract),
             'activities' => app(\App\Services\Orders\ContractActivityLogger::class)->forCustomer($contract),

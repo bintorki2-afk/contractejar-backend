@@ -3,6 +3,7 @@
 namespace App\Modules\Contracts\Models\Concerns;
 
 use App\Models\Contract;
+use App\Models\ContractStatus;
 use App\Models\Payment;
 
 trait HasContractScopes
@@ -190,6 +191,19 @@ trait HasContractScopes
         }
 
         return $query;
+    }
+
+    /**
+     * دفعة (و) — B14: مسودة لم تُرسل بعد (step < 7، غير مدفوعة، حالتها «جديد» أو بلا حالة، ولم يستلمها موظف).
+     */
+    public function scopeNotSubmitted($query)
+    {
+        $newId = ContractStatus::newId();
+
+        return $query->where('step', '<', \App\Support\ContractSubmission::SUBMITTED_STEP)
+            ->where('is_completed', 0)
+            ->where(fn ($q) => $q->whereNull('contract_status_id')->orWhere('contract_status_id', 0)->orWhere('contract_status_id', $newId))
+            ->when(\App\Support\SchemaCache::hasTable('received_contracts'), fn ($q) => $q->whereDoesntHave('receivedContract'));
     }
 
     public function scopeCompleted($query)

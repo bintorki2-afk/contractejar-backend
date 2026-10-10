@@ -73,6 +73,15 @@ class ContractResource extends JsonResource
             'payment_details' => $paymentDetails = $paymentState->details($this->resource),
             // QA-F APP-29: رابط الفاتورة في جذر الرد أيضاً (التطبيق يقرأه من الجذر).
             'invoice_url' => $paymentDetails['invoice_url'] ?? null,
+            // دفعة (و) — D4/B16: PDF الفاتورة + هل صدرت فاتورة (لا رابط فاتورة قبل الدفع في الواجهات).
+            'invoice_pdf_url' => $paymentDetails['invoice_pdf_url'] ?? null,
+            'has_invoice' => (bool) ($paymentDetails['has_invoice'] ?? false),
+            'is_paid' => (bool) ($paymentDetails['state']['is_paid'] ?? false),
+            // دفعة (و) — B14: المسودة القابلة للاستئناف = لم يُرسل بعد.
+            'is_submitted' => \App\Support\ContractSubmission::isSubmitted($this->resource),
+            'is_resumable_draft' => \App\Support\ContractSubmission::isResumableDraft($this->resource),
+            // دفعة (و) — D9: الدفع بعد مشاهدة المسودة.
+            ...\App\Services\Orders\DraftDocumentService::customerFields($this->resource),
             // QA-F APP-8/APP-21: البيانات المالية التي أدخلها العميل + الإجمالي من الخادم.
             ...$this->customerFinancialFields($paymentDetails),
             'charges' => app(\App\Services\Charges\ChargeService::class)->forCustomer($this->resource),

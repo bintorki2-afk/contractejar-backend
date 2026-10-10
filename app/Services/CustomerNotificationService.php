@@ -82,6 +82,9 @@ class CustomerNotificationService
 
     public const KIND_DATA_REQUEST_RESOLVED = 'data_request_resolved';
 
+    /** دفعة (و) — D9: مسودة العقد جاهزة للمراجعة (الدفع بعد مشاهدة المسودة). */
+    public const KIND_DRAFT_READY = 'draft_ready';
+
     /** الأنواع المعروفة (للفلترة في اللوحة). دفعة (هـ): draft_sent أُلغي (يبقى للصفوف القديمة فقط). */
     public const KINDS = [
         self::KIND_NOTARIZED,
@@ -102,12 +105,14 @@ class CustomerNotificationService
         self::KIND_CHARGE_PAYMENT_REQUEST,
         self::KIND_CHARGE_PAID,
         self::KIND_PRICE_DIFFERENCE,
+        self::KIND_DRAFT_READY,
     ];
 
     public const KIND_LABELS = [
         self::KIND_CHARGE_PAYMENT_REQUEST => 'طلب دفع رسوم',
         self::KIND_CHARGE_PAID => 'دفع رسوم (للموظفين)',
         self::KIND_PRICE_DIFFERENCE => 'فرق سعر',
+        self::KIND_DRAFT_READY => 'مسودة العقد جاهزة',
         self::KIND_DATA_REQUEST_RESOLVED => 'رد العميل على طلب مرفق (للموظفين)',
         self::KIND_ASSIGNED => 'إسناد الطلب',
         self::KIND_DATA_MISSING => 'بيانات ناقصة',
@@ -577,6 +582,26 @@ class CustomerNotificationService
         } catch (\Throwable $e) {
             Log::warning('Employee notification log failed', ['contract_id' => $contract->id, 'error' => $e->getMessage()]);
         }
+    }
+
+    /** دفعة (و) — D9: رُفعت مسودة العقد — راجعها وادفع للتوثيق. */
+    public function draftReady(Contract $contract): ?Offer
+    {
+        $user = $this->ownerOf($contract);
+        if ($user === null) {
+            return null;
+        }
+        $order = $this->orderNumber($contract);
+
+        return $this->notify(
+            $user,
+            self::KIND_DRAFT_READY,
+            'مسودة عقدك جاهزة',
+            "مسودة عقدك جاهزة — راجعها وادفع للتوثيق (طلب رقم {$order})",
+            ['type' => 'draft_ready', 'deep_link' => SmartLink::for($contract)],
+            contract: $contract,
+            dedupe: false,
+        );
     }
 
     /** استرجاع المبلغ (كلي/جزئي). */

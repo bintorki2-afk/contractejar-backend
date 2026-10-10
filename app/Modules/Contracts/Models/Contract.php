@@ -197,6 +197,10 @@ class Contract extends Model
         'attributed_at' => 'datetime',
         'delay_flags' => 'array',
         'delay_flagged_at' => 'datetime',
+        // دفعة (و) — D9
+        'pay_after_draft' => 'boolean',
+        'pay_after_draft_requested_at' => 'datetime',
+        'draft_document_uploaded_at' => 'datetime',
     ];
 
     protected $appends = [

@@ -16,6 +16,12 @@ Route::get('/contracts/{contract}/deed-page/{index}', [DeedImageController::clas
     ->middleware('signed')
     ->name('contracts.deed-page');
 
+// دفعة (و) — D9: ملف مسودة العقد (رابط موقّع مؤقت).
+Route::get('/contracts/{contract}/draft-document', [\App\Modules\Contracts\Controllers\Api\V2\DraftDocumentController::class, 'file'])
+    ->whereNumber('contract')
+    ->middleware('signed')
+    ->name('v2.contracts.draft-document');
+
 // تتبّع الطلب بدون حساب (الموقع): رقم الطلب + الجوال. عام ومقيّد.
 // تقييد: 10 طلبات بالدقيقة لكل IP (حماية من تخمين أرقام الطلبات/الجوالات).
 Route::post('/contract/track', [ContractTrackController::class, 'track'])
@@ -34,6 +40,10 @@ Route::middleware(['auth:sanctum', 'ensure.customer'])->group(function () {
         Route::post('/doc-fee', 'docFeePreview');
         Route::post('/draft', 'setDraft')->name('draft');
     });
+
+    // دفعة (و) — D9: «إرسال الطلب والدفع بعد مشاهدة المسودة».
+    Route::post('/contract/{uuid}/pay-after-draft', [\App\Modules\Contracts\Controllers\Api\V2\DraftDocumentController::class, 'payAfterDraft'])
+        ->middleware('throttle:20,1')->name('v2.contract.pay-after-draft');
 
     Route::prefix('contract')->name('v2.contract.')->controller(V2UncompeleteContractController::class)->group(function () {
         Route::get('/check-uncompleted-contract', 'checkUncompletedContract');

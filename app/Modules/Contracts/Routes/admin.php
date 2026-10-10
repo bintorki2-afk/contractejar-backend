@@ -98,6 +98,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{id}/data-requests/{rid}/resolve', [DataRequestController::class, 'resolve'])->whereNumber('id')->whereNumber('rid')->middleware('permission:all_requests.edit')->name('data-requests.resolve');
         Route::post('/{id}/data-requests/{rid}/cancel', [DataRequestController::class, 'cancel'])->whereNumber('id')->whereNumber('rid')->middleware('permission:all_requests.edit')->name('data-requests.cancel');
         Route::post('/{id}/data-requests/{rid}/remind', [DataRequestController::class, 'remind'])->whereNumber('id')->whereNumber('rid')->middleware('permission:all_requests.edit')->name('data-requests.remind');
+        // دفعة (و) — D9: رفع/حذف مسودة العقد للعميل (الدفع بعد مشاهدة المسودة).
+        Route::post('/{id}/draft-document', 'uploadDraftDocument')->whereNumber('id')->middleware('permission:all_requests.edit')->name('draft-document.store');
+        Route::post('/{id}/draft-document/delete', 'deleteDraftDocument')->whereNumber('id')->middleware('permission:all_requests.edit')->name('draft-document.destroy');
         // دفعة (د) — ب10: إشعار العميل من تفاصيل الطلب (بيانات ناقصة / إعادة إرسال آخر حالة).
         Route::post('/{id}/notify', 'notifyCustomer')->whereNumber('id')->middleware('permission:all_requests.edit')->name('notify');
         Route::post('/{id}/status', 'updateStatus')->whereNumber('id')->middleware('permission:all_requests.edit')->name('update-status');
