@@ -10,12 +10,12 @@ class PurgeTrashCommand extends Command
 {
     protected $signature = 'trash:purge';
 
-    protected $description = 'Permanently delete orders / lessor-change requests kept in the trash for more than 30 days';
+    protected $description = 'Permanently delete orders / lessor-change requests / properties / units kept in the trash for more than 30 days';
 
     public function handle(TrashService $trash): int
     {
         $result = $trash->purge();
-        $this->info("purged contracts: {$result['contracts']}, lessor changes: {$result['lessor_changes']}");
+        $this->info("purged contracts: {$result['contracts']}, lessor changes: {$result['lessor_changes']}, real estates: {$result['real_estates']}, units: {$result['units']}");
 
         return self::SUCCESS;
     }

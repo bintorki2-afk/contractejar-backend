@@ -37,6 +37,9 @@ Route::middleware(['auth:sanctum', 'ensure.customer'])->group(function () {
             Route::get("/{$p}/units/{id}", 'showUnits');
             Route::delete("/{$p}/delete/{id}", 'delete');
             Route::get("/{$p}/all", 'all');
+            // دفعة (و) — D6: المحذوفات (30 يوماً).
+            Route::get("/{$p}/trash", 'trash');
+            Route::post("/{$p}/{id}/restore", 'restore')->whereNumber('id');
         }
     });
 
@@ -47,5 +50,6 @@ Route::middleware(['auth:sanctum', 'ensure.customer'])->group(function () {
         Route::post('/update/{id}', 'update');
         Route::delete('/delete/{id}', 'delete');
         Route::get('/all/{id}', 'all');
+        Route::post('/{id}/restore', 'restore')->whereNumber('id');
     });
 });

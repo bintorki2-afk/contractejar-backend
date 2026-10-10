@@ -36,7 +36,8 @@ trait HasContractRelations
 
     public function realEstate()
     {
-        return $this->belongsTo(RealEstate::class, 'real_id');
+        // دفعة (و) — D6: الطلب يبقى يعرض عقاره حتى لو نقله العميل للمحذوفات.
+        return $this->belongsTo(RealEstate::class, 'real_id')->withTrashed();
     }
 
     /** Units count: from linked real estate when real_id is set, else contract column. */
@@ -78,7 +79,7 @@ trait HasContractRelations
 
     public function unit()
     {
-        return $this->belongsTo(UnitsReal::class, 'real_units_id');
+        return $this->belongsTo(UnitsReal::class, 'real_units_id')->withTrashed();
     }
 
     /**
@@ -91,7 +92,7 @@ trait HasContractRelations
             'contract_units',
             'contract_id',
             'real_unit_id'
-        )->withPivot(['real_estate_id'])->withTimestamps();
+        )->withPivot(['real_estate_id'])->withTimestamps()->withTrashed();
     }
 
     public function contractUnits()

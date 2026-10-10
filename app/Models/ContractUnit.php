@@ -25,11 +25,11 @@ class ContractUnit extends Model
 
     public function unit(): BelongsTo
     {
-        return $this->belongsTo(UnitsReal::class, 'real_unit_id');
+        return $this->belongsTo(UnitsReal::class, 'real_unit_id')->withTrashed();
     }
 
     public function realEstate(): BelongsTo
     {
-        return $this->belongsTo(RealEstate::class, 'real_estate_id');
+        return $this->belongsTo(RealEstate::class, 'real_estate_id')->withTrashed();
     }
 }

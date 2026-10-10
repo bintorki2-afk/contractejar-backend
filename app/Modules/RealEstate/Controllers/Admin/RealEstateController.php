@@ -52,4 +52,47 @@ class RealEstateController extends Controller
     );
 }
 
+
+    /** دفعة (و) — D6: GET /admin/real-estates/trash — محذوفات العملاء (عقارات + وحدات) خلال 30 يوماً. */
+    public function trash(Request $request)
+    {
+        $userId = $request->filled('user_id') ? (int) $request->input('user_id') : null;
+
+        return $this->apiResponse(
+            app(\App\Services\RealEstate\PropertyTrashService::class)->listing($userId, withUser: true),
+            trans('api.success')
+        );
+    }
+
+    /** دفعة (و) — D6: POST /admin/real-estates/{id}/restore */
+    public function restore(int $id)
+    {
+        $row = RealEstate::onlyTrashed()->find($id);
+        if ($row === null) {
+            return $this->errorMessage(trans('api.not_found'), 404);
+        }
+        try {
+            $row = app(\App\Services\RealEstate\PropertyTrashService::class)->restoreRealEstate($row);
+        } catch (\InvalidArgumentException $e) {
+            return $this->errorMessage($e->getMessage(), 422);
+        }
+
+        return $this->apiResponse(['id' => $row->id, 'restored' => true], trans('api.success'));
+    }
+
+    /** دفعة (و) — D6: POST /admin/real-estates/units/{id}/restore */
+    public function restoreUnit(int $id)
+    {
+        $row = \App\Models\UnitsReal::onlyTrashed()->find($id);
+        if ($row === null) {
+            return $this->errorMessage(trans('api.not_found'), 404);
+        }
+        try {
+            $row = app(\App\Services\RealEstate\PropertyTrashService::class)->restoreUnit($row);
+        } catch (\InvalidArgumentException $e) {
+            return $this->errorMessage($e->getMessage(), 422);
+        }
+
+        return $this->apiResponse(['id' => $row->id, 'restored' => true], trans('api.success'));
+    }
 }

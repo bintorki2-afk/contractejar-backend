@@ -16,6 +16,10 @@ use Illuminate\Database\Eloquent\Model;
 class RealEstate extends Model
 {
     use MapsRealEstateOwnerAttributes;
+    /** دفعة (و) — D6: الحذف ينقل للمحذوفات (30 يوماً) — العمود trashed_at، والمحذوف لا يظهر في أي استعلام. */
+    use \App\Models\Concerns\SoftTrashes;
+
+    public const DELETED_AT = 'trashed_at';
     /** صك ملكية ومالك العقار وقف — requires deed + endowment registration + trusteeship deed uploads */
     public const INSTRUMENT_TYPE_OWNER_ENDOWMENT = 'property_ownership_owner_is_endowment';
 

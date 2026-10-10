@@ -71,7 +71,7 @@ class TrashService
         ];
     }
 
-    /** يحذف نهائياً ما مضى عليه 30 يوماً في السلة. @return array{contracts: int, lessor_changes: int} */
+    /** يحذف نهائياً ما مضى عليه 30 يوماً في السلة. @return array{contracts: int, lessor_changes: int, real_estates: int, units: int} */
     public function purge(): array
     {
         $cutoff = now()->subDays(self::RETENTION_DAYS);
@@ -90,7 +90,15 @@ class TrashService
 
         $lessor = LessorChangeRequest::query()->where('is_delete', true)->whereNotNull('trashed_at')->where('trashed_at', '<', $cutoff)->delete();
 
-        return ['contracts' => $contracts, 'lessor_changes' => (int) $lessor];
+        // دفعة (و) — D6: محذوفات العقارات والوحدات.
+        $properties = ['real_estates' => 0, 'units' => 0];
+        try {
+            $properties = app(\App\Services\RealEstate\PropertyTrashService::class)->purge();
+        } catch (\Throwable $e) {
+            Log::warning('property trash purge failed', ['error' => $e->getMessage()]);
+        }
+
+        return ['contracts' => $contracts, 'lessor_changes' => (int) $lessor, 'real_estates' => $properties['real_estates'], 'units' => $properties['units']];
     }
 
     private function assertRestorable(mixed $trashedAt): void

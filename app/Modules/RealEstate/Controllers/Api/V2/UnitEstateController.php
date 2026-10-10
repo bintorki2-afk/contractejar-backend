@@ -185,12 +185,30 @@ class UnitEstateController extends Controller
         if ($realEstate->contracts()->exists() || $realEstate->linkedContracts()->exists()) {
             return $this->errorMessage(trans('api.unit_has_contracts'), 422);
         }
-        $property = $realEstate->realEstate;
-        $countBefore = $property ? $property->units()->count() : 0;
-        $realEstate->delete();
-        // QA-F PROPS-13: عدّاد وحدات العقار يتبع الحذف.
-        $property?->syncUnitsCountAfterRemoval($countBefore);
-        return $this->successMessage(trans('api.success'), 200);
+        // دفعة (و) — D6: نقل للمحذوفات (استرجاع خلال 30 يوماً).
+        $trash = app(\App\Services\RealEstate\PropertyTrashService::class);
+        $trash->trashUnit($realEstate);
+
+        return $this->apiResponse(array_merge(
+            ['id' => $realEstate->id, 'message' => 'نُقلت الوحدة إلى المحذوفات — يمكنك استرجاعها خلال 30 يوماً.'],
+            $trash->meta($realEstate->trashed_at)
+        ), trans('api.success'));
+    }
+
+    /** دفعة (و) — D6: POST /unit/{id}/restore */
+    public function restore($id)
+    {
+        $unit = UnitsReal::onlyTrashed()->where('user_id', auth()->id())->find($id);
+        if ($unit === null) {
+            return $this->errorMessage(trans('api.not_found'), 404);
+        }
+        try {
+            $unit = app(\App\Services\RealEstate\PropertyTrashService::class)->restoreUnit($unit);
+        } catch (\InvalidArgumentException $e) {
+            return $this->errorMessage($e->getMessage(), 422);
+        }
+
+        return $this->apiResponse(['id' => $unit->id, 'restored' => true, 'message' => 'تم استرجاع الوحدة.'], trans('api.success'));
     }
 }
 
