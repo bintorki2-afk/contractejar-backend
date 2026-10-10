@@ -8,6 +8,7 @@ BRANCH="${BRANCH:-master}"
 APP_DIR="${APP_DIR:-/var/www/aqdi-backend}"
 
 mkdir -p "$(dirname "$APP_DIR")"
+install -d -o deploy -g www-data "$APP_DIR"
 if [ ! -d "$APP_DIR/.git" ]; then
   sudo -u deploy git clone --branch "$BRANCH" "$REPO" "$APP_DIR"
 else
@@ -20,6 +21,7 @@ sudo -u deploy composer install --no-dev --optimize-autoloader --no-interaction
 
 if [ ! -f .env ]; then
   sudo -u deploy cp .env.example .env
+  chmod 640 .env && chown deploy:www-data .env
   echo
   echo ">>> أنشأت .env من القالب. عدّله يدوياً قبل المتابعة (APP_ENV=production, APP_URL, DB_*, Moyasar, Firebase, ...):"
   echo "    sudo -u deploy nano $APP_DIR/.env"
@@ -28,6 +30,7 @@ if [ ! -f .env ]; then
   exit 0
 fi
 
+chmod 640 .env && chown deploy:www-data .env
 grep -q '^APP_KEY=base64:' .env || sudo -u deploy php artisan key:generate --force
 
 # لا نخدم بمخطط ناقص في الإنتاج: لو فشل الترحيل نوقف

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# KVM4 — 6/7: نسخ احتياطي يومي 03:10 (الرياض): القاعدة + ملفات الرفع. يحتفظ بآخر 7.
+# KVM4 — 6/7: نسخ احتياطي يومي 03:10 (الرياض): القاعدة + كل ملفات storage/app. يحتفظ بآخر 7.
 # ملاحظة: مجدول Laravel يعمل أيضاً aqdi:db-backup. هذا طبقة ثانية على مستوى السيرفر (تشمل الملفات).
 set -euo pipefail
 [ "$(id -u)" -eq 0 ] || { echo "شغّله بـ sudo"; exit 1; }
@@ -12,7 +12,8 @@ set -euo pipefail
 . /root/.aqdi-db-credentials
 D=/var/backups/aqdi; T=\$(date +%F_%H%M)
 mysqldump --single-transaction --routines --triggers "\$DB_DATABASE" | gzip > "\$D/db_\$T.sql.gz"
-tar -czf "\$D/files_\$T.tar.gz" -C "${APP_DIR}/storage/app" public
+# كل storage/app: العامة + الخاصة (صكوك/وكالات) — بدون تقارير النقل المؤقتة
+tar -czf "\$D/files_\$T.tar.gz" -C "${APP_DIR}/storage" --exclude=app/blog-import --exclude=app/seo-verify app
 ls -1t "\$D"/db_*.sql.gz    2>/dev/null | tail -n +8 | xargs -r rm -f
 ls -1t "\$D"/files_*.tar.gz 2>/dev/null | tail -n +8 | xargs -r rm -f
 echo "backup ok \$T"

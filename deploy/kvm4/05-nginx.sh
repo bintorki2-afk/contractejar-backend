@@ -6,6 +6,13 @@ APP_DIR="${APP_DIR:-/var/www/aqdi-backend}"
 SERVER_NAME="${SERVER_NAME:-_}"   # أثناء التجربة: _ (يرد على IP). عند التحويل: aqdi.sa www.aqdi.sa
 SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# بعد 07-ssl.sh يضيف certbot بلوك 443 لهذا الملف — إعادة الكتابة تمسحه وتطيّح HTTPS
+if grep -q "managed by Certbot" /etc/nginx/sites-available/aqdi 2>/dev/null; then
+  echo "الموقع فيه إعدادات SSL من certbot — ما أعيد كتابته."
+  echo "التحويلات تتعدّل من /etc/nginx/aqdi/redirects.conf ثم: sudo nginx -t && sudo systemctl reload nginx"
+  exit 1
+fi
+
 install -d /etc/nginx/aqdi
 [ -f /etc/nginx/aqdi/redirects.conf ] || cp "$SRC_DIR/nginx/aqdi-redirects.conf.example" /etc/nginx/aqdi/redirects.conf
 

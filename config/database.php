@@ -63,6 +63,22 @@ return [
             ]) : [],
         ],
 
+        // البند 4/6: قاعدة aqdi.sa القديمة (aqdisa_123) محمّلة مؤقتاً للقراءة فقط وقت النقل.
+        // ما تُستخدم إلا بأوامر النقل (blog:import-legacy --connection=legacy).
+        'legacy' => [
+            'driver' => 'mysql',
+            'host' => env('LEGACY_DB_HOST', '127.0.0.1'),
+            'port' => env('LEGACY_DB_PORT', '3306'),
+            'database' => env('LEGACY_DB_DATABASE', 'aqdisa_legacy'),
+            'username' => env('LEGACY_DB_USERNAME', 'aqdi'),
+            'password' => env('LEGACY_DB_PASSWORD', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'strict' => true,
+            'engine' => null,
+        ],
+
         'pgsql' => [
             'driver' => 'pgsql',
             'url' => env('DATABASE_URL'),

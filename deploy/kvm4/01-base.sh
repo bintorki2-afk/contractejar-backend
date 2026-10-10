@@ -35,7 +35,9 @@ fi
 echo "[1/7] الجدار الناري (SSH + HTTP + HTTPS فقط)"
 ufw default deny incoming
 ufw default allow outgoing
-ufw allow OpenSSH
+# منفذ SSH الفعلي (لو مغيّر عن 22 ما ننقفل برا)
+SSH_PORT="$(sshd -T 2>/dev/null | awk '/^port /{print $2; exit}')"
+ufw allow "${SSH_PORT:-22}/tcp"
 ufw allow 80/tcp
 ufw allow 443/tcp
 ufw --force enable
