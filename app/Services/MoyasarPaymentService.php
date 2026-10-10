@@ -442,10 +442,18 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
         $uuid = $this->normalizeContractUuid($uuid);
         $sync = $this->syncGatewayPaymentStatus($uuid, $paymentId, $invoiceId);
 
+        // دفعة (هـ) — E5 (A-2): مفتاح رسم chg-{uuid}-{id} ⇒ الطلب الأصل + الرسم.
+        $chargeKey = Payment::parseChargeKey($uuid);
+        $charge = $chargeKey !== null && \App\Support\SchemaCache::hasTable('contract_charges')
+            ? \App\Models\ContractCharge::query()->find($chargeKey['charge_id'])
+            : null;
+
         $employeePaidRecord = ContractPaidByEmployee::query()
             ->where('contract_uuid', $uuid)
             ->first();
-        $contract = Contract::where('uuid', $uuid)->first();
+        $contract = $charge !== null
+            ? Contract::query()->find($charge->contract_id)
+            : Contract::where('uuid', $uuid)->first();
         $lessorChange = (! $contract && ! $employeePaidRecord)
             ? \App\Models\LessorChangeRequest::findByUuid($uuid)
             : null;
@@ -466,11 +474,19 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             || ($employeePaidRecord ? (bool) $employeePaidRecord->is_paid : false)
             || (($sync['synced'] ?? false) && ($sync['status'] ?? null) === 'success');
 
-        if (! $paymentConfirmed) {
+        if (! $paymentConfirmed && $charge === null) {
             $this->revertContractCompletionWithoutSuccessfulPayment($uuid);
             $contract = $contract?->fresh();
         } else {
             $contract = $contract?->fresh();
+        }
+        if ($charge !== null && $paymentConfirmed && $charge->status !== \App\Models\ContractCharge::STATUS_PAID) {
+            try {
+                app(\App\Services\Charges\ChargeService::class)->settleFromPaymentKey($uuid);
+                $charge = $charge->fresh();
+            } catch (\Throwable $e) {
+                Log::warning('charge settlement from status payload failed', ['key' => $uuid, 'error' => $e->getMessage()]);
+            }
         }
 
         $resolvedResult = $paymentConfirmed
@@ -485,9 +501,17 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
         return [
             'result' => $result,
             'resolved_result' => $resolvedResult,
-            'contract_uuid' => $uuid,
-            'kind' => $lessorChange ? 'lessor_change' : 'contract',
+            'contract_uuid' => $charge !== null ? (string) $contract?->uuid : $uuid,
+            'payment_key' => $uuid,
+            'kind' => $charge !== null ? 'charge' : ($lessorChange ? 'lessor_change' : 'contract'),
             'lessor_change' => $lessorChange?->toClientArray(),
+            'charge' => $charge !== null ? [
+                'id' => $charge->id,
+                'kind' => $charge->kind,
+                'amount' => (float) $charge->amount,
+                'message' => $charge->message,
+                'status' => $charge->fresh()?->status ?? $charge->status,
+            ] : null,
             'contract_id' => $contract?->id,
             'is_completed' => $contract ? (bool) $contract->is_completed : false,
             'payment_confirmed' => $paymentConfirmed,
@@ -583,6 +607,51 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             'synced' => false,
             'reason' => 'gateway_status_not_final',
             'gateway_status' => $gatewayStatus,
+        ];
+    }
+
+    /**
+     * دفعة (هـ) — E2: بعد تسجيل دفعة ناجحة محلياً (حوالة بنكية) تُطبَّق نفس انعكاسات دفع البوابة.
+     */
+    public function settleRecordedPayment(string $uuid): void
+    {
+        $this->markContractAsCompleted($this->normalizeContractUuid($uuid));
+    }
+
+    /**
+     * دفعة (هـ) — E5: فاتورة Moyasar لمبلغ رسم فقط (مفتاح chg-{uuid}-{id} + metadata.charge_id).
+     *
+     * @return array{payment_url: string, invoice_id: string|null, cart_amount: float, payment_key: string}
+     */
+    public function createChargeInvoice(\App\Models\ContractCharge $charge, Contract $contract, string $client = 'web'): array
+    {
+        $key = $charge->paymentKey();
+        $amount = round((float) $charge->amount, 2);
+        if ($amount <= 0) {
+            throw new \InvalidArgumentException(trans('api.contract_payment_amount_invalid'));
+        }
+
+        $invoice = $this->createInvoice($amount, 'Charge '.$charge->id.' contract '.$contract->uuid, $key, $client, [
+            'charge_id' => (string) $charge->id,
+            'parent_contract_uuid' => (string) $contract->uuid,
+            'charge_kind' => (string) $charge->kind,
+        ]);
+
+        if (! $invoice['success']) {
+            Log::warning('Moyasar charge invoice rejected', [
+                'contract_uuid' => $contract->uuid,
+                'charge_id' => $charge->id,
+                'status_code' => $invoice['status'],
+                'gateway_error' => $invoice['message'],
+            ]);
+            throw new \RuntimeException($invoice['message'] ?? trans('api.not_accept'), (int) ($invoice['status'] ?? 0));
+        }
+
+        return [
+            'payment_url' => (string) $invoice['url'],
+            'invoice_id' => $invoice['id'],
+            'cart_amount' => $amount,
+            'payment_key' => $key,
         ];
     }
 
@@ -742,6 +811,21 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
     {
         $client = $this->normalizePaymentClient($client);
 
+        // دفعة (هـ) — E5: دفعات الرسوم تعود إلى صفحة الطلب (status.result يعالج الـ IPN ثم يحوّل).
+        if (Payment::isChargeKey($contractUuid) && $client === 'app') {
+            $parsed = Payment::parseChargeKey($contractUuid);
+            $successTemplate = (string) config('services.moyasar.payment_app_success_url_template', '');
+            $errorTemplate = (string) config('services.moyasar.payment_app_error_url_template', '');
+            if ($parsed !== null && $successTemplate !== '' && $errorTemplate !== '') {
+                $append = static fn (string $url): string => $url.(str_contains($url, '?') ? '&' : '?').'charge='.$parsed['charge_id'];
+
+                return [
+                    'success' => $append(str_replace('{uuid}', $parsed['uuid'], $successTemplate)),
+                    'error' => $append(str_replace('{uuid}', $parsed['uuid'], $errorTemplate)),
+                ];
+            }
+        }
+
         if ($client === 'app') {
             $successTemplate = (string) config('services.moyasar.payment_app_success_url_template', '');
             $errorTemplate = (string) config('services.moyasar.payment_app_error_url_template', '');
@@ -773,7 +857,7 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
      *
      * @return array{success: bool, status: int, url: string|null, id: string|null, message: string|null}
      */
-    private function createInvoice(float $amount, string $description, string $contractUuid, string $client = 'web'): array
+    private function createInvoice(float $amount, string $description, string $contractUuid, string $client = 'web', array $extraMetadata = []): array
     {
         $redirectUrls = $this->paymentFrontendRedirectUrls($contractUuid, $client);
 
@@ -782,9 +866,9 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             'currency' => $this->currency,
             'description' => $description,
             'callback_url' => route('callback', ['uuid' => $contractUuid]),
-            'metadata' => [
+            'metadata' => array_merge([
                 'contract_uuid' => $contractUuid,
-            ],
+            ], $extraMetadata),
         ];
 
         // Always attach redirects so Moyasar leaves the invoice page.
@@ -1254,7 +1338,31 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             'payment_brand' => $this->resolvePaymentBrand($source),
             'status' => $status,
             'payment_date' => now(),
-        ], $this->gatewayIdColumn($verified['id'] ?? null)));
+        ], $this->gatewayIdColumn($verified['id'] ?? null), $this->batchEColumns($contractUuid)));
+    }
+
+    /**
+     * دفعة (هـ): contract_id / kind / charge_id للدفعة حسب المفتاح (uuid الطلب أو chg-{uuid}-{id}).
+     *
+     * @return array<string, mixed>
+     */
+    private function batchEColumns(string $key): array
+    {
+        if (! \App\Support\SchemaCache::hasColumn('payments', 'contract_id')) {
+            return [];
+        }
+        $parsed = Payment::parseChargeKey($key);
+        if ($parsed !== null) {
+            $charge = \App\Support\SchemaCache::hasTable('contract_charges') ? \App\Models\ContractCharge::query()->find($parsed['charge_id']) : null;
+
+            return [
+                'contract_id' => $charge?->contract_id ?? Contract::query()->where('uuid', $parsed['uuid'])->value('id'),
+                'charge_id' => $parsed['charge_id'],
+                'kind' => $charge?->kind ?? Payment::KIND_EXTRA_FEE,
+            ];
+        }
+
+        return ['contract_id' => Contract::query()->where('uuid', $key)->value('id'), 'kind' => Payment::KIND_ORIGINAL];
     }
 
     /**
@@ -1347,7 +1455,7 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             'payment_brand' => $this->resolvePaymentBrand($source),
             'status' => $status,
             'payment_date' => now(),
-        ], $this->gatewayIdColumn($gatewayPayment['id'] ?? null)));
+        ], $this->gatewayIdColumn($gatewayPayment['id'] ?? null), $this->batchEColumns($contractUuid)));
     }
 
     /**
@@ -1390,6 +1498,17 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             return;
         }
 
+        // دفعة (هـ) — E5: مفتاح رسم (chg-{uuid}-{id}) ⇒ تسوية الرسم فقط، لا الطلب.
+        if (Payment::isChargeKey($uuid)) {
+            try {
+                app(\App\Services\Charges\ChargeService::class)->settleFromPaymentKey($uuid);
+            } catch (\Throwable $e) {
+                Log::warning('charge settlement failed', ['key' => $uuid, 'error' => $e->getMessage()]);
+            }
+
+            return;
+        }
+
         $contract = Contract::where('uuid', $uuid)->first();
         $becameCompleted = false;
         if ($contract && ! $contract->is_completed) {
@@ -1426,6 +1545,17 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
                 );
             } catch (\Throwable $e) {
                 Log::warning('Failed to record paid status history', [
+                    'contract_id' => $contract->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            // دفعة (هـ) — B-3: لقطة بنود الفاتورة تُحفظ لحظة الدفع (ما دُفع فعلاً)، حتى لا يعيد
+            // تعديل لاحق للسعر كتابة «الأصل» ويُحتسب فرق السعر مرتين في الفاتورة وpayment_details.
+            try {
+                app(\App\Services\ContractInvoiceService::class)->forContract($contract->fresh());
+            } catch (\Throwable $e) {
+                Log::warning('Failed to snapshot invoice lines after payment', [
                     'contract_id' => $contract->id,
                     'error' => $e->getMessage(),
                 ]);

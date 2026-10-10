@@ -20,6 +20,10 @@ class Setting extends Model
         'linkedIn',
         'whatsapp_contact',
         'whatsapp_contract',
+        // دفعة (هـ)
+        'bank_name',
+        'bank_iban',
+        'bank_account_name',
         'housing_tax',
         'commercial_tax',
         'vat_rate',

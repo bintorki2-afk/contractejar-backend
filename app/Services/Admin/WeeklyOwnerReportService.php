@@ -56,7 +56,25 @@ class WeeklyOwnerReportService
 
         $board = $this->attention->board(5);
 
+        // دفعة (هـ) — 2.7: رسوم إضافية / فروقات / استرجاعات / طلبات مرفق ناقص مفتوحة.
+        $hasKind = SchemaCache::hasColumn('payments', 'kind');
+        $extraQ = $hasKind ? (clone $payments)->where('kind', Payment::KIND_EXTRA_FEE) : null;
+        $diffQ = $hasKind ? (clone $payments)->where('kind', Payment::KIND_PRICE_DIFFERENCE) : null;
+        $refundsCount = SchemaCache::hasTable('refunds')
+            ? \App\Models\Refund::query()->where('status', 'succeeded')->whereBetween('created_at', [$start, $end])->count()
+            : 0;
+        $openDataRequests = SchemaCache::hasTable('contract_data_requests')
+            ? \App\Models\ContractDataRequest::query()->where('status', 'pending')->count()
+            : 0;
+
         return [
+            'extra_fees_count' => $extraQ ? (clone $extraQ)->count() : 0,
+            'extra_fees_amount' => $extraQ ? round((float) (clone $extraQ)->sum('amount'), 2) : 0.0,
+            'price_differences_count' => $diffQ ? (clone $diffQ)->count() : 0,
+            'price_differences_amount' => $diffQ ? round((float) (clone $diffQ)->sum('amount'), 2) : 0.0,
+            'refunds_count' => $refundsCount,
+            'open_data_requests' => $openDataRequests,
+            'awaiting_customer' => (int) ($board['counts']['awaiting_customer'] ?? 0),
             'from' => $start->toDateString(),
             'to' => $end->toDateString(),
             'orders' => $ordersCount,
@@ -88,6 +106,9 @@ class WeeklyOwnerReportService
             '🐢 أبطأ طلب: '.($r['slowest_order'] ? '#'.$r['slowest_order']['uuid'].' ('.$r['slowest_order']['hours'].' ساعة)' : '—'),
             '🏆 أفضل موظف: '.($r['top_employee'] ? $r['top_employee']['name'].' ('.$r['top_employee']['orders'].' طلب)' : '—'),
             '⚠️ طلبات متأخرة الآن: '.$r['delayed'],
+            // دفعة (هـ)
+            '➕ رسوم إضافية: '.($r['extra_fees_count'] ?? 0).' ('.$money($r['extra_fees_amount'] ?? 0).' ر.س) · فروقات: '.($r['price_differences_count'] ?? 0).' ('.$money($r['price_differences_amount'] ?? 0).' ر.س) · استرجاعات: '.($r['refunds_count'] ?? 0).' ('.$money($r['refunded'] ?? 0).' ر.س)',
+            '📎 طلبات مرفق ناقص مفتوحة: '.($r['open_data_requests'] ?? 0).(($r['awaiting_customer'] ?? 0) > 0 ? ' (منها '.$r['awaiting_customer'].' بلا رد +24 ساعة)' : ''),
         ], static fn ($l) => $l !== null));
     }
 }

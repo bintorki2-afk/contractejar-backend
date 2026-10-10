@@ -9,7 +9,7 @@ use App\Models\DraftContractStatus;
 use App\Modules\Contracts\Services\AdminOrderQueryService;
 use App\Services\ContractStatusCaseService;
 use App\Services\ContractStatusHistoryService;
-use App\Services\DraftBeforeNotarizationRule;
+use App\Services\PaymentBeforeNotarizationRule;
 use App\Services\FirebaseNotificationService;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
@@ -21,7 +21,7 @@ class UpdateAdminContractAction
         private readonly ContractStatusCaseService $caseService,
         private readonly ContractStatusHistoryService $history,
         private readonly FirebaseNotificationService $firebase,
-        private readonly DraftBeforeNotarizationRule $draftRule,
+        private readonly PaymentBeforeNotarizationRule $paymentRule,
     ) {}
 
     public function execute(UpdateContractRequest $request, int $id): Contract
@@ -37,8 +37,8 @@ class UpdateAdminContractAction
             $status = ContractStatus::query()->find($statusId);
             $this->assertStatusCase($request, $contract, $statusId, $status?->name);
             if ((int) $contract->contract_status_id !== $statusId) {
-                // ف2: لا توثيق قبل إرسال المسودة عبر واتساب (مدير النظام يتجاوز بـ force=1).
-                $override = $this->draftRule->assert($request, $contract, $statusId, $status?->name);
+                // دفعة (هـ): لا توثيق قبل الدفع الكامل وبلا رسوم معلّقة (مدير النظام يتجاوز بـ force=1).
+                $override = $this->paymentRule->assert($request, $contract, $statusId, $status?->name);
             }
             $extracted = $this->caseService->extract($request, $contract, $statusId, $status?->name);
             $caseExtra = array_merge($caseExtra, $extracted);
@@ -76,6 +76,19 @@ class UpdateAdminContractAction
         $flow = app(\App\Services\Orders\OrderFlowService::class);
         if ($diff['after'] !== []) {
             $flow->activity($contract, 'edited', $request->user() instanceof \App\Models\Employee ? $request->user() : null, $diff['before'], $diff['after']);
+
+            // دفعة (هـ) — E5: إعادة حساب فرق السعر بعد أي تعديل إداري.
+            if (array_intersect(array_keys($diff['after']), \App\Services\Orders\AdminOrderPatchService::PRICE_FIELDS) !== []) {
+                try {
+                    $changedForReason = [];
+                    foreach ($diff['after'] as $k => $v) {
+                        $changedForReason[$k] = ['before' => $diff['before'][$k] ?? null, 'after' => $v, 'label' => \App\Services\Orders\AdminOrderPatchService::FIELDS[$k]['label'] ?? $k];
+                    }
+                    app(\App\Services\Charges\ChargeService::class)->syncPriceDifference($contract, $request->user() instanceof \App\Models\Employee ? $request->user() : null, $changedForReason);
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+            }
         }
         if ((int) $beforeStatusId !== (int) $contract->contract_status_id) {
             $flow->activity($contract, ContractStatus::keyForId((int) $contract->contract_status_id) === ContractStatus::KEY_CANCELLED ? 'cancelled' : 'status_changed',
@@ -94,8 +107,8 @@ class UpdateAdminContractAction
                     : $contract->contractStatus?->name;
                 $meta = $this->caseService->historyMeta($statusId, $statusName, $caseExtra) ?? [];
                 if ($override['forced']) {
-                    $meta['draft_rule_forced'] = true;
-                    $meta['draft_rule_forced_by'] = $override['forced_by'];
+                    $meta['payment_rule_forced'] = true;
+                    $meta['payment_rule_forced_by'] = $override['forced_by'];
                 }
                 $this->history->record($contract, [
                     'source' => 'admin',

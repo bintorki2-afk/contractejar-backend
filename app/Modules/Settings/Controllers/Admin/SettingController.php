@@ -93,7 +93,17 @@ class SettingController extends Controller
                 'auto_assign_strategy' => ['nullable', 'in:round_robin,least_load'],
                 'auto_assign_employee_ids' => ['nullable', 'array'],
                 'auto_assign_employee_ids.*' => ['integer', 'exists:employees,id'],
+                // دفعة (هـ) — E2: الحوالة البنكية (لا تُعرض للعميل؛ الموظف يرسلها بنفسه).
+                'bank_name' => ['nullable', 'string', 'max:150'],
+                'bank_iban' => ['nullable', 'string', 'max:40', 'regex:/^[A-Za-z0-9 ]*$/'],
+                'bank_account_name' => ['nullable', 'string', 'max:150'],
+            ], [
+                'bank_iban.regex' => 'الآيبان يجب أن يحوي أحرفاً وأرقاماً فقط.',
             ]);
+
+            if (array_key_exists('bank_iban', $validated) && is_string($validated['bank_iban'])) {
+                $validated['bank_iban'] = strtoupper(preg_replace('/\s+/', '', $validated['bank_iban']) ?? '');
+            }
 
             $setting = $this->resolveSettingRow();
             $this->applyOptionalSettingImages($request, $setting, $validated);
@@ -273,6 +283,13 @@ class SettingController extends Controller
                 'eligible_employees' => app(\App\Services\Orders\AutoAssignService::class)->eligible($setting)
                     ->map(fn ($e) => ['id' => $e->id, 'name' => $e->name])->values()->all(),
                 'note' => 'يُسند الطلب المدفوع تلقائياً لموظف لديه صلاحية استلام الطلبات (تعديل جميع الطلبات).',
+            ],
+            'bank_transfer' => [
+                'bank_name' => $setting->bank_name ?? '',
+                'bank_iban' => $setting->bank_iban ?? '',
+                'bank_account_name' => $setting->bank_account_name ?? '',
+                'is_configured' => filled($setting->bank_iban ?? null),
+                'note' => 'يُستخدم في قالب «تعليمات الحوالة البنكية» الذي يرسله الموظف للعميل — لا يظهر في الموقع أو التطبيق.',
             ],
             'pricing' => [
                 'doc_fee_housing_first_year' => (float) ($setting->doc_fee_housing_first_year ?? 249),

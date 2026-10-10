@@ -10,37 +10,41 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 /**
- * رحلة الطلب (ف2) — القالب الثابت من 6 خطوات للعميل، مع علامات الإنجاز من سجل الحالات:
+ * رحلة الطلب (دفعة هـ — E3): ثلاث خطوات فقط:
  *
- *  ① استلام الطلب → ② الدفع → ③ مراجعة الفريق للبيانات → ④ إرسال مسودة العقد عبر واتساب
- *  → ⑤ اطلاعك على المسودة → ⑥ توثيق العقد في إيجار 🎉
+ *  ① قيد المراجعة (تتم عند الدفع) → ② مستلم من الموظف → ③ تم التوثيق (مكتمل = نفس الخطوة الأخيرة)
  *
- * القاعدة المنتجية: لا نوثّق العقد في إيجار إلا بعد اطلاع العميل على المسودة المرسلة عبر واتساب.
+ * حالات جانبية تُعرض بدل الخطوات: ملغي / مسترجع.
+ * لا توجد مرحلة «إرسال المسودة» بعد الآن (المفتاح whatsapp_draft بيانات تاريخية فقط).
  */
 final class ContractJourney
 {
-    public const RULE_MESSAGE = 'لا يمكن توثيق العقد قبل إرسال المسودة للعميل عبر واتساب';
-
-    public const RULE_SENTENCE = 'بعد الدفع نرسل لك مسودة العقد عبر واتساب للاطلاع عليها، ولا نوثّق العقد في إيجار إلا بعد اطلاعك على المسودة.';
+    public const RULE_SENTENCE = 'بعد الدفع يستلم موظفنا طلبك ويوثّق العقد في إيجار مباشرةً، وتصلك إشعارات بكل خطوة.';
 
     /** @var list<array{key: string, label: string, description: string}> */
     public const STEPS = [
-        ['key' => 'received', 'label' => 'استلام الطلب', 'description' => 'استلمنا طلبك وسجّلناه برقم الطلب.'],
-        ['key' => 'paid', 'label' => 'الدفع', 'description' => 'تم استلام دفعتك وبدأ فريقنا بالمراجعة.'],
-        ['key' => 'under_review', 'label' => 'مراجعة الفريق للبيانات', 'description' => 'يراجع فريقنا بيانات الطلب والمستندات.'],
-        ['key' => 'whatsapp_draft', 'label' => 'إرسال مسودة العقد عبر واتساب', 'description' => 'تصلك مسودة العقد عبر واتساب للاطلاع عليها.'],
-        ['key' => 'draft_reviewed', 'label' => 'اطلاعك على المسودة', 'description' => 'تطّلع على المسودة وتؤكد لنا صحتها.'],
-        ['key' => 'ejar_authenticated', 'label' => 'توثيق العقد في إيجار', 'description' => 'نوثّق العقد في منصة إيجار 🎉.'],
+        ['key' => 'under_review', 'label' => 'قيد المراجعة', 'description' => 'تم استلام دفعتك وطلبك قيد المراجعة.'],
+        ['key' => 'received_by_employee', 'label' => 'مستلم من الموظف', 'description' => 'استلم موظفنا طلبك وبدأ العمل عليه.'],
+        ['key' => 'ejar_authenticated', 'label' => 'تم التوثيق', 'description' => 'تم توثيق العقد في منصة إيجار 🎉.'],
     ];
 
-    /** مفاتيح سجل الحالات التي تعني أن الخطوة ③ (المراجعة) بدأت. */
-    private const REVIEW_KEYS = ['under_review', 'received', 'received_by_employee'];
+    /** الحالات الجانبية التي تُعرض بدل الخطوات. */
+    public const SIDE_STATES = [
+        'cancelled' => ['label' => 'ملغي', 'color' => '#EF4444'],
+        'refunded' => ['label' => 'مسترجع', 'color' => '#DC2626'],
+    ];
+
+    /** مفاتيح سجل الحالات التي تعني أن الخطوة ① بدأت. */
+    private const REVIEW_KEYS = ['paid', 'under_review', 'received', 'received_by_employee', 'whatsapp_draft'];
+
+    /** مفاتيح سجل الحالات التي تعني استلام الموظف. */
+    private const RECEIVED_KEYS = ['received', 'received_by_employee', 'whatsapp_draft'];
 
     /** مفاتيح سجل الحالات التي تعني اكتمال التوثيق. */
     public const NOTARIZED_KEYS = ['ejar_authenticated', 'completed'];
 
     /**
-     * @return list<array{step: int, key: string, label: string, description: string, done: bool, current: bool, at: string|null}>
+     * @return list<array{step: int, key: string, label: string, description: string, done: bool, current: bool, at: string|null, by: string|null}>
      */
     public static function for(?Contract $contract): array
     {
@@ -61,32 +65,35 @@ final class ContractJourney
         // الخطوات تراكمية: إنجاز خطوة لاحقة يعني إنجاز كل ما قبلها.
         $notarized = collect(self::NOTARIZED_KEYS)->contains(static fn (string $k) => $byKey->has($k))
             || self::currentKey($contract, self::NOTARIZED_KEYS);
-        $draftSent = $notarized
-            || $byKey->has('whatsapp_draft')
-            || filled($contract->ejar_contract_draft_number)
-            || self::currentKey($contract, ['whatsapp_draft']);
-        $reviewed = $draftSent
+        $received = $notarized
+            || $contract->receivedContract()->exists()
+            || collect(self::RECEIVED_KEYS)->contains(static fn (string $k) => $byKey->has($k))
+            || self::currentKey($contract, self::RECEIVED_KEYS);
+        $reviewed = $received
+            || (bool) $contract->is_completed
             || collect(self::REVIEW_KEYS)->contains(static fn (string $k) => $byKey->has($k))
-            || self::currentKey($contract, self::REVIEW_KEYS);
-        $paid = $reviewed || (bool) $contract->is_completed || $byKey->has('paid');
-        $submitted = $paid || (int) $contract->step >= 7;
+            || self::currentKey($contract, ['under_review']);
 
         $done = [
-            'received' => $submitted,
-            'paid' => $paid,
             'under_review' => $reviewed,
-            'whatsapp_draft' => $draftSent,
-            'draft_reviewed' => $notarized,
+            'received_by_employee' => $received,
             'ejar_authenticated' => $notarized,
         ];
 
+        $receivedRow = $contract->relationLoaded('receivedContract') ? $contract->receivedContract : $contract->receivedContract()->with('employee')->first();
+        $receivedRow?->loadMissing('employee');
+        $receivedAt = $receivedRow?->created_at ? Carbon::parse($receivedRow->created_at)->toIso8601String() : null;
+
         $at = [
-            'received' => $firstAt(['new']) ?? ($contract->created_at ? Carbon::parse($contract->created_at)->toIso8601String() : null),
-            'paid' => $firstAt(['paid']),
-            'under_review' => $firstAt(self::REVIEW_KEYS),
-            'whatsapp_draft' => $firstAt(['whatsapp_draft']),
-            'draft_reviewed' => null,
+            'under_review' => $firstAt(['paid', 'under_review']) ?? $firstAt(self::REVIEW_KEYS),
+            'received_by_employee' => $receivedAt ?? $firstAt(self::RECEIVED_KEYS),
             'ejar_authenticated' => $firstAt(self::NOTARIZED_KEYS),
+        ];
+
+        $by = [
+            'under_review' => null,
+            'received_by_employee' => $receivedRow?->employee?->name,
+            'ejar_authenticated' => self::notarizedBy($contract),
         ];
 
         $currentAssigned = false;
@@ -106,6 +113,7 @@ final class ContractJourney
                 'done' => $isDone,
                 'current' => $isCurrent,
                 'at' => $isDone ? ($at[$step['key']] ?? null) : null,
+                'by' => $isDone ? ($by[$step['key']] ?? null) : null,
             ];
         }
 
@@ -113,9 +121,43 @@ final class ContractJourney
     }
 
     /**
+     * الحالة الجانبية الحالية (ملغي/مسترجع) أو null.
+     *
+     * @return array{key: string, label: string, color: string, at: string|null}|null
+     */
+    public static function sideState(?Contract $contract): ?array
+    {
+        if ($contract === null) {
+            return null;
+        }
+
+        $key = ContractStatus::keyForId($contract->contract_status_id ? (int) $contract->contract_status_id : null);
+        if ($key === null) {
+            $row = $contract->relationLoaded('contractStatus') ? $contract->contractStatus : $contract->contractStatus()->first();
+            $key = ContractFrontendStatus::keyForStatusRow($row);
+        }
+        if ($key === null || ! array_key_exists($key, self::SIDE_STATES)) {
+            if ((int) $contract->is_delete === 1 && filled($contract->trashed_at ?? null) && (bool) $contract->is_completed) {
+                $key = 'cancelled';
+            } else {
+                return null;
+            }
+        }
+
+        $at = ContractStatusHistory::query()->where('contract_id', $contract->id)->where('status', $key)->orderByDesc('id')->value('created_at');
+
+        return [
+            'key' => $key,
+            'label' => self::SIDE_STATES[$key]['label'],
+            'color' => self::SIDE_STATES[$key]['color'],
+            'at' => $at ? Carbon::parse($at)->toIso8601String() : null,
+        ];
+    }
+
+    /**
      * القالب الخام (بدون حالة) — للواجهات قبل وجود طلب.
      *
-     * @return list<array{step: int, key: string, label: string, description: string, done: bool, current: bool, at: null}>
+     * @return list<array{step: int, key: string, label: string, description: string, done: bool, current: bool, at: null, by: null}>
      */
     public static function template(): array
     {
@@ -129,6 +171,7 @@ final class ContractJourney
                 'done' => false,
                 'current' => $index === 0,
                 'at' => null,
+                'by' => null,
             ];
         }
 
@@ -136,35 +179,30 @@ final class ContractJourney
     }
 
     /**
-     * هل أُرسلت المسودة للعميل عبر واتساب؟ (شرط التوثيق)
-     */
-    public static function draftWasSent(Contract $contract): bool
-    {
-        if (filled($contract->ejar_contract_draft_number)) {
-            return true;
-        }
-
-        if ((int) $contract->contract_status_id === ContractStatus::WHATSAPP_DRAFT_ID
-            || self::currentKey($contract, ['whatsapp_draft'])) {
-            return true;
-        }
-
-        return ContractStatusHistory::query()
-            ->where('contract_id', $contract->id)
-            ->where('status', 'whatsapp_draft')
-            ->exists();
-    }
-
-    /**
-     * هل هذه الحالة الهدف تعني «توثيق العقد» (تخضع لقاعدة المسودة أولاً)؟
+     * هل هذه الحالة الهدف تعني «توثيق العقد» (تخضع لقاعدة الدفع أولاً)؟
      */
     public static function isNotarizationStatus(?int $statusId, ?string $statusName): bool
     {
-        if ($statusId === ContractStatus::EJAR_AUTHENTICATION_ID) {
+        if ($statusId !== null && $statusId === ContractStatus::idFor(ContractStatus::KEY_EJAR_AUTHENTICATED)) {
             return true;
         }
 
         return in_array(ContractFrontendStatus::keyFromName($statusName), self::NOTARIZED_KEYS, true);
+    }
+
+    private static function notarizedBy(Contract $contract): ?string
+    {
+        if (! \App\Support\SchemaCache::hasTable('contract_activities')) {
+            return null;
+        }
+
+        $row = \App\Models\ContractActivity::query()
+            ->where('contract_id', $contract->id)
+            ->where('action', 'stage_notarized')
+            ->orderByDesc('id')
+            ->first(['actor_name']);
+
+        return $row?->actor_name;
     }
 
     /**
@@ -187,7 +225,7 @@ final class ContractJourney
             return false;
         }
 
-        return in_array(ContractFrontendStatus::keyFromName($row->name), $keys, true);
+        return in_array(ContractFrontendStatus::keyForStatusRow($row) ?? ContractFrontendStatus::keyFromName($row->name), $keys, true);
     }
 
     /**

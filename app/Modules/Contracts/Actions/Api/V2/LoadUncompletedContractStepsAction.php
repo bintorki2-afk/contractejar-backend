@@ -36,7 +36,12 @@ class LoadUncompletedContractStepsAction
             return ['ok' => false, 'message' => trans('api.contract_not_found'), 'code' => 404];
         }
 
-        if ($contract->is_completed) {
+        // دفعة (هـ) — E4: طلب مدفوع له طلب مرفق ناقص معلّق ⇒ وضع التصحيح: كل الخطوات المطبّقة (1..6) للتعبئة المسبقة.
+        $dataRequests = app(\App\Services\DataRequests\ContractDataRequestService::class);
+        $pending = (bool) $contract->is_completed ? $dataRequests->pendingForCustomer($contract) : [];
+        $fixMode = (bool) $contract->is_completed && $pending !== [];
+
+        if ($contract->is_completed && ! $fixMode) {
             return ['ok' => false, 'message' => trans('api.completed_contract'), 'code' => 400];
         }
 
@@ -44,7 +49,10 @@ class LoadUncompletedContractStepsAction
             'step' => (int) $contract->step,
             'contract_id' => $contract->id,
             'uuid' => (string) $contract->uuid,
-        ], $this->buildPreviousStepsData($contract));
+            'fix_mode' => $fixMode,
+            'pending_data_requests' => $pending,
+            'editable_steps' => $fixMode ? array_values(array_unique(array_merge(...array_map(static fn ($r) => $r['steps'], $pending)))) : [],
+        ], $this->buildPreviousStepsData($contract, $fixMode));
 
         return ['ok' => true, 'contract' => $contract, 'data' => $data];
     }
@@ -68,13 +76,13 @@ class LoadUncompletedContractStepsAction
     /**
      * @return array<string, mixed>
      */
-    private function buildPreviousStepsData(Contract $contract): array
+    private function buildPreviousStepsData(Contract $contract, bool $allSteps = false): array
     {
         $currentStep = (int) $contract->step;
         $data = [];
 
         foreach ($this->applicableStepNumbers($contract) as $stepNumber) {
-            if ($stepNumber >= $currentStep) {
+            if (! $allSteps && $stepNumber >= $currentStep) {
                 break;
             }
 

@@ -64,8 +64,8 @@ sequenceDiagram
 | **مسودة غير مكتملة** | `is_delete = 0` و `step < 4` و `is_completed = 0` — `Contract::scopeIncompleteDraft()` | تبويب «غير مكتمل» فقط (`/orders?tab=incomplete`, `incomplete` في العدّادات، `incomplete_drafts_count` في ملف العميل). لا تظهر للعميل |
 | مدفوع / غير مدفوع | `is_completed = 1 / 0` ضمن «طلب» | `paid` / `unpaid` في العدّادات = `completed_orders_count` / `incomplete_orders_count` في ملف العميل |
 
-## مسار حالة الطلب (دفعة د — ب2)
-`new → paid → under_review → received_by_employee → whatsapp_draft → ejar_authenticated → completed` — جانبية: `cancelled`, `on_hold`, `refunded`.
+## مسار حالة الطلب (دفعة د — ب2، دفعة هـ — E3)
+`new → paid → under_review → received_by_employee → ejar_authenticated → completed` — جانبية: `cancelled`, `on_hold`, `refunded`. (مرحلة `whatsapp_draft` أُلغيت في دفعة هـ وبقي مفتاحها بيانات تاريخية فقط.)
 - المفتاح الثابت في `contract_statuses.status_key`؛ الكود يبحث بالمفتاح (`ContractStatus::idFor()`) لا بالرقم.
 - الدفع الناجح ⇒ «قيد المراجعة» تلقائياً؛ استلام الموظف ⇒ «مستلم من الموظف»؛ «مسترجع» حالة مستقلة (ليست «قيد المراجعة»).
 - المنطق في `App\Services\Orders\OrderFlowService`.

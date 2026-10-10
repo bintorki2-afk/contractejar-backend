@@ -61,7 +61,28 @@ class MessageTemplateService
             'amount' => '',
             'draft_number' => (string) ($contract->ejar_contract_draft_number ?? ''),
             'support' => SupportContact::whatsappLocal(),
+            // دفعة (هـ): بيانات الحوالة من الإعدادات + متغيرات الرسوم/المرفقات (تُملأ عند الحاجة).
+            ...$this->bankVars(),
+            'items' => '',
+            'reason' => '',
+            'payment_url' => SmartLink::for($contract),
         ], array_map(static fn ($v) => (string) $v, $extra));
+    }
+
+    /** @return array{bank: string, iban: string, account_name: string} */
+    public function bankVars(): array
+    {
+        try {
+            $setting = \App\Models\Setting::query()->first();
+        } catch (\Throwable) {
+            $setting = null;
+        }
+
+        return [
+            'bank' => (string) ($setting?->bank_name ?? ''),
+            'iban' => (string) ($setting?->bank_iban ?? ''),
+            'account_name' => (string) ($setting?->bank_account_name ?? ''),
+        ];
     }
 
     /**

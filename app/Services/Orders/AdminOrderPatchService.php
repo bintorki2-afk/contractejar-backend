@@ -45,7 +45,18 @@ class AdminOrderPatchService
         'ejar_contract_number' => ['label' => 'رقم عقد إيجار', 'rules' => ['nullable', 'string', 'max:60']],
         'deed_number' => ['label' => 'رقم الصك الموثّق', 'rules' => ['nullable', 'string', 'max:60']],
         'notes' => ['label' => 'ملاحظات', 'rules' => ['nullable', 'string', 'max:2000']],
+        // دفعة (هـ) — E5: حقول تؤثر في السعر (تُعيد حساب فرق السعر تلقائياً).
+        'instrument_type' => ['label' => 'نوع المستند', 'rules' => ['nullable', 'string', 'max:80']],
+        'duration_preset' => ['label' => 'مدة العقد (نمط)', 'rules' => ['nullable', 'string', 'max:30']],
+        'duration_years' => ['label' => 'مدة العقد (سنوات)', 'rules' => ['nullable', 'integer', 'min:0', 'max:50']],
+        'duration_months' => ['label' => 'مدة العقد (أشهر)', 'rules' => ['nullable', 'integer', 'min:0', 'max:600']],
+        'total_months' => ['label' => 'إجمالي أشهر العقد', 'rules' => ['nullable', 'integer', 'min:1', 'max:600']],
+        'electricity_meter_ownership' => ['label' => 'ملكية عداد الكهرباء', 'rules' => ['nullable', 'in:owner,tenant,shared']],
+        'water_meter_ownership' => ['label' => 'ملكية عداد المياه', 'rules' => ['nullable', 'in:owner,tenant,shared']],
     ];
+
+    /** الحقول التي قد تغيّر السعر (ContractPricing). */
+    public const PRICE_FIELDS = ['instrument_type', 'duration_preset', 'duration_years', 'duration_months', 'total_months', 'electricity_meter_ownership', 'water_meter_ownership', 'contract_term_in_years', 'contract_type'];
 
     /** @var list<string> */
     public const MOBILE_FIELDS = ['property_owner_mobile', 'tenant_mobile'];
@@ -66,7 +77,7 @@ class AdminOrderPatchService
 
     /**
      * @param  array<string, mixed>  $input
-     * @return array{contract_id: int, changed: array<string, array{label: string, before: mixed, after: mixed}>}
+     * @return array{contract_id: int, changed: array<string, array{label: string, before: mixed, after: mixed}>, price_difference: array<string, mixed>|null, payment_state: array<string, mixed>}
      *
      * @throws ValidationException
      */
@@ -84,6 +95,14 @@ class AdminOrderPatchService
         $rules = array_map(fn ($f) => $f['rules'], array_intersect_key(self::FIELDS, $clean));
         $labels = array_map(fn ($f) => $f['label'], self::FIELDS);
         Validator::make($clean, $rules, [], $labels)->validate();
+
+        if (array_key_exists('instrument_type', $clean) && filled($clean['instrument_type'])) {
+            $normalized = Contract::normalizeInstrumentType((string) $clean['instrument_type']);
+            if ($normalized === null || ! in_array($normalized, Contract::instrumentTypes(), true)) {
+                throw ValidationException::withMessages(['instrument_type' => ['نوع المستند غير معروف.']]);
+            }
+            $clean['instrument_type'] = $normalized;
+        }
 
         $changed = [];
         foreach ($clean as $key => $value) {
@@ -111,7 +130,24 @@ class AdminOrderPatchService
             );
         }
 
-        return ['contract_id' => (int) $contract->id, 'changed' => $changed];
+        // دفعة (هـ) — E5: أي تعديل يغيّر السعر ⇒ فرق سعر معلّق (أو refund_due).
+        $priceDifference = null;
+        if ($changed !== [] && array_intersect(array_keys($changed), self::PRICE_FIELDS) !== []) {
+            $sync = app(\App\Services\Charges\ChargeService::class)->syncPriceDifference($contract, $employee, $changed);
+            $priceDifference = [
+                'difference' => $sync['difference'],
+                'refund_due' => $sync['refund_due'],
+                'reason' => $sync['reason'],
+                'charge' => $sync['charge'] ? app(\App\Services\Payments\ContractPaymentState::class)->chargeArray($sync['charge'], $contract) : null,
+            ];
+        }
+
+        return [
+            'contract_id' => (int) $contract->id,
+            'changed' => $changed,
+            'price_difference' => $priceDifference,
+            'payment_state' => app(\App\Services\Payments\ContractPaymentState::class)->state($contract->fresh()),
+        ];
     }
 
     private function ascii(string $v): string

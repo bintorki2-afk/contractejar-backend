@@ -20,6 +20,11 @@ class SalesSummaryResource extends JsonResource
             'refunds_total' => $this->resource['refunds_total'] ?? 0,
             'refund_rate_percent' => (int) ($this->resource['refund_rate_percent'] ?? 0),
             'net_revenue_after_refunds' => $this->resource['net_revenue_after_refunds'] ?? 0,
+            // دفعة (هـ) — 2.7
+            'extra_fees' => $this->resource['extra_fees'] ?? 0,
+            'price_differences' => $this->resource['price_differences'] ?? 0,
+            'refunds' => $this->resource['refunds'] ?? ($this->resource['refunds_total'] ?? 0),
+            'net_revenue' => $this->resource['net_revenue'] ?? ($this->resource['net_revenue_after_refunds'] ?? 0),
         ];
     }
 }

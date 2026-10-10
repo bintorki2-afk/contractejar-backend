@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * مسار الطلب (دفعة د — ب2):
- *   new → paid → under_review → received_by_employee → whatsapp_draft → ejar_authenticated → completed
+ *   new → paid → under_review → received_by_employee → ejar_authenticated → completed   (دفعة هـ: بلا مرحلة المسودة)
  *   حالات جانبية: cancelled, on_hold, refunded.
  *
  * - بعد نجاح الدفع ينتقل الطلب تلقائياً إلى «قيد المراجعة» (إذا كان جديداً/مدفوعاً).

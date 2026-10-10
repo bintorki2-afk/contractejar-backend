@@ -11,7 +11,7 @@ use App\Services\ContractStatusHistoryService;
  * - status / status_label = current dashboard status (Arabic label as stored).
  * - status_client_explanation = شرح الحالة للعميل (from admin statuses).
  * - status_timeline = only statuses that actually happened (history).
- * - journey = the fixed 6-step customer journey (ContractJourney) with done/current flags.
+ * - journey = the fixed 3-step customer journey (ContractJourney, batch E) with done/current flags.
  */
 class ContractFrontendStatus
 {
@@ -113,7 +113,7 @@ class ContractFrontendStatus
     }
 
     /**
-     * رحلة الطلب (ف2): القالب الثابت من 6 خطوات مع علامات done/current لكل خطوة.
+     * رحلة الطلب (دفعة هـ): 3 خطوات مع علامات done/current/at/by لكل خطوة.
      * (سجل الحالات الفعلي يبقى في `status_timeline`.)
      *
      * @return list<array{step: int, key: string, label: string, description: string, done: bool, current: bool, at: string|null}>

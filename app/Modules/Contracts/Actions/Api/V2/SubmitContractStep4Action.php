@@ -14,7 +14,7 @@ class SubmitContractStep4Action
     public function execute(Contract $contract, Step4Request $request): array
     {
         if ($contract->instrument_type === 'lease_renewal') {
-            if ($contract->is_completed) {
+            if ($contract->lockedForCustomerStep(4)) {
                 return ['ok' => false, 'message' => trans('api.completed_contract')];
             }
 

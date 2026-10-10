@@ -191,16 +191,19 @@ class ContractController extends Controller
         $contract = Contract::findOwnedOrFail($request->validated('id'));
         $this->authorize('update', $contract);
 
+        $before = $this->snapshotForFix($contract);
         $outcome = $action->execute($contract, $request);
         if (! $outcome['ok']) {
             return $this->errorMessage($outcome['message'], $outcome['code'] ?? 400);
         }
+        $fix = $this->afterCustomerStep($outcome['contract'], $before, 1);
 
         return response()->json([
             'message' => trans('api.success'),
             'code' => 200,
             'success' => true,
             'data' => new Step1Resource($outcome['contract']),
+            'fix' => $fix,
         ], 200);
     }
 
@@ -209,16 +212,19 @@ class ContractController extends Controller
         $contract = Contract::findOwnedOrFail($request->validated('id'));
         $this->authorize('update', $contract);
 
+        $before = $this->snapshotForFix($contract);
         $outcome = $action->execute($contract, $request);
         if (! $outcome['ok']) {
             return $this->errorMessage($outcome['message'], $outcome['code'] ?? 400);
         }
+        $fix = $this->afterCustomerStep($outcome['contract'], $before, 2);
 
         return response()->json([
             'message' => trans('api.success'),
             'code' => 200,
             'success' => true,
             'data' => new Step2Resource($outcome['contract']),
+            'fix' => $fix,
         ]);
     }
 
@@ -227,16 +233,19 @@ class ContractController extends Controller
         $contract = Contract::findOwnedOrFail($request->id);
         $this->authorize('update', $contract);
 
+        $before = $this->snapshotForFix($contract);
         $outcome = $action->execute($contract, $request);
         if (! $outcome['ok']) {
             return $this->errorMessage($outcome['message'], $outcome['code'] ?? 400);
         }
+        $fix = $this->afterCustomerStep($outcome['contract'], $before, 3);
 
         return response()->json([
             'message' => trans('api.success'),
             'code' => 200,
             'success' => true,
             'data' => new Step3Resource($outcome['contract']),
+            'fix' => $fix,
         ]);
     }
 
@@ -245,16 +254,19 @@ class ContractController extends Controller
         $contract = Contract::findOwnedOrFail($request->id);
         $this->authorize('update', $contract);
 
+        $before = $this->snapshotForFix($contract);
         $outcome = $action->execute($contract, $request);
         if (! $outcome['ok']) {
             return $this->errorMessage($outcome['message'], $outcome['code'] ?? 400);
         }
+        $fix = $this->afterCustomerStep($outcome['contract'], $before, 4);
 
         return response()->json([
             'message' => trans('api.success'),
             'code' => 200,
             'success' => true,
             'data' => new Step4Resource($outcome['contract']),
+            'fix' => $fix,
         ]);
     }
 
@@ -263,16 +275,19 @@ class ContractController extends Controller
         $contract = Contract::findOwnedOrFail($request->integer('id'));
         $this->authorize('update', $contract);
 
+        $before = $this->snapshotForFix($contract);
         $outcome = $action->execute($contract, $request, (int) auth()->id());
         if (! $outcome['ok']) {
             return $this->errorMessage($outcome['message'], $outcome['code'] ?? 400);
         }
+        $fix = $this->afterCustomerStep($outcome['contract'], $before, 5);
 
         return response()->json([
             'message' => trans('api.success'),
             'code' => 200,
             'success' => true,
             'data' => new Step5Resource($outcome['contract']),
+            'fix' => $fix,
             'units_count' => $outcome['units_count'],
         ]);
     }
@@ -282,17 +297,70 @@ class ContractController extends Controller
         $contract = Contract::findOwnedOrFail($request->id);
         $this->authorize('update', $contract);
 
+        $before = $this->snapshotForFix($contract);
         $outcome = $action->execute($contract, $request);
         if (! $outcome['ok']) {
             return $this->errorMessage($outcome['message'], $outcome['code'] ?? 400);
         }
+        $fix = $this->afterCustomerStep($outcome['contract'], $before, 6);
 
         return response()->json([
             'message' => trans('api.success'),
             'code' => 200,
             'success' => true,
             'data' => new Step6Resource($outcome['contract']),
+            'fix' => $fix,
         ]);
+    }
+
+    /**
+     * دفعة (هـ) — E4: لقطة قبل خطوة العميل (لاكتشاف الحقول المتغيّرة وحماية رقم الخطوة في وضع التصحيح).
+     *
+     * @return array{step: int, attributes: array<string, mixed>, fix_mode: bool}
+     */
+    private function snapshotForFix(Contract $contract): array
+    {
+        return [
+            'step' => (int) $contract->step,
+            'attributes' => $contract->getAttributes(),
+            'fix_mode' => (bool) $contract->is_completed || (int) $contract->step >= 7,
+        ];
+    }
+
+    /**
+     * بعد خطوة العميل: في وضع التصحيح لا يتراجع رقم الخطوة، وأي حقل مطلوب تغيّر يحلّ طلب المرفق تلقائياً.
+     *
+     * @param  array{step: int, attributes: array<string, mixed>, fix_mode: bool}  $before
+     * @return array{fix_mode: bool, changed_fields: list<string>, resolved_request_ids: list<int>, pending_data_requests: list<array<string, mixed>>, message: string|null}
+     */
+    private function afterCustomerStep(Contract $contract, array $before, int $step): array
+    {
+        $contract->refresh();
+        $after = $contract->getAttributes();
+        $changed = [];
+        foreach ($after as $key => $value) {
+            $old = $before['attributes'][$key] ?? null;
+            $normOld = is_array($old) ? json_encode($old) : (string) ($old ?? '');
+            $normNew = is_array($value) ? json_encode($value) : (string) ($value ?? '');
+            if ($normOld !== $normNew && ! in_array($key, ['updated_at', 'step'], true)) {
+                $changed[] = (string) $key;
+            }
+        }
+
+        if ($before['fix_mode'] && (int) $contract->step < $before['step']) {
+            $contract->forceFill(['step' => $before['step']])->saveQuietly();
+        }
+
+        $service = app(\App\Services\DataRequests\ContractDataRequestService::class);
+        $resolved = $before['fix_mode'] ? $service->autoResolve($contract, $changed) : [];
+
+        return [
+            'fix_mode' => $before['fix_mode'],
+            'changed_fields' => $changed,
+            'resolved_request_ids' => array_map(static fn ($r) => (int) $r->id, $resolved),
+            'pending_data_requests' => $service->pendingForCustomer($contract),
+            'message' => $resolved !== [] ? 'تم الإرسال — سيراجعها الموظف.' : null,
+        ];
     }
 
     public function docFeePreview(DocFeePreviewRequest $request, PreviewDocFeeAction $action)

@@ -27,7 +27,7 @@ php artisan aqdi:db-backup    # نسخة احتياطية (انظر OWNER-GUIDE.
   - التسويق/المحتوى: `MarketingArticlesController`, `BlogController`, `SeoCrawlController`, `LocationAnalyticsController`
   - الموظفين: `EmployeeKpiController`, `UserController`, `RoleController`, `PermissionController`
   - التقارير: `ReportController`, `AppContentOverviewController`
-- مساعدات مهمة في `app/Support/`: `ContractPricing`/`DocFee` (الأسعار)، `ContractJourney` (رحلة الطلب و قاعدة المسودة قبل التوثيق)، `SupportContact` (رقم الدعم)، `PublicCache` (كاش النقاط العامة)، `SmartLink`.
+- مساعدات مهمة في `app/Support/`: `ContractPricing`/`DocFee` (الأسعار)، `ContractJourney` (رحلة الطلب — 3 خطوات) و`Services/PaymentBeforeNotarizationRule` (قاعدة الدفع قبل التوثيق) و`Services/Payments/ContractPaymentState` (حالة الدفع) و`Services/Charges/ChargeService` (الرسوم) و`Services/DataRequests/ContractDataRequestService` (طلبات المرفق الناقص)، `SupportContact` (رقم الدعم)، `PublicCache` (كاش النقاط العامة)، `SmartLink`.
 - الإشعارات: `app/Services/CustomerNotificationService.php` + الأمر `notifications:dispatch` (جدول `notification_dispatches` يمنع التكرار).
 - قاعدة البيانات: جداول `contracts`, `bank_accounts`, `ad_spend_dailies`, `operating_expenses`, `coupons`, `blogs`, `google_seo_connections` وغيرها (انظر `database/migrations/`).
 

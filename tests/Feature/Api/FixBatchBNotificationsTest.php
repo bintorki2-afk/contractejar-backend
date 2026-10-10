@@ -161,19 +161,21 @@ class FixBatchBNotificationsTest extends TestCase
         $this->assertNull(ContractEndDate::for($noDate));
     }
 
-    public function test_status_change_sends_draft_and_notarized_notifications_once(): void
+    public function test_status_change_sends_received_and_notarized_notifications_once(): void
     {
         $user = $this->customer();
         $contract = $this->contract($user, ['is_completed' => 1]);
         $service = app(CustomerNotificationService::class);
 
-        $contract->update(['contract_status_id' => ContractStatus::WHATSAPP_DRAFT_ID]);
+        // دفعة (هـ): لا مرحلة مسودة — «مستلم من الموظف» إشعار حالة عادي.
+        $receivedId = (int) ContractStatus::query()->where('name', 'مستلم من الموظف')->value('id');
+        $contract->update(['contract_status_id' => $receivedId]);
         app(\App\Services\ContractStatusHistoryService::class)->record($contract->fresh(['contractStatus']), ['source' => 'admin']);
         $offer = $service->contractStatusChanged($contract->fresh(['contractStatus', 'user']));
 
         $this->assertNotNull($offer);
-        $this->assertSame('draft_sent', $offer->kind);
-        $this->assertSame('أرسلنا لك مسودة العقد عبر واتساب — اطّلع عليها وأكّد لنا لنوثّقه', $offer->body);
+        $this->assertSame('status_changed', $offer->kind);
+        $this->assertStringContainsString('استلم موظفنا طلبك', $offer->body);
         $this->assertSame('https://contractejar.com/r/'.$contract->uuid, $offer->url);
 
         // نفس الحالة مرة ثانية → لا تكرار.
@@ -196,7 +198,7 @@ class FixBatchBNotificationsTest extends TestCase
         $this->assertStringContainsString('معلق', $generic->body);
 
         $this->assertSame(3, NotificationDispatch::query()->where('contract_id', $contract->id)->count());
-        $this->assertSame('disabled', NotificationDispatch::query()->where('kind', 'draft_sent')->value('push_result'));
+        $this->assertSame('disabled', NotificationDispatch::query()->where('kind', 'status_changed')->value('push_result'));
     }
 
     public function test_notification_endpoints_expose_kind_url_and_read_state(): void

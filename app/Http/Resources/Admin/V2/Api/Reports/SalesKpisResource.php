@@ -21,6 +21,14 @@ class SalesKpisResource extends JsonResource
             'discounts_used' => $this->resource['discounts_used'] ?? 0,
             'refunds' => $this->resource['refunds'] ?? 0,
             'net_revenue' => $this->resource['net_revenue'] ?? 0,
+            // دفعة (هـ) — 2.7
+            'extra_fees' => $this->resource['extra_fees'] ?? 0,
+            'extra_fees_count' => (int) ($this->resource['extra_fees_count'] ?? 0),
+            'price_differences' => $this->resource['price_differences'] ?? 0,
+            'price_differences_count' => (int) ($this->resource['price_differences_count'] ?? 0),
+            'original_revenue' => $this->resource['original_revenue'] ?? ($this->resource['total_sales'] ?? 0),
+            'bank_transfers' => $this->resource['bank_transfers'] ?? 0,
+            'bank_transfers_count' => (int) ($this->resource['bank_transfers_count'] ?? 0),
         ];
     }
 }

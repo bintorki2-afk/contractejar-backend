@@ -119,7 +119,8 @@ class OrderController extends Controller
     }
 
     /**
-     * POST /api/admin/orders/{id}/stage/{received|draft_sent|notarized}
+     * POST /api/admin/orders/{id}/stage/{received|notarized}
+     * دفعة (هـ): `draft_sent` أُلغيت ⇒ 410. «وثّقت» ⇒ 422 {code: payment_required|charge_pending} قبل الدفع.
      */
     public function stage(Request $request, int $id, string $stage)
     {
@@ -128,11 +129,21 @@ class OrderController extends Controller
             return $this->errorMessage(trans('api.unauthorized'), 403);
         }
 
+        if (in_array($stage, \App\Services\Orders\OrderStageService::REMOVED_STAGES, true)) {
+            return response()->json([
+                'message' => \App\Services\Orders\OrderStageService::REMOVED_MESSAGE,
+                'code' => 410,
+                'success' => false,
+            ], 410);
+        }
+
         try {
             $result = app(\App\Services\Orders\OrderStageService::class)
                 ->run($request, Contract::query()->where('is_delete', 0)->findOrFail($id), $stage, $employee);
 
             return $this->apiResponse($result, trans('api.success'));
+        } catch (\App\Exceptions\NotarizationBlockedException $e) {
+            return response()->json($e->toResponseArray(), 422);
         } catch (ValidationException $e) {
             return response()->json([
                 'message' => collect($e->errors())->flatten()->first() ?? $e->getMessage(),
@@ -195,23 +206,69 @@ class OrderController extends Controller
         $received = $contract->receivedContract()->exists();
         $current = match (true) {
             in_array($key, ['ejar_authenticated', 'completed'], true) => 'notarized',
-            $key === 'whatsapp_draft' => 'draft_sent',
-            $received => 'received',
+            $received || in_array($key, ['received', 'received_by_employee', 'whatsapp_draft'], true) => 'received',
             default => null,
         };
         $next = $current === null ? 'received' : \App\Services\Orders\OrderStageService::NEXT[$current];
+        $paymentState = app(\App\Services\Payments\ContractPaymentState::class)->state($contract);
 
         return $this->apiResponse([
             'current_stage' => $current,
             'next_stage' => $next,
             'next_stage_label' => $next ? \App\Services\Orders\OrderStageService::LABELS[$next] : null,
             'next_stage_required_fields' => $service->requiredFields($next),
+            // دفعة (هـ): «وثّقت» مقفل حتى يُسجَّل الدفع (payment_required) أو تُدفع الرسوم المعلّقة (charge_pending).
+            'next_stage_locked' => $next === 'notarized' && ! $paymentState['can_notarize'],
+            'next_stage_lock_reason' => $next === 'notarized' ? $paymentState['notarize_block_reason'] : null,
+            'next_stage_lock_message' => $next === 'notarized' ? $paymentState['notarize_block_message'] : null,
             'stages' => collect(\App\Services\Orders\OrderStageService::STAGES)->map(fn ($s) => [
                 'key' => $s, 'label' => \App\Services\Orders\OrderStageService::LABELS[$s],
                 'done' => $current !== null && array_search($s, \App\Services\Orders\OrderStageService::STAGES, true) <= array_search($current, \App\Services\Orders\OrderStageService::STAGES, true),
             ])->values(),
+            'journey' => \App\Support\ContractJourney::for($contract),
+            'journey_side_state' => \App\Support\ContractJourney::sideState($contract),
+            'payment_state' => $paymentState,
+            'warnings' => $service->warnings($contract),
             'customer_phone' => $service->customerPhone($contract),
         ], trans('api.success'));
+    }
+
+    /**
+     * PUT /api/admin/orders/{id}/ejar-entry-progress { section, done } — دفعة (هـ) 2.6
+     * الأقسام: lessor | property | unit | tenant | financial | conditions. تُحفظ لكل طلب (مع الموظف والوقت).
+     */
+    public function ejarEntryProgress(Request $request, int $id)
+    {
+        $data = $request->validate([
+            'section' => ['required', 'in:'.implode(',', \App\Services\Orders\EjarEntryProgress::SECTIONS)],
+            'done' => ['required', 'boolean'],
+        ]);
+        $contract = Contract::query()->findOrFail($id);
+        $employee = $request->user() instanceof \App\Models\Employee ? $request->user() : null;
+        $progress = \App\Services\Orders\EjarEntryProgress::set($contract, $data['section'], (bool) $data['done'], $employee);
+
+        return $this->apiResponse(['ejar_entry_progress' => $progress], trans('api.success'));
+    }
+
+    /**
+     * GET /api/admin/orders/export?format=xlsx|csv (+ نفس فلاتر القائمة) — دفعة (هـ) 2.7
+     */
+    public function export(Request $request)
+    {
+        try {
+            $format = strtolower((string) $request->query('format', 'xlsx'));
+            $file = app(\App\Services\Orders\OrdersExportService::class)->build($request, $format);
+
+            return response($file['bytes'], 200, [
+                'Content-Type' => $file['mime'],
+                'Content-Disposition' => 'attachment; filename="'.$file['filename'].'"',
+                'Cache-Control' => 'no-store',
+            ]);
+        } catch (InvalidArgumentException $e) {
+            return $this->errorMessage($e->getMessage(), 422);
+        } catch (ValidationException $e) {
+            return $this->errorResponse($e->errors(), 422);
+        }
     }
 
     /**
@@ -554,10 +611,15 @@ class OrderController extends Controller
 
     /**
      * 422 مع `message` (أول خطأ) إضافةً إلى `errors` — حتى تعرض اللوحة رسالة الخادم مباشرة
-     * (مثل قاعدة «لا يمكن توثيق العقد قبل إرسال المسودة للعميل عبر واتساب»).
+     * (مثل قاعدة «لا يمكن توثيق العقد قبل تسجيل الدفع»).
      */
     private function validationErrorResponse(ValidationException $e)
     {
+        // دفعة (هـ): التوثيق قبل الدفع ⇒ code = payment_required | charge_pending.
+        if ($e instanceof \App\Exceptions\NotarizationBlockedException) {
+            return $this->jsonResponse($e->toResponseArray(), 422);
+        }
+
         $errors = $e->errors();
         $first = collect($errors)->flatten()->first();
 

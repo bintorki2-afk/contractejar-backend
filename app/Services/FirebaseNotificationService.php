@@ -83,7 +83,7 @@ class FirebaseNotificationService
             return;
         }
 
-        // ف8: الصياغة حسب الحالة (مسودة واتساب / توثيق / تحديث عام)، تخزين في صندوق الإشعارات
+        // ف8: الصياغة حسب الحالة (توثيق / تحديث عام)، تخزين في صندوق الإشعارات
         // مرتبطاً بالطلب + Push (إن وُجد توكن) + سجل إرسال يمنع التكرار.
         try {
             app(CustomerNotificationService::class)->contractStatusChanged($contract);
@@ -395,6 +395,11 @@ class FirebaseNotificationService
 
     private function sendMessage(array $message, string $title, string $body): void
     {
+        // دفعة (هـ) — A-3: حارس أخير — كل قيم data نصوص مهما كان المصدر.
+        if (isset($message['data']) && is_array($message['data'])) {
+            $message['data'] = $this->stringifyData($message['data']);
+        }
+
         // No keys / disabled → safe no-op so a fresh install never crashes.
         if (! $this->isConfigured()) {
             Log::info('Firebase notification skipped (not configured)', [
@@ -449,13 +454,23 @@ class FirebaseNotificationService
      * @param  array<string, mixed>  $data
      * @return array<string, string>
      */
+    /**
+     * FCM يقبل نصوصاً فقط في `data`: المصفوفات/الكائنات تُرمَّز JSON، والمنطقي 1/0، وnull نص فارغ.
+     * (دفعة هـ — A-3: حارس موحّد لكل مرسلات الـ push.)
+     */
     private function stringifyData(array $data): array
     {
         $out = [];
         foreach ($data as $key => $value) {
-            $out[(string) $key] = is_scalar($value) || $value === null
-                ? (string) $value
-                : json_encode($value, JSON_UNESCAPED_UNICODE);
+            if (is_bool($value)) {
+                $out[(string) $key] = $value ? '1' : '0';
+            } elseif (is_scalar($value) || $value === null) {
+                $out[(string) $key] = (string) $value;
+            } elseif ($value instanceof \JsonSerializable || is_array($value) || is_object($value)) {
+                $out[(string) $key] = (string) json_encode($value, JSON_UNESCAPED_UNICODE);
+            } else {
+                $out[(string) $key] = (string) $value;
+            }
         }
 
         return $out;

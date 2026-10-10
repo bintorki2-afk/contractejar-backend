@@ -10,19 +10,20 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 /**
- * «عليك الحين» وتنبيهات التأخير (دفعة د — ب11).
+ * «عليك الحين» وتنبيهات التأخير (دفعة د — ب11، دفعة هـ — E3/E4).
  *
  * قواعد التأخير:
- *  - paid_not_received   : مدفوع ولم يُستلم بعد أكثر من ساعتين من الدفع.
- *  - received_no_draft   : مستلم ولم تُرسل المسودة بعد 24 ساعة من الاستلام.
- *  - draft_no_notarize   : أُرسلت المسودة ولم يُوثّق بعد 72 ساعة.
+ *  - paid_not_received      : مدفوع ولم يُستلم بعد أكثر من ساعتين من الدفع.
+ *  - received_not_notarized : مستلم ولم يُوثّق بعد 24 ساعة من الاستلام (حلّت محل قاعدتي المسودة).
+ *  - customer_no_reply_24h  : طلب مرفق ناقص لم يرد عليه العميل منذ 24 ساعة (72 ساعة ⇒ تنبيه المالك).
  */
 class OrderAttentionService
 {
     public const RULES = [
         'paid_not_received' => ['hours' => 2, 'label' => 'مدفوع ولم يُستلم (+ساعتين)'],
-        'received_no_draft' => ['hours' => 24, 'label' => 'مستلم بلا مسودة (+24 ساعة)'],
-        'draft_no_notarize' => ['hours' => 72, 'label' => 'مسودة بلا توثيق (+72 ساعة)'],
+        'received_not_notarized' => ['hours' => 24, 'label' => 'مستلم بلا توثيق (+24 ساعة)'],
+        'customer_no_reply_24h' => ['hours' => 24, 'label' => 'عميل لم يرد على طلب مرفق (+24 ساعة)'],
+        'customer_no_reply_72h' => ['hours' => 72, 'label' => 'عميل لم يرد على طلب مرفق (+72 ساعة) — يُنبَّه المالك'],
     ];
 
     private const CLOSED = [
@@ -31,12 +32,12 @@ class OrderAttentionService
     ];
 
     /**
-     * @return array{counts: array<string, int>, awaiting_receive: list<array<string, mixed>>, awaiting_draft: list<array<string, mixed>>, awaiting_notarize: list<array<string, mixed>>, delayed: list<array<string, mixed>>, rules: array<string, mixed>, generated_at: string}
+     * @return array{counts: array<string, int>, awaiting_receive: list<array<string, mixed>>, awaiting_notarize: list<array<string, mixed>>, awaiting_customer: array{count: int, items: list<array<string, mixed>>}, delayed: list<array<string, mixed>>, rules: array<string, mixed>, generated_at: string}
      */
     public function board(int $limit = 50): array
     {
         $now = now();
-        $buckets = ['awaiting_receive' => [], 'awaiting_draft' => [], 'awaiting_notarize' => [], 'delayed' => []];
+        $buckets = ['awaiting_receive' => [], 'awaiting_notarize' => [], 'delayed' => []];
 
         foreach ($this->openPaidOrders() as $contract) {
             $row = $this->row($contract, $now);
@@ -55,11 +56,53 @@ class OrderAttentionService
             $buckets[$key] = array_slice($rows, 0, $limit);
         }
 
+        // دفعة (هـ) — E4: عملاء لم يردوا على طلب مرفق ناقص منذ 24 ساعة.
+        $awaitingCustomer = app(\App\Services\DataRequests\ContractDataRequestService::class)->awaitingCustomer($limit);
+        $counts['awaiting_customer'] = $awaitingCustomer['count'];
+        $counts['delayed'] += $awaitingCustomer['count'];
+        $buckets['delayed'] = array_slice(array_merge($buckets['delayed'], $awaitingCustomer['items']), 0, $limit);
+
+        // دفعة (هـ) — E2: طلبات غير مدفوعة استلمها موظف (للتذكير بتحصيلها).
+        $unpaidReceived = $this->unpaidReceived($limit);
+        $counts['unpaid_received'] = $unpaidReceived['count'];
+
         return array_merge($buckets, [
+            'awaiting_customer' => $awaitingCustomer,
+            'unpaid_received' => $unpaidReceived,
             'counts' => $counts,
             'rules' => collect(self::RULES)->map(fn ($r, $k) => ['key' => $k, 'hours' => $r['hours'], 'label' => $r['label']])->values()->all(),
             'generated_at' => $now->toIso8601String(),
         ]);
+    }
+
+    /**
+     * طلبات مستلمة ولم تُدفع بعد (الموظف يعمل عليها لكن التوثيق مقفل حتى الدفع).
+     *
+     * @return array{count: int, items: list<array<string, mixed>>}
+     */
+    public function unpaidReceived(int $limit = 50): array
+    {
+        $rows = Contract::query()->adminListed()->where('is_completed', 0)->where('is_draft', false)
+            ->whereHas('receivedContract')
+            ->when(\App\Support\SchemaCache::hasColumn('contracts', 'is_synthetic'), fn ($q) => $q->where(fn ($w) => $w->whereNull('is_synthetic')->orWhere('is_synthetic', false)))
+            ->with(['user', 'receivedContract.employee', 'contractStatus'])
+            ->orderBy('id')->limit(500)->get();
+
+        $items = $rows->take($limit)->map(function (Contract $c) {
+            $status = \App\Support\ContractFrontendStatus::for($c);
+            $since = $c->receivedContract?->created_at ? Carbon::parse($c->receivedContract->created_at) : Carbon::parse($c->created_at);
+
+            return [
+                'id' => $c->id, 'uuid' => (string) $c->uuid, 'bucket' => 'unpaid_received',
+                'customer_name' => $c->user?->name, 'customer_mobile' => $c->user?->contact_mobile ?: $c->user?->mobile,
+                'contract_type' => $c->contract_type, 'status' => $status['status'], 'status_label' => $status['status_label'],
+                'employee_id' => $c->receivedContract?->employee_id, 'employee_name' => $c->receivedContract?->employee?->name,
+                'since' => $since->toIso8601String(), 'age_minutes' => (int) $since->diffInMinutes(now()),
+                'delay_flags' => [], 'delay_labels' => [], 'is_delayed' => false,
+            ];
+        })->values()->all();
+
+        return ['count' => $rows->count(), 'items' => $items];
     }
 
     /**
@@ -121,17 +164,12 @@ class OrderAttentionService
         $since = null;
         $flags = [];
 
-        if ($key === ContractStatus::KEY_WHATSAPP_DRAFT) {
+        if ($received !== null || $key === ContractStatus::KEY_WHATSAPP_DRAFT) {
+            // دفعة (هـ): بعد الاستلام ⇒ التوثيق مباشرةً (بلا مسودة).
             $bucket = 'awaiting_notarize';
-            $since = $this->statusSince($contract, 'whatsapp_draft') ?? Carbon::parse($contract->updated_at);
-            if ($since->lte($now->copy()->subHours(self::RULES['draft_no_notarize']['hours']))) {
-                $flags[] = 'draft_no_notarize';
-            }
-        } elseif ($received !== null) {
-            $bucket = 'awaiting_draft';
-            $since = $receivedAt;
-            if ($since && $since->lte($now->copy()->subHours(self::RULES['received_no_draft']['hours']))) {
-                $flags[] = 'received_no_draft';
+            $since = $receivedAt ?? $this->statusSince($contract, 'received_by_employee') ?? Carbon::parse($contract->updated_at);
+            if ($since->lte($now->copy()->subHours(self::RULES['received_not_notarized']['hours']))) {
+                $flags[] = 'received_not_notarized';
             }
         } elseif (in_array($key, [null, ContractStatus::KEY_NEW, ContractStatus::KEY_PAID, ContractStatus::KEY_UNDER_REVIEW], true)) {
             $bucket = 'awaiting_receive';
@@ -143,6 +181,15 @@ class OrderAttentionService
 
         $since ??= Carbon::parse($contract->created_at);
         $status = \App\Support\ContractFrontendStatus::for($contract);
+
+        // دفعة (هـ) — E4: طلب مرفق ناقص بلا رد.
+        $pendingSummary = app(\App\Services\DataRequests\ContractDataRequestService::class)->pendingSummary($contract);
+        if ($pendingSummary !== null && (int) $pendingSummary['hours'] >= (int) config('data_requests.reminder_after_hours', 24)) {
+            $flags[] = 'customer_no_reply_24h';
+            if ((int) $pendingSummary['hours'] >= (int) config('data_requests.owner_alert_after_hours', 72)) {
+                $flags[] = 'customer_no_reply_72h';
+            }
+        }
 
         return [
             'id' => $contract->id,
@@ -161,6 +208,8 @@ class OrderAttentionService
             'delay_flags' => $flags,
             'delay_labels' => array_map(static fn ($f) => self::RULES[$f]['label'], $flags),
             'is_delayed' => $flags !== [],
+            'data_request_pending' => $pendingSummary,
+            'payment_state' => app(\App\Services\Payments\ContractPaymentState::class)->summaryForList($contract),
         ];
     }
 

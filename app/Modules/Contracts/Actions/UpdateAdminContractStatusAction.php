@@ -9,7 +9,7 @@ use App\Modules\Contracts\Services\AdminOrderQueryService;
 use App\Services\Admin\RefundableContractService;
 use App\Services\ContractStatusCaseService;
 use App\Services\ContractStatusHistoryService;
-use App\Services\DraftBeforeNotarizationRule;
+use App\Services\PaymentBeforeNotarizationRule;
 use App\Services\FirebaseNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -23,7 +23,7 @@ class UpdateAdminContractStatusAction
         private readonly ContractStatusHistoryService $history,
         private readonly FirebaseNotificationService $firebase,
         private readonly RefundableContractService $refundable,
-        private readonly DraftBeforeNotarizationRule $draftRule,
+        private readonly PaymentBeforeNotarizationRule $paymentRule,
     ) {}
 
     /**
@@ -88,9 +88,9 @@ class UpdateAdminContractStatusAction
         }
 
         $this->assertStatusCase($request, $contract, $statusId, $status?->name);
-        // ف2: لا توثيق قبل إرسال المسودة عبر واتساب (مدير النظام يتجاوز بـ force=1).
+        // دفعة (هـ): لا توثيق قبل الدفع الكامل وبلا رسوم معلّقة (مدير النظام يتجاوز بـ force=1).
         $override = (int) $contract->contract_status_id !== $statusId
-            ? $this->draftRule->assert($request, $contract, $statusId, $status?->name)
+            ? $this->paymentRule->assert($request, $contract, $statusId, $status?->name)
             : ['forced' => false, 'forced_by' => null];
         $this->persist($request, $contract, 'contract_status_id', $statusId, $status?->name, $override);
 
@@ -172,15 +172,15 @@ class UpdateAdminContractStatusAction
                 [$statusColumn => $beforeId],
                 array_merge([$statusColumn => $statusId], array_map(static fn ($v) => is_scalar($v) || $v === null ? $v : '[ملف]', $extra)),
                 'employee',
-                $override['forced'] ? 'تجاوز قاعدة المسودة (force)' : null,
+                $override['forced'] ? 'تجاوز قاعدة الدفع قبل التوثيق (force)' : null,
             );
         }
 
         try {
             $meta = $this->caseService->historyMeta($statusId, $statusName, $extra) ?? [];
             if ($override['forced']) {
-                $meta['draft_rule_forced'] = true;
-                $meta['draft_rule_forced_by'] = $override['forced_by'];
+                $meta['payment_rule_forced'] = true;
+                $meta['payment_rule_forced_by'] = $override['forced_by'];
             }
             $this->history->record($contract, [
                 'source' => 'admin',

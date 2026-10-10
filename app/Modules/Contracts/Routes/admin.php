@@ -5,6 +5,7 @@ use App\Modules\Contracts\Controllers\Admin\ContractPaidByEmployeeController;
 use App\Modules\Contracts\Controllers\Admin\ContractStatusController;
 use App\Modules\Contracts\Controllers\Admin\ContractUnitController;
 use App\Modules\Contracts\Controllers\Admin\ContractWhatsAppController;
+use App\Modules\Contracts\Controllers\Admin\DataRequestController;
 use App\Modules\Contracts\Controllers\Admin\DraftContractStatusController;
 use App\Modules\Contracts\Controllers\Admin\FilterContract;
 use App\Modules\Contracts\Controllers\Admin\OrderController;
@@ -14,6 +15,9 @@ use App\Modules\Contracts\Controllers\Admin\RefundableContractController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('auth:sanctum')->group(function () {
+    // دفعة (هـ) — 2.4: كتالوج «مرفق ناقص» (config/data_requests.php).
+    Route::get('/data-requests/catalogue', [DataRequestController::class, 'catalogue'])->middleware('permission:all_requests.view')->name('data-requests.catalogue');
+
     Route::prefix('refundable-contracts')->name('refundable-contracts.')->controller(RefundableContractController::class)->group(function () {
         Route::get('/', 'index')->middleware('permission:returned_request.view')->name('index');
         Route::post('/', 'store')->middleware('permission:returned_request.create')->name('store');
@@ -78,11 +82,22 @@ Route::middleware('auth:sanctum')->group(function () {
         // دفعة (د) — ب17: تعديل الحقول الصغيرة مع التدقيق.
         Route::patch('/{id}', 'patchFields')->whereNumber('id')->middleware('permission:all_requests.edit')->name('patch');
         Route::get('/editable-fields', 'editableFields')->middleware('permission:all_requests.view')->name('editable-fields');
-        // دفعة (د) — ب14: أزرار المراحل «استلمت» → «أرسلت المسودة» → «وثّقت».
+        // دفعة (د) — ب14 / دفعة (هـ) — E3: أزرار المراحل «استلمت» → «وثّقت» (draft_sent ⇒ 410).
         Route::post('/{id}/stage/{stage}', 'stage')->whereNumber('id')->whereIn('stage', ['received', 'draft_sent', 'notarized'])->middleware('permission:all_requests.edit')->name('stage');
         // دفعة (د) — ب15: «نسخ بيانات إيجار».
         Route::get('/{id}/ejar-copy', 'ejarCopy')->whereNumber('id')->middleware('permission:all_requests.view')->name('ejar-copy');
         Route::get('/{id}/stages', 'stages')->whereNumber('id')->middleware('permission:all_requests.view')->name('stages');
+        // دفعة (هـ) — 2.6: علامات «أدخلتها في إيجار» لكل قسم.
+        Route::put('/{id}/ejar-entry-progress', 'ejarEntryProgress')->whereNumber('id')->middleware('permission:all_requests.edit')->name('ejar-entry-progress');
+        Route::post('/{id}/ejar-entry-progress', 'ejarEntryProgress')->whereNumber('id')->middleware('permission:all_requests.edit')->name('ejar-entry-progress.post');
+        // دفعة (هـ) — 2.7: تصدير الطلبات (Excel/CSV) بأعمدة المدفوع الأصلي/الإضافي/المسترجع/الصافي.
+        Route::get('/export', 'export')->middleware('permission:all_requests.view')->name('export');
+        // دفعة (هـ) — 2.4: طلبات المرفق الناقص.
+        Route::get('/{id}/data-requests', [DataRequestController::class, 'index'])->whereNumber('id')->middleware('permission:all_requests.view')->name('data-requests.index');
+        Route::post('/{id}/data-requests', [DataRequestController::class, 'store'])->whereNumber('id')->middleware('permission:all_requests.edit')->name('data-requests.store');
+        Route::post('/{id}/data-requests/{rid}/resolve', [DataRequestController::class, 'resolve'])->whereNumber('id')->whereNumber('rid')->middleware('permission:all_requests.edit')->name('data-requests.resolve');
+        Route::post('/{id}/data-requests/{rid}/cancel', [DataRequestController::class, 'cancel'])->whereNumber('id')->whereNumber('rid')->middleware('permission:all_requests.edit')->name('data-requests.cancel');
+        Route::post('/{id}/data-requests/{rid}/remind', [DataRequestController::class, 'remind'])->whereNumber('id')->whereNumber('rid')->middleware('permission:all_requests.edit')->name('data-requests.remind');
         // دفعة (د) — ب10: إشعار العميل من تفاصيل الطلب (بيانات ناقصة / إعادة إرسال آخر حالة).
         Route::post('/{id}/notify', 'notifyCustomer')->whereNumber('id')->middleware('permission:all_requests.edit')->name('notify');
         Route::post('/{id}/status', 'updateStatus')->whereNumber('id')->middleware('permission:all_requests.edit')->name('update-status');

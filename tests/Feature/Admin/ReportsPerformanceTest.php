@@ -96,6 +96,11 @@ class ReportsPerformanceTest extends TestCase
             'refunded_orders' => 0,
             'refund_requests_confirmed' => 2,
             'revenue' => self::HOUSING_PAYMENT + self::COMMERCIAL_PAYMENT,
+            // دفعة (هـ) — 2.7
+            'extra_fees' => 0,
+            'price_differences' => 0,
+            'refunds' => 149.0,
+            'net_revenue' => self::HOUSING_PAYMENT + self::COMMERCIAL_PAYMENT - 149,
             'paid' => 2,
             'delayed_count' => 0,
         ], $result['kpis']);

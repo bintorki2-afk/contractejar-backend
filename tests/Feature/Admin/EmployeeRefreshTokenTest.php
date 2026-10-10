@@ -174,8 +174,8 @@ class EmployeeRefreshTokenTest extends TestCase
         $common = ['view', 'create', 'edit', 'delete', 'retrieve'];
         $this->assertSame($common, $response->json('data.permission_matrix.analytics'));
         $this->assertSame($common, $response->json('data.permission_matrix.seo_crawl'));
-        // دفعة (د) — ب8: payments.refund خاص بقسم المدفوعات.
-        $this->assertSame([...$common, 'refund'], $response->json('data.permission_matrix.payments'));
+        // دفعة (د) — ب8 / دفعة (هـ): refund + record_transfer + add_fee خاصة بقسم المدفوعات.
+        $this->assertSame([...$common, 'refund', 'record_transfer', 'add_fee'], $response->json('data.permission_matrix.payments'));
         $this->assertNotEmpty($response->json('data.permission_modules'));
         $this->assertTrue(collect($response->json('data.permission_modules'))
             ->firstWhere('section_key', 'analytics')['actions'][0]['granted']);

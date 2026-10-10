@@ -135,7 +135,53 @@ final class FieldMapping
             $out[] = sprintf('| `%s` | %s | `%s` | `%s` | %s |', $row['input'], $row['label'], $row['column'], $row['admin'], $row['customer'] === '—' ? '—' : '`'.$row['customer'].'`');
         }
         $out[] = '';
+        foreach (self::batchESections() as $section) {
+            $out[] = '## '.$section['title'];
+            $out[] = '';
+            $out[] = '| المصدر | الحقل | عمود قاعدة البيانات | مفتاح اللوحة | مفتاح العميل |';
+            $out[] = '|---|---|---|---|---|';
+            foreach ($section['rows'] as $row) {
+                $out[] = sprintf('| `%s` | %s | `%s` | `%s` | %s |', $row['input'], $row['label'], $row['column'], $row['admin'], $row['customer'] === '—' ? '—' : '`'.$row['customer'].'`');
+            }
+            $out[] = '';
+        }
 
         return implode("\n", $out);
+    }
+
+    /**
+     * دفعة (هـ): الرسوم بعد الدفع، الحوالة البنكية، طلبات المرفق الناقص، إدخال إيجار.
+     *
+     * @return list<array{title: string, rows: list<array{input: string, label: string, column: string, admin: string, customer: string}>}>
+     */
+    public static function batchESections(): array
+    {
+        return [
+            ['title' => 'الرسوم بعد الدفع — دفعة (هـ) (POST /api/admin/orders/{id}/charges · فرق السعر تلقائي بعد PATCH)', 'rows' => [
+                ['input' => 'amount', 'label' => 'مبلغ الرسم', 'column' => 'contract_charges.amount', 'admin' => 'charges[].amount / payment_details.charges[].amount', 'customer' => 'charges[].amount'],
+                ['input' => 'message (يراه العميل كما هو)', 'label' => 'رسالة الرسم', 'column' => 'contract_charges.message', 'admin' => 'charges[].message', 'customer' => 'charges[].message'],
+                ['input' => 'kind (price_difference|extra_fee)', 'label' => 'نوع الرسم', 'column' => 'contract_charges.kind', 'admin' => 'charges[].kind', 'customer' => 'charges[].kind'],
+                ['input' => 'status (pending|paid|cancelled)', 'label' => 'حالة الرسم', 'column' => 'contract_charges.status', 'admin' => 'charges[].status / payment_state.pending_charges_count', 'customer' => 'charges[].status / charges[].payment_url'],
+                ['input' => 'دفعة Moyasar (webhook بمفتاح chg-{uuid}-{id})', 'label' => 'دفعة الرسم', 'column' => 'payments (kind, charge_id, contract_id, contract_uuid=chg-…)', 'admin' => 'payment_details.transactions[] (kind=extra_fee|price_difference)', 'customer' => 'payment_details.transactions[] / invoice items[].kind'],
+            ]],
+            ['title' => 'الحوالة البنكية — دفعة (هـ) (POST /api/admin/orders/{id}/payments/bank-transfer)', 'rows' => [
+                ['input' => 'amount', 'label' => 'مبلغ الحوالة', 'column' => 'payments.amount (payment_method=bank_transfer, kind=bank_transfer)', 'admin' => 'payment_details.transactions[].amount / payments[].amount', 'customer' => 'payment_details.transactions[].amount'],
+                ['input' => 'receipt (ملف)', 'label' => 'صورة الإيصال', 'column' => 'payments.receipt_path (القرص الخاص payments/receipts/{contract})', 'admin' => 'payment_details.transactions[].receipt_url (رابط موقّع 30 دقيقة)', 'customer' => '—'],
+                ['input' => 'reference', 'label' => 'مرجع الحوالة', 'column' => 'payments.reference', 'admin' => 'payment_details.transactions[].reference', 'customer' => 'payment_details.transactions[].reference'],
+                ['input' => 'paid_at', 'label' => 'تاريخ الحوالة', 'column' => 'payments.payment_date', 'admin' => 'payment_details.transactions[].paid_at', 'customer' => 'payment_details.transactions[].paid_at'],
+                ['input' => 'note', 'label' => 'ملاحظة', 'column' => 'payments.note', 'admin' => 'payments[].note', 'customer' => '—'],
+                ['input' => 'الموظف المسجِّل', 'label' => 'من سجّل', 'column' => 'payments.employee_id', 'admin' => 'payment_details.transactions[].employee', 'customer' => '—'],
+            ]],
+            ['title' => 'طلب مرفق ناقص / تصحيح — دفعة (هـ) (POST /api/admin/orders/{id}/data-requests)', 'rows' => [
+                ['input' => 'section (lessor|property|tenant)', 'label' => 'القسم', 'column' => 'contract_data_requests.section', 'admin' => 'data_requests[].section / data_request_pending.section', 'customer' => 'pending_data_requests[].section'],
+                ['input' => 'items[] (مفاتيح من config/data_requests.php)', 'label' => 'البنود', 'column' => 'contract_data_requests.items (json {key,label,step,fields})', 'admin' => 'data_requests[].items / data_request_pending.items', 'customer' => 'pending_data_requests[].items / banner'],
+                ['input' => 'note', 'label' => 'ملاحظة حرة', 'column' => 'contract_data_requests.note', 'admin' => 'data_requests[].note', 'customer' => 'pending_data_requests[].note'],
+                ['input' => 'الحل (تلقائي عند تغيّر أي حقل من fields عبر step1..6، أو يدوي)', 'label' => 'الحالة', 'column' => 'contract_data_requests.status / resolved_by / resolved_fields', 'admin' => 'data_requests[].status / resolved_by / resolved_fields', 'customer' => 'fix.resolved_request_ids (رد الخطوة)'],
+                ['input' => 'الرابط العميق', 'label' => 'رابط التصحيح', 'column' => '— (محسوب)', 'admin' => 'data_requests[].deep_link ({smart_link}?fix={id}&step={n})', 'customer' => 'pending_data_requests[].deep_link / إشعار data_missing (data.deep_link)'],
+            ]],
+            ['title' => 'إدخال إيجار — دفعة (هـ) (PUT /api/admin/orders/{id}/ejar-entry-progress)', 'rows' => [
+                ['input' => 'section (lessor|property|unit|tenant|financial|conditions) + done', 'label' => 'أدخلتها في إيجار', 'column' => 'contracts.ejar_entry_progress (json)', 'admin' => 'ejar_entry_progress.{section}.{done,by,by_name,at}', 'customer' => '—'],
+            ]],
+        ];
     }
 }

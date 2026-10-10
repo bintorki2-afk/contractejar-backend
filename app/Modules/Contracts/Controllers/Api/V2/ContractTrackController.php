@@ -81,9 +81,15 @@ class ContractTrackController extends Controller
                 'status_label' => $row['status_label'] ?? '',
                 'at' => $row['at'] ?? ($row['created_at'] ?? null),
             ], $timeline),
-            // رحلة الطلب (ف2): 6 خطوات ثابتة مع done/current.
+            // رحلة الطلب (دفعة هـ — E3): 3 خطوات مع done/current/at/by + الحالة الجانبية (ملغي/مسترجع).
             'journey' => ContractFrontendStatus::journey($contract),
+            'journey_side_state' => \App\Support\ContractJourney::sideState($contract),
             'journey_sentence' => \App\Support\ContractJourney::RULE_SENTENCE,
+            // دفعة (هـ) — 2.1/2.3/2.4: حالة الدفع + التفاصيل + الرسوم + طلبات المرفق الناقص.
+            'payment_state' => ($paymentState = app(\App\Services\Payments\ContractPaymentState::class))->state($contract),
+            'payment_details' => $paymentState->details($contract),
+            'charges' => app(\App\Services\Charges\ChargeService::class)->forCustomer($contract),
+            'pending_data_requests' => app(\App\Services\DataRequests\ContractDataRequestService::class)->pendingForCustomer($contract),
             'activities' => app(\App\Services\Orders\ContractActivityLogger::class)->forCustomer($contract),
             'refund' => $refund = \App\Services\Payments\PaymentRefundService::summaryFor($contract),
             'refunded_amount' => $refund['amount'],

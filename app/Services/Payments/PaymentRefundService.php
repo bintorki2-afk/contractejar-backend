@@ -56,7 +56,9 @@ class PaymentRefundService
                 throw ValidationException::withMessages(['amount' => ['المبلغ أكبر من المتبقي القابل للاسترجاع ('.$remaining.' ر.س).']]);
             }
 
-            $contract = Contract::query()->where('uuid', (string) $locked->contract_uuid)->first();
+            // دفعة (هـ): دفعات الرسوم مفتاحها chg-{uuid}-{id} ⇒ الطلب عبر contract_id.
+            $contract = Contract::query()->where('uuid', (string) $locked->contract_uuid)->first()
+                ?? ($locked->contract_id ? Contract::query()->find((int) $locked->contract_id) : null);
 
             return Refund::query()->create([
                 'payment_id' => $locked->id,
@@ -72,7 +74,10 @@ class PaymentRefundService
         });
 
         $isFullOfPayment = abs(((float) $payment->amount - (float) ($payment->refunded_amount ?? 0)) - (float) $refund->amount) < 0.01;
-        $result = $this->gateway->refund($payment, $isFullOfPayment ? null : (float) $refund->amount);
+        // دفعة (هـ): حوالة بنكية ⇒ الاسترجاع يدوي خارج البوابة (يُسجَّل فقط).
+        $result = $payment->isBankTransfer()
+            ? ['success' => true, 'refund_id' => 'manual-'.$refund->id, 'gateway_payment_id' => null, 'data' => ['manual' => true, 'method' => 'bank_transfer'], 'message' => null]
+            : $this->gateway->refund($payment, $isFullOfPayment ? null : (float) $refund->amount);
 
         if (! $result['success']) {
             $refund->forceFill([
@@ -116,7 +121,9 @@ class PaymentRefundService
             return 0.0;
         }
 
-        return round((float) Refund::query()->where('contract_uuid', (string) $contract->uuid)->where('status', Refund::STATUS_SUCCEEDED)->sum('amount'), 2);
+        return round((float) Refund::query()
+            ->where(fn ($q) => $q->where('contract_uuid', (string) $contract->uuid)->orWhere('contract_id', $contract->id))
+            ->where('status', Refund::STATUS_SUCCEEDED)->sum('amount'), 2);
     }
 
     /**
@@ -135,7 +142,8 @@ class PaymentRefundService
         $amount = self::refundedTotalFor($contract);
         $at = null;
         if ($amount > 0) {
-            $at = Refund::query()->where('contract_uuid', (string) $contract->uuid)->where('status', Refund::STATUS_SUCCEEDED)->max('created_at');
+            $at = Refund::query()->where(fn ($q) => $q->where('contract_uuid', (string) $contract->uuid)->orWhere('contract_id', $contract->id))
+                ->where('status', Refund::STATUS_SUCCEEDED)->max('created_at');
         } elseif (SchemaCache::hasTable('refundable_contracts')) {
             $legacy = RefundableContract::query()->where('contract_id', $contract->id)->where('is_refunded', true)->latest('id')->first();
             if ($legacy === null) {
@@ -166,7 +174,8 @@ class PaymentRefundService
             return 0.0;
         }
 
-        return round((float) Payment::query()->successfulMatchingContractUuid((string) $contract->uuid)->sum('amount'), 2);
+        // دفعة (هـ): يشمل دفعات الرسوم (chg-…) والحوالات.
+        return round((float) Payment::query()->successful()->forContract($contract)->sum('amount'), 2);
     }
 
     /**
@@ -180,7 +189,7 @@ class PaymentRefundService
             return [];
         }
 
-        return Payment::query()->matchingContractUuid((string) $contract->uuid)->orderBy('id')->get()
+        return Payment::query()->forContract($contract)->with('employee:id,name')->orderBy('id')->get()
             ->map(fn (Payment $p) => [
                 'id' => $p->id,
                 'amount' => (float) $p->amount,
@@ -193,6 +202,15 @@ class PaymentRefundService
                 'refunded_amount' => (float) ($p->refunded_amount ?? 0),
                 'refund_status' => $p->refund_status ?? null,
                 'refundable_amount' => $p->status === 'success' ? max(0, round((float) $p->amount - (float) ($p->refunded_amount ?? 0), 2)) : 0.0,
+                // دفعة (هـ)
+                'kind' => $p->kind ?: ($p->payment_method === Payment::METHOD_BANK_TRANSFER ? Payment::KIND_BANK_TRANSFER : Payment::KIND_ORIGINAL),
+                'charge_id' => $p->charge_id,
+                'is_bank_transfer' => $p->payment_method === Payment::METHOD_BANK_TRANSFER,
+                'reference' => $p->reference,
+                'note' => $p->note,
+                'employee_id' => $p->employee_id,
+                'employee_name' => $p->employee?->name,
+                'receipt_url' => $p->receipt_path ? ContractPaymentState::receiptUrl($p) : null,
             ])->values()->all();
     }
 

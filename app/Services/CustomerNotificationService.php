@@ -73,9 +73,17 @@ class CustomerNotificationService
         'paid' => 'تم استلام دفعتك لطلب {order}',
     ];
 
-    /** الأنواع المعروفة (للفلترة في اللوحة). */
+    // دفعة (هـ)
+    public const KIND_CHARGE_PAYMENT_REQUEST = 'charge_payment_request';
+
+    public const KIND_CHARGE_PAID = 'charge_paid';
+
+    public const KIND_PRICE_DIFFERENCE = 'price_difference';
+
+    public const KIND_DATA_REQUEST_RESOLVED = 'data_request_resolved';
+
+    /** الأنواع المعروفة (للفلترة في اللوحة). دفعة (هـ): draft_sent أُلغي (يبقى للصفوف القديمة فقط). */
     public const KINDS = [
-        self::KIND_DRAFT_SENT,
         self::KIND_NOTARIZED,
         self::KIND_PAYMENT_SUCCESS,
         self::KIND_STATUS_CHANGED,
@@ -91,15 +99,22 @@ class CustomerNotificationService
         self::KIND_DATA_MISSING,
         self::KIND_REFUND,
         self::KIND_DISCOUNT_APPLIED,
+        self::KIND_CHARGE_PAYMENT_REQUEST,
+        self::KIND_CHARGE_PAID,
+        self::KIND_PRICE_DIFFERENCE,
     ];
 
     public const KIND_LABELS = [
+        self::KIND_CHARGE_PAYMENT_REQUEST => 'طلب دفع رسوم',
+        self::KIND_CHARGE_PAID => 'دفع رسوم (للموظفين)',
+        self::KIND_PRICE_DIFFERENCE => 'فرق سعر',
+        self::KIND_DATA_REQUEST_RESOLVED => 'رد العميل على طلب مرفق (للموظفين)',
         self::KIND_ASSIGNED => 'إسناد الطلب',
         self::KIND_DATA_MISSING => 'بيانات ناقصة',
         self::KIND_REFUND => 'استرجاع المبلغ',
         self::KIND_DISCOUNT_APPLIED => 'تطبيق خصم',
         self::KIND_DELAY_ALERT => 'تنبيه تأخير (للموظفين)',
-        self::KIND_DRAFT_SENT => 'إرسال المسودة',
+        self::KIND_DRAFT_SENT => 'إرسال المسودة (قديم)',
         self::KIND_NOTARIZED => 'تم التوثيق',
         self::KIND_PAYMENT_SUCCESS => 'استلام الدفعة',
         self::KIND_STATUS_CHANGED => 'تحديث الحالة',
@@ -276,7 +291,7 @@ class CustomerNotificationService
     // ───────────────────────── الأحداث (فورية) ─────────────────────────
 
     /**
-     * تغيّرت حالة الطلب من اللوحة: مسودة واتساب / توثيق / تحديث عام.
+     * تغيّرت حالة الطلب من اللوحة: توثيق / تحديث عام (دفعة هـ: بلا مرحلة مسودة).
      */
     public function contractStatusChanged(Contract $contract): ?Offer
     {
@@ -290,17 +305,6 @@ class CustomerNotificationService
         $label = (string) ($payload['status_label'] ?? '');
         $order = $this->orderNumber($contract);
         $firebase = ContractFrontendStatus::firebaseData($contract);
-
-        if ($key === 'whatsapp_draft' && ! (bool) $contract->is_draft) {
-            return $this->notify(
-                $user,
-                self::KIND_DRAFT_SENT,
-                'وصلتك مسودة العقد',
-                'أرسلنا لك مسودة العقد عبر واتساب — اطّلع عليها وأكّد لنا لنوثّقه',
-                $firebase,
-                contract: $contract,
-            );
-        }
 
         if (in_array($key, ContractJourney::NOTARIZED_KEYS, true) && ! (bool) $contract->is_draft) {
             return $this->notify(
@@ -419,6 +423,127 @@ class CustomerNotificationService
             contract: $contract,
             dedupe: false,
         );
+    }
+
+    /**
+     * دفعة (هـ) — E4: طلب مرفق ناقص متتبّع — نوع `data_missing` مع رابط عميق `?fix=<id>&step=N`.
+     */
+    public function dataRequested(Contract $contract, \App\Models\ContractDataRequest $request, string $deepLink, bool $reminder = false): ?Offer
+    {
+        $user = $this->ownerOf($contract);
+        if ($user === null) {
+            return null;
+        }
+        $order = $this->orderNumber($contract);
+        $items = implode('، ', $request->itemLabels());
+        $body = ($reminder ? 'تذكير — ' : '')."طلبك رقم {$order}: نحتاج منك ".$items.(filled($request->note) ? ' — '.$request->note : '').'. افتح الرابط وأرسلها مباشرة.';
+
+        return $this->notify(
+            $user,
+            self::KIND_DATA_MISSING,
+            $reminder ? 'ما زلنا بانتظار مرفقاتك' : 'نحتاج بيانات إضافية لطلبك',
+            $body,
+            [
+                'type' => 'data_missing',
+                'step' => $request->step(),
+                'deep_link' => $deepLink,
+                'url' => $deepLink,
+                'request_id' => $request->id,
+                'section' => $request->section,
+                'items' => $request->itemLabels(),
+            ],
+            contract: $contract,
+            dedupe: false,
+        );
+    }
+
+    /**
+     * دفعة (هـ) — E5: طلب دفع رسوم (فرق سعر / رسوم إضافية) — الرسالة تصل للعميل كما كتبها الموظف.
+     */
+    public function chargePaymentRequested(Contract $contract, \App\Models\ContractCharge $charge, ?string $paymentUrl): ?Offer
+    {
+        $user = $this->ownerOf($contract);
+        if ($user === null) {
+            return null;
+        }
+        $order = $this->orderNumber($contract);
+        $amountLabel = rtrim(rtrim(number_format((float) $charge->amount, 2, '.', ''), '0'), '.');
+        $isDiff = $charge->kind === \App\Models\ContractCharge::KIND_PRICE_DIFFERENCE;
+        $url = $paymentUrl ?: SmartLink::for($contract).'?charge='.$charge->id;
+
+        return $this->notify(
+            $user,
+            $isDiff ? self::KIND_PRICE_DIFFERENCE : self::KIND_CHARGE_PAYMENT_REQUEST,
+            $isDiff ? 'فرق سعر على طلبك' : 'رسوم إضافية على طلبك',
+            "طلبك رقم {$order}: ".(string) $charge->message.' — المبلغ '.$amountLabel.' ر.س. ادفع من الرابط.',
+            ['type' => $isDiff ? 'price_difference' : 'charge_payment_request', 'charge_id' => $charge->id, 'amount' => (float) $charge->amount, 'url' => $url, 'payment_url' => $url, 'kind_of_charge' => $charge->kind],
+            contract: $contract,
+            dedupe: false,
+        );
+    }
+
+    /** دفعة (هـ) — E5: نجاح دفع رسوم (payment_success مع رسالة الرسوم). */
+    public function chargePaid(Contract $contract, \App\Models\ContractCharge $charge): ?Offer
+    {
+        $user = $this->ownerOf($contract);
+        if ($user === null) {
+            return null;
+        }
+        $order = $this->orderNumber($contract);
+        $amountLabel = rtrim(rtrim(number_format((float) $charge->amount, 2, '.', ''), '0'), '.');
+
+        return $this->notify(
+            $user,
+            self::KIND_PAYMENT_SUCCESS,
+            'تم استلام دفعتك',
+            "تم استلام {$amountLabel} ر.س لطلب {$order} (".(string) $charge->message.') — شكراً لك، فاتورتك تحدّثت.',
+            ['type' => 'payment_success', 'charge_id' => $charge->id, 'amount' => (float) $charge->amount],
+            contract: $contract,
+            dedupe: false,
+        );
+    }
+
+    /** دفعة (هـ) — E2: نجاح دفع (حوالة بنكية سجّلها الموظف). */
+    public function bankTransferRecorded(Contract $contract, float $amount): ?Offer
+    {
+        $user = $this->ownerOf($contract);
+        if ($user === null) {
+            return null;
+        }
+        $order = $this->orderNumber($contract);
+        $amountLabel = rtrim(rtrim(number_format($amount, 2, '.', ''), '0'), '.');
+
+        return $this->notify(
+            $user,
+            self::KIND_PAYMENT_SUCCESS,
+            'تم استلام دفعتك',
+            "تم تسجيل حوالتك البنكية بمبلغ {$amountLabel} ر.س لطلب {$order} — فريقنا يكمل التوثيق الآن",
+            ['type' => 'payment_success', 'method' => 'bank_transfer', 'amount' => $amount],
+            contract: $contract,
+        );
+    }
+
+    /**
+     * تسجيل إشعار موظفين (Push للّوحة) في سجل الإرسال — بلا عميل.
+     */
+    public function logExternalEmployee(Contract $contract, string $kind, string $title, string $body): void
+    {
+        try {
+            NotificationDispatch::query()->create([
+                'user_id' => null,
+                'contract_id' => $contract->id,
+                'kind' => $kind,
+                'channel' => 'push',
+                'dedupe_key' => null,
+                'title' => $title,
+                'body' => $body,
+                'push_result' => $this->firebase->isConfigured() ? 'sent' : 'disabled',
+                'recipients_count' => 1,
+                'sent_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Employee notification log failed', ['contract_id' => $contract->id, 'error' => $e->getMessage()]);
+        }
     }
 
     /** استرجاع المبلغ (كلي/جزئي). */
@@ -585,7 +710,7 @@ class CustomerNotificationService
             $user,
             self::KIND_AWAITING_PAYMENT_2H,
             'طلبك جاهز للدفع',
-            'طلبك جاهز للدفع — ادفع الآن لنبدأ بإعداد مسودة عقدك',
+            'طلبك جاهز للدفع — ادفع الآن لنبدأ توثيق عقدك',
             ['type' => 'payment_reminder'],
             contract: $contract,
         );

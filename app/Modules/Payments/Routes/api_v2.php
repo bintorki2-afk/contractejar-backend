@@ -6,7 +6,17 @@ use App\Modules\Payments\Controllers\Api\PaymentController;
 use App\Modules\Payments\Controllers\Api\V2\InvoiceController as V2InvoiceController;
 use Illuminate\Support\Facades\Route;
 
+// دفعة (هـ): فاتورة قابلة للطباعة + إيصال الحوالة — عبر رابط موقّع مؤقت فقط (بلا توكن حتى تعمل في <a>/<img>).
+Route::get('/invoices/print/{contract}', [\App\Modules\Payments\Controllers\Api\V2\ChargePaymentController::class, 'print'])
+    ->whereNumber('contract')->middleware('signed')->name('v2.invoices.print');
+Route::get('/payments/{payment}/receipt', [\App\Modules\Payments\Controllers\Api\V2\ChargePaymentController::class, 'receipt'])
+    ->whereNumber('payment')->middleware('signed')->name('v2.payments.receipt');
+
 Route::middleware('auth:sanctum')->group(function () {
+    // دفعة (هـ) — 2.3: دفع رسوم معلّقة (العميل).
+    Route::get('/contracts/{uuid}/charges/{cid}/pay', [\App\Modules\Payments\Controllers\Api\V2\ChargePaymentController::class, 'pay'])
+        ->whereNumber('cid')->name('v2.contracts.charges.pay');
+
     Route::prefix('invoices')->controller(V2InvoiceController::class)->group(function () {
         Route::get('/', 'index');
         Route::get('/number/{invoiceNumber}', 'showByNumber')->where('invoiceNumber', 'INV-[A-Za-z0-9\-]+');

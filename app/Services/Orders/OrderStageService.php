@@ -12,17 +12,22 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
 /**
- * أزرار المراحل (دفعة د — ب14): «استلمت» → «أرسلت المسودة» → «وثّقت».
- * كل مرحلة: تتحقق من المتطلبات (قاعدة المسودة أولاً) → تضبط الحالة → تسجّل النشاط → ترسل إشعار العميل
+ * أزرار المراحل (دفعة د — ب14، دفعة هـ — E3): «استلمت» → «وثّقت».
+ * كل مرحلة: تتحقق من المتطلبات (قاعدة الدفع قبل التوثيق) → تضبط الحالة → تسجّل النشاط → ترسل إشعار العميل
  * → ترجع رسالة واتساب جاهزة من قالب المرحلة (ب16) لتفتحها اللوحة في wa.me.
+ * مرحلة «إرسال المسودة» أُلغيت نهائياً: `/stage/draft_sent` ⇒ 410.
  */
 class OrderStageService
 {
-    public const STAGES = ['received', 'draft_sent', 'notarized'];
+    public const STAGES = ['received', 'notarized'];
 
-    public const NEXT = ['received' => 'draft_sent', 'draft_sent' => 'notarized', 'notarized' => null];
+    public const NEXT = ['received' => 'notarized', 'notarized' => null];
 
-    public const LABELS = ['received' => 'استلمت', 'draft_sent' => 'أرسلت المسودة', 'notarized' => 'وثّقت'];
+    public const LABELS = ['received' => 'استلمت', 'notarized' => 'وثّقت'];
+
+    public const REMOVED_STAGES = ['draft_sent'];
+
+    public const REMOVED_MESSAGE = 'أُلغيت مرحلة «إرسال المسودة» — بعد الاستلام يُوثَّق العقد مباشرةً.';
 
     public function __construct(
         private readonly OrderFlowService $flow,
@@ -39,13 +44,12 @@ class OrderStageService
     public function run(Request $request, Contract $contract, string $stage, Employee $employee): array
     {
         if (! in_array($stage, self::STAGES, true)) {
-            throw ValidationException::withMessages(['stage' => ['المرحلة غير معروفة: received | draft_sent | notarized']]);
+            throw ValidationException::withMessages(['stage' => ['المرحلة غير معروفة: received | notarized']]);
         }
 
         match ($stage) {
             'received' => $this->receive($contract, $employee),
-            'draft_sent' => $this->toStatus($request, $contract, ContractStatus::KEY_WHATSAPP_DRAFT),
-            'notarized' => $this->toStatus($request, $contract, ContractStatus::KEY_EJAR_AUTHENTICATED),
+            'notarized' => $this->notarize($request, $contract),
         };
 
         $contract->refresh();
@@ -71,6 +75,9 @@ class OrderStageService
             ],
             'whatsapp' => $whatsapp,
             'notifications_sent' => $this->customers->sentForContract($contract),
+            'payment_state' => app(\App\Services\Payments\ContractPaymentState::class)->state($contract),
+            'pending_data_requests' => app(\App\Services\DataRequests\ContractDataRequestService::class)->pendingForAdmin($contract),
+            'warnings' => $this->warnings($contract),
         ];
     }
 
@@ -82,13 +89,6 @@ class OrderStageService
     public function requiredFields(?string $stage): array
     {
         return match ($stage) {
-            'draft_sent' => [
-                ['name' => 'ejar_contract_draft_number', 'type' => 'string', 'required' => true, 'label_ar' => 'رقم مسودة عقد إيجار'],
-                ['name' => 'contact_number_mode', 'type' => 'select', 'required' => true, 'label_ar' => 'رقم التواصل', 'options' => [
-                    ['value' => 'same', 'label_ar' => 'نفس الرقم'], ['value' => 'another', 'label_ar' => 'رقم آخر'],
-                ]],
-                ['name' => 'contact_number', 'type' => 'string', 'required' => false, 'required_if' => ['contact_number_mode', 'another'], 'label_ar' => 'رقم التواصل الجديد'],
-            ],
             'notarized' => [
                 ['name' => 'deed_type', 'type' => 'select', 'required' => true, 'label_ar' => 'نوع الصك / طريقة الإضافة', 'options' => [
                     ['value' => 'paper', 'label_ar' => 'ورقي'], ['value' => 'electronic', 'label_ar' => 'إلكتروني'], ['value' => 'other', 'label_ar' => 'أخرى'],
@@ -116,15 +116,28 @@ class OrderStageService
         }
     }
 
+    /**
+     * «وثّقت»: يشترط الدفع الكامل وبلا رسوم معلّقة (422 code=payment_required|charge_pending)؛
+     * مدير النظام يتجاوز بـ force=1. طلب مرفق ناقص معلّق لا يمنع (تحذير فقط في الرد).
+     */
+    private function notarize(Request $request, Contract $contract): void
+    {
+        $statusId = ContractStatus::idFor(ContractStatus::KEY_EJAR_AUTHENTICATED);
+        if ($statusId === null) {
+            throw ValidationException::withMessages(['stage' => ['حالة المرحلة غير موجودة في الإعدادات.']]);
+        }
+        if ((int) $contract->contract_status_id === $statusId) {
+            return;
+        }
+
+        $this->toStatus($request, $contract, ContractStatus::KEY_EJAR_AUTHENTICATED);
+    }
+
     private function toStatus(Request $request, Contract $contract, string $key): void
     {
         $statusId = ContractStatus::idFor($key);
         if ($statusId === null) {
             throw ValidationException::withMessages(['stage' => ['حالة المرحلة غير موجودة في الإعدادات.']]);
-        }
-
-        if ($key === ContractStatus::KEY_WHATSAPP_DRAFT && ! $contract->receivedContract()->exists()) {
-            throw ValidationException::withMessages(['stage' => ['استلم الطلب أولاً ثم أرسل المسودة.']]);
         }
 
         if ((int) $contract->contract_status_id === $statusId) {
@@ -156,6 +169,27 @@ class OrderStageService
             'url' => $phone !== null ? 'https://wa.me/'.$phone.'?text='.rawurlencode($message) : null,
             'template_key' => $key,
         ];
+    }
+
+    /**
+     * تحذيرات (لا تمنع): طلب مرفق ناقص ما زال معلّقاً.
+     *
+     * @return list<array{code: string, message: string}>
+     */
+    public function warnings(Contract $contract): array
+    {
+        $warnings = [];
+        try {
+            $pending = app(\App\Services\DataRequests\ContractDataRequestService::class)->pendingForAdmin($contract);
+            if ($pending !== []) {
+                $labels = collect($pending)->flatMap(fn ($r) => $r['items'])->pluck('label')->unique()->implode('، ');
+                $warnings[] = ['code' => 'data_request_pending', 'message' => 'لا يزال هناك طلب مرفق ناقص بانتظار العميل: '.$labels];
+            }
+        } catch (\Throwable) {
+            // بلا تحذير
+        }
+
+        return $warnings;
     }
 
     /** جوال العميل للتواصل بصيغة دولية (9665XXXXXXXX). */

@@ -18,7 +18,7 @@ class SubmitContractStep5Action
      */
     public function execute(Contract $contract, Step5Request $request, int $userId): array
     {
-        if ($contract->is_completed) {
+        if ($contract->lockedForCustomerStep(5)) {
             return ['ok' => false, 'message' => trans('api.completed_contract'), 'code' => 422];
         }
 

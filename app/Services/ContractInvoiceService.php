@@ -53,7 +53,7 @@ class ContractInvoiceService
         $issuedAt = $this->resolveIssuedAt($contract, $payment, $invoice);
         $total = (float) $breakdown['total'];
 
-        return array_merge($this->basePayload(
+        $payload = array_merge($this->basePayload(
             kind: Invoice::KIND_CONTRACT,
             invoice: $invoice,
             orderNumber: (string) ($contract->uuid ?: $contract->id),
@@ -73,6 +73,96 @@ class ContractInvoiceService
             'total_amount' => $total,
             'total_amount_label' => $this->formatAmountLabel($total),
         ]);
+
+        return $this->applyCumulative($contract, $payload);
+    }
+
+    /**
+     * دفعة (هـ) — E5: الفاتورة التراكمية = الأصل + الرسوم المدفوعة − الاسترجاعات = الصافي.
+     * البنود الأصلية تبقى كما هي (لقطة بعد الدفع)، وتُلحق بنود الرسوم المدفوعة والاسترجاعات،
+     * ويصبح total_amount = الصافي. original_total = إجمالي الأصل قبل الإلحاق.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function applyCumulative(Contract $contract, array $payload): array
+    {
+        try {
+            $state = app(\App\Services\Payments\ContractPaymentState::class);
+            $details = $state->details($contract);
+        } catch (\Throwable $e) {
+            Log::warning('cumulative invoice failed', ['contract_id' => $contract->id, 'error' => $e->getMessage()]);
+
+            return $payload;
+        }
+
+        $originalTotal = (float) ($payload['total_amount'] ?? 0);
+        $items = $payload['items'] ?? [];
+        $index = count($items);
+        $extra = 0.0;
+        $refunded = 0.0;
+        foreach ($details['lines'] as $line) {
+            $kind = (string) ($line['kind'] ?? '');
+            if (! in_array($kind, ['extra_fee', 'price_difference', 'refund'], true)) {
+                continue;
+            }
+            $amount = round((float) $line['amount'], 2);
+            if ($kind === 'refund') {
+                $refunded += abs($amount);
+            } else {
+                $extra += $amount;
+            }
+            $items[] = [
+                'index' => ++$index,
+                'key' => (string) $line['key'],
+                'description' => (string) $line['label'],
+                'quantity' => 1,
+                'amount' => $amount,
+                'amount_label' => $this->formatAmountLabel($amount),
+                'is_discount' => $amount < 0,
+                'kind' => $kind,
+                'charge_id' => $line['charge_id'] ?? null,
+                'refund_id' => $line['refund_id'] ?? null,
+            ];
+        }
+
+        $net = round($originalTotal + $extra - $refunded, 2);
+        $payload['items'] = $items;
+        $payload['original_total'] = round($originalTotal, 2);
+        $payload['original_total_label'] = $this->formatAmountLabel($originalTotal);
+        $payload['extra_total'] = round($extra, 2);
+        $payload['extra_total_label'] = $this->formatAmountLabel($extra);
+        $payload['refunded_total'] = round($refunded, 2);
+        $payload['net_total'] = $net;
+        $payload['net_total_label'] = $this->formatAmountLabel($net);
+        $payload['total_amount'] = $net;
+        $payload['total_amount_label'] = $this->formatAmountLabel($net);
+        $payload['is_cumulative'] = $extra > 0 || $refunded > 0;
+        $payload['charges'] = $details['charges'];
+        $payload['transactions'] = $details['transactions'];
+        $payload['totals'] = $details['totals'];
+        $payload['payment_state'] = $details['state'];
+        $payload['invoice_url'] = $details['invoice_url'];
+        $payload['print_url'] = $details['invoice_url'];
+
+        // دفعة (هـ): حالة الفاتورة تتبع حالة الدفع (حوالة/جزئي).
+        $stateStatus = (string) $details['state']['status'];
+        if (in_array($payload['status'] ?? '', ['paid', 'unpaid'], true)) {
+            if ($stateStatus === 'partially_paid') {
+                $payload['status'] = 'partially_paid';
+                $payload['status_label'] = 'مدفوعة جزئياً';
+                $payload['status_color'] = '#D97706';
+            } elseif ($stateStatus === 'paid' && ($payload['status'] ?? '') === 'unpaid') {
+                $payload['status'] = 'paid';
+                $payload['status_label'] = 'مدفوعة';
+                $payload['status_color'] = '#16A34A';
+                $payload['is_paid'] = true;
+            }
+        }
+        $payload['payment_method'] = $details['state']['method'];
+        $payload['payment_method_label'] = $details['state']['method_label'];
+
+        return $payload;
     }
 
     /**

@@ -31,7 +31,7 @@ class SubmitContractStep2Action
             return ['ok' => true, 'contract' => $contract->fresh(['contractStatus'])];
         }
 
-        if ($contract->is_completed) {
+        if ($contract->lockedForCustomerStep(2)) {
             return ['ok' => false, 'message' => trans('api.completed_contract')];
         }
 
