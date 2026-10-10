@@ -15,6 +15,7 @@ class IncompleteContract extends Controller
     public function orders(Request $request)
     {
         $orders = Contract::where('is_completed', 0)->latest()->paginate($this->perPageFromRequest($request));
+        $orders->getCollection()->loadMissing(app(\App\Modules\Contracts\Services\AdminOrderQueryService::class)->orderListRelations()); // دفعة و: شارة الدفع بلا استعلامات لكل صف
 
         return $this->paginatedApiResponse(
             $orders,

@@ -17,12 +17,16 @@ trait HasContractScopes
             ->selectRaw('coalesce(sum(payments.amount), 0)')
             ->where('payments.status', 'success')
             ->where(function ($q) {
-                $q->whereColumn('payments.contract_uuid', 'contracts.uuid')
-                    ->orWhereRaw(\Illuminate\Support\Facades\DB::getDriverName() === 'sqlite'
-                        ? "payments.contract_uuid LIKE (CAST(contracts.uuid AS TEXT) || '-%')"
-                        : "payments.contract_uuid LIKE CONCAT(CAST(contracts.uuid AS CHAR), '-%')");
+                // الأداء على MySQL: contract_id (مفهرس ومُعبّأ منذ دفعة هـ) هو الربط الأساسي؛ مطابقة
+                // contract_uuid الحرفية فقط لصفوف قديمة بلا contract_id. لا LIKE على عمود (يمنع الفهرس).
                 if (\App\Support\SchemaCache::hasColumn('payments', 'contract_id')) {
-                    $q->orWhereColumn('payments.contract_id', 'contracts.id');
+                    $q->whereColumn('payments.contract_id', 'contracts.id')
+                        ->orWhere(fn ($w) => $w->whereNull('payments.contract_id')->whereColumn('payments.contract_uuid', 'contracts.uuid'));
+                } else {
+                    $q->whereColumn('payments.contract_uuid', 'contracts.uuid')
+                        ->orWhereRaw(\Illuminate\Support\Facades\DB::getDriverName() === 'sqlite'
+                            ? "payments.contract_uuid LIKE (CAST(contracts.uuid AS TEXT) || '-%')"
+                            : "payments.contract_uuid LIKE CONCAT(CAST(contracts.uuid AS CHAR), '-%')");
                 }
             });
 

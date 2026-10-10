@@ -96,6 +96,7 @@ class UserController extends Controller
         }
 
         $this->authorize('view', $user);
+        $user->contracts->loadMissing(app(\App\Modules\Contracts\Services\AdminOrderQueryService::class)->orderListRelations());
 
         return $this->apiResponse(
             [

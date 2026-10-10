@@ -978,20 +978,22 @@ class ReportsService
         // QA-F C3: المسترجع = ما نُفّذ فعلاً فقط (جدول refunds بحالة «تم الاسترجاع»)،
         // لا طلبات الاسترجاع «المعتمدة» غير المنفّذة (كانت تطرح 22,516 ر.س وهمية من الإيراد).
         $total = 0.0;
-        $refundedContractIds = [];
         if (Schema::hasTable('refunds')) {
             $q = \App\Models\Refund::query()->where('status', \App\Models\Refund::STATUS_SUCCEEDED);
             $this->applyDateRange($q, 'created_at', $range);
             $total += (float) (clone $q)->sum('amount');
-            $refundedContractIds = (clone $q)->whereNotNull('contract_id')->pluck('contract_id')->unique()->all();
         }
 
         // طلبات استرجاع قديمة نُفّذت يدوياً (is_refunded) بلا صف في refunds.
         if (Schema::hasColumn('refundable_contracts', 'is_refunded')) {
             $legacy = RefundableContract::query()->where('is_refunded', true);
             $this->applyDateRange($legacy, 'created_at', $range);
-            if ($refundedContractIds !== [] && Schema::hasColumn('refundable_contracts', 'contract_id')) {
-                $legacy->whereNotIn('contract_id', $refundedContractIds);
+            // مراجعة: نستبعد أي عقد له استرجاع منفّذ في refunds بأي تاريخ (لا ضمن الفترة فقط)
+            // — وإلا يُحسب الاسترجاع مرتين: مرة بتاريخ الطلب ومرة بتاريخ التنفيذ.
+            if (Schema::hasTable('refunds') && Schema::hasColumn('refundable_contracts', 'contract_id')) {
+                $legacy->whereNotIn('contract_id', \App\Models\Refund::query()
+                    ->where('status', \App\Models\Refund::STATUS_SUCCEEDED)
+                    ->whereNotNull('contract_id')->select('contract_id'));
             }
             $total += (float) $legacy->sum('refund_amount');
         }

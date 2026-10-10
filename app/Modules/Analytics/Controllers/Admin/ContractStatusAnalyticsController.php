@@ -68,6 +68,8 @@ class ContractStatusAnalyticsController extends Controller
                 $request->filled('search') ? $request->string('search')->toString() : null
             );
 
+            $contracts->getCollection()->loadMissing(app(\App\Modules\Contracts\Services\AdminOrderQueryService::class)->orderListRelations());
+
             return $this->paginatedApiResponse(
                 $contracts,
                 OrderResource::collection($contracts),
@@ -170,6 +172,11 @@ class ContractStatusAnalyticsController extends Controller
         string $period
     ): array {
         $statusName = $status->name;
+        if ($contracts instanceof \Illuminate\Pagination\AbstractPaginator) {
+            $contracts->getCollection()->loadMissing(app(\App\Modules\Contracts\Services\AdminOrderQueryService::class)->orderListRelations());
+        } elseif ($contracts instanceof \Illuminate\Database\Eloquent\Collection) {
+            $contracts->loadMissing(app(\App\Modules\Contracts\Services\AdminOrderQueryService::class)->orderListRelations());
+        }
         $orders = OrderResource::collection($contracts)->resolve();
 
         return [
