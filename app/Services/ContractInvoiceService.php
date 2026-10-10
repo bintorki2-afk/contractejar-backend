@@ -169,6 +169,12 @@ class ContractInvoiceService
         $payload['payment_state'] = $details['state'];
         $payload['invoice_url'] = $details['invoice_url'];
         $payload['print_url'] = $details['invoice_url'];
+        // دفعة (و) — D4: PDF حقيقي (بعد الدفع فقط) + العنوان «فاتورة» (المؤسسة غير مسجّلة في الضريبة).
+        $pdfUrl = ($payload['has_invoice'] ?? false) || ! ($payload['is_preview'] ?? true)
+            ? \App\Services\Invoices\InvoicePdfService::contractUrl($contract)
+            : null;
+        $payload['invoice_pdf_url'] = $pdfUrl;
+        $payload['pdf_url'] = $pdfUrl;
 
         // دفعة (هـ): حالة الفاتورة تتبع حالة الدفع (حوالة/جزئي).
         $stateStatus = (string) $details['state']['status'];
@@ -245,6 +251,11 @@ class ContractInvoiceService
             'contract_type_label' => 'تغيير المؤجر',
             'total_amount' => $total,
             'total_amount_label' => $this->formatAmountLabel($total),
+            // دفعة (و) — D4/B16
+            'has_invoice' => $paid,
+            'is_preview' => ! $paid,
+            'invoice_pdf_url' => $pdfUrl = \App\Services\Invoices\InvoicePdfService::lessorChangeUrl($request),
+            'pdf_url' => $pdfUrl,
         ]);
     }
 
@@ -570,6 +581,8 @@ class ContractInvoiceService
             'platform_name' => self::PLATFORM_NAME,
             'platform_subtitle' => self::PLATFORM_SUBTITLE,
             'title' => 'الفاتورة',
+            // دفعة (و) — B16: «فاتورة» لا «فاتورة ضريبية» (المؤسسة غير مسجّلة في ضريبة القيمة المضافة).
+            'invoice_title' => 'فاتورة',
             'invoice_number' => $invoice?->invoice_number,
             'invoice_no' => $invoice?->invoice_number,
             'date' => $issuedAt->format('Y/m/d'),

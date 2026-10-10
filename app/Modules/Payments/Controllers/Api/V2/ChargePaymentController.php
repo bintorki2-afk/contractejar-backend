@@ -70,6 +70,28 @@ class ChargePaymentController extends Controller
     }
 
     /**
+     * دفعة (و) — D4: GET /api/v2/invoices/pdf/{contract} — ملف PDF للفاتورة (رابط موقّع مؤقت).
+     * ?download=1 ⇒ تنزيل، وإلا عرض داخل المتصفح.
+     */
+    public function pdf(Request $request, Contract $contract, \App\Services\Invoices\InvoicePdfService $pdf)
+    {
+        $file = $pdf->forContract($contract);
+
+        return self::pdfResponse($file['content'], $file['filename'], $request->boolean('download'));
+    }
+
+    public static function pdfResponse(string $content, string $filename, bool $download)
+    {
+        return response($content, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => ($download ? 'attachment' : 'inline').'; filename="'.$filename.'"',
+            'Content-Length' => (string) strlen($content),
+            'Cache-Control' => 'no-store',
+            'X-Robots-Tag' => 'noindex',
+        ]);
+    }
+
+    /**
      * GET /api/v2/payments/{payment}/receipt — إيصال الحوالة (رابط موقّع مؤقت).
      */
     public function receipt(Payment $payment)

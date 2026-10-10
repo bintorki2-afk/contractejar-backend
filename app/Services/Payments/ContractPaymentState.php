@@ -229,6 +229,9 @@ class ContractPaymentState
             'charges' => $charges->map(fn (ContractCharge $c) => $this->chargeArray($c, $contract))->values()->all(),
             'invoice_number' => $invoice?->invoice_number,
             'invoice_url' => $withInvoiceUrl ? self::invoiceUrl($contract) : null,
+            // دفعة (و) — D4: ملف PDF حقيقي للفاتورة (فقط بعد الدفع).
+            'has_invoice' => $hasInvoice = ($originalPaid + $extraPaid) > 0.009 || (bool) $contract->is_completed,
+            'invoice_pdf_url' => $withInvoiceUrl ? \App\Services\Invoices\InvoicePdfService::contractUrl($contract, $hasInvoice) : null,
             'totals' => [
                 'original' => round($originalPaid, 2),
                 'extra' => $extraPaid,

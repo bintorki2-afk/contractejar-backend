@@ -9,6 +9,9 @@ use Illuminate\Support\Facades\Route;
 // دفعة (هـ): فاتورة قابلة للطباعة + إيصال الحوالة — عبر رابط موقّع مؤقت فقط (بلا توكن حتى تعمل في <a>/<img>).
 Route::get('/invoices/print/{contract}', [\App\Modules\Payments\Controllers\Api\V2\ChargePaymentController::class, 'print'])
     ->whereNumber('contract')->middleware('signed')->name('v2.invoices.print');
+// دفعة (و) — D4: فاتورة PDF حقيقية (عربي RTL، خط مضمّن) — رابط موقّع مؤقت.
+Route::get('/invoices/pdf/{contract}', [\App\Modules\Payments\Controllers\Api\V2\ChargePaymentController::class, 'pdf'])
+    ->whereNumber('contract')->middleware('signed')->name('v2.invoices.pdf');
 Route::get('/payments/{payment}/receipt', [\App\Modules\Payments\Controllers\Api\V2\ChargePaymentController::class, 'receipt'])
     ->whereNumber('payment')->middleware('signed')->name('v2.payments.receipt');
 

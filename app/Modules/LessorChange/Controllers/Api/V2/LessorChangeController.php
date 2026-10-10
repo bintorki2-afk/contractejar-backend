@@ -128,6 +128,15 @@ class LessorChangeController extends Controller
         );
     }
 
+    /** دفعة (و) — D4: GET /api/v2/lessor-change/invoice-pdf/{request} (موقّع). */
+    public function invoicePdf(Request $request, LessorChangeRequest $lessorChange, \App\Services\Invoices\InvoicePdfService $pdf)
+    {
+        abort_if((bool) $lessorChange->is_delete, 404);
+        $file = $pdf->forLessorChange($lessorChange);
+
+        return \App\Modules\Payments\Controllers\Api\V2\ChargePaymentController::pdfResponse($file['content'], $file['filename'], $request->boolean('download'));
+    }
+
     /**
      * رابط الدفع (عام مع تقييد المعدل — نفس نمط دفع العقود).
      * GET /api/v2/payment/lessor-change/{uuid}
