@@ -96,7 +96,7 @@ class WeeklyOwnerReportService
         $money = static fn ($v) => rtrim(rtrim(number_format((float) $v, 2, '.', ','), '0'), '.');
 
         return implode("\n", array_filter([
-            '📊 تقرير «عقد إيجار» الأسبوعي',
+            '📊 تقرير «عقدي» الأسبوعي',
             "الفترة: {$r['from']} → {$r['to']}",
             '',
             "🧾 الطلبات: {$r['orders']} (مدفوع {$r['paid']})",

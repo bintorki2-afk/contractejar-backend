@@ -84,7 +84,9 @@ class LessorChangeRequest extends Model
 
     public function isPaid(): bool
     {
-        return $this->status !== 'pending_payment' && $this->status !== 'cancelled';
+        // QA-F C8: «مدفوع» = دفع مسجّل فعلاً (paid_at)، لا مجرد حالة غير «بانتظار الدفع»
+        // (رفض طلب غير مدفوع كان يجعله مدفوعاً ويصدر فاتورة وهمية).
+        return $this->paid_at !== null || $this->status === 'paid';
     }
 
     /** يُستدعى من مسار الدفع عند تأكيد الدفع من البوابة. */
@@ -166,6 +168,10 @@ class LessorChangeRequest extends Model
             'created_at' => optional($this->created_at)->format('Y-m-d'),
             'updated_at' => optional($this->updated_at)->format('Y-m-d H:i'),
             'paid_at' => optional($this->paid_at)->format('Y-m-d H:i'),
+            // دفعة (و) — D4: PDF الفاتورة بعد الدفع.
+            'has_invoice' => $this->isPaid(),
+            'invoice_pdf_url' => $pdfUrl = \App\Services\Invoices\InvoicePdfService::lessorChangeUrl($this),
+            'invoice_pdf_download_url' => \App\Services\Invoices\InvoicePdfService::downloadUrl($pdfUrl),
         ];
     }
 }

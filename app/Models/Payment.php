@@ -44,6 +44,29 @@ class Payment extends Model
     /** بادئة مفتاح فاتورة Moyasar لدفعات الرسوم: chg-{uuid}-{charge_id}. */
     public const CHARGE_KEY_PREFIX = 'chg-';
 
+    /**
+     * دفعة (و): كل دفعة جديدة تُربط بالطلب عبر contract_id (أساس فلتر «مدفوع» وحالة الدفع)،
+     * حتى لو أنشأها مسار يمرّر contract_uuid فقط (بما فيه «{uuid}-N» و«chg-{uuid}-{id}»).
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (self $payment) {
+            if (! empty($payment->contract_id) || empty($payment->contract_uuid)
+                || ! \App\Support\SchemaCache::hasColumn('payments', 'contract_id')) {
+                return;
+            }
+            $key = (string) $payment->contract_uuid;
+            if (str_starts_with($key, self::CHARGE_KEY_PREFIX)) {
+                $key = substr($key, strlen(self::CHARGE_KEY_PREFIX));
+            }
+            $base = str_contains($key, '-') ? strstr($key, '-', true) : $key;
+            $id = \App\Models\Contract::query()->where('uuid', $base)->value('id');
+            if ($id !== null) {
+                $payment->contract_id = $id;
+            }
+        });
+    }
+
     public static function chargeKey(string $contractUuid, int $chargeId): string
     {
         return self::CHARGE_KEY_PREFIX.$contractUuid.'-'.$chargeId;

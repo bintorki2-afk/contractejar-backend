@@ -4,6 +4,13 @@ use App\Modules\RealEstate\Controllers\Admin\RealEstateController;
 use App\Modules\RealEstate\Controllers\Admin\UnitRealController;
 use Illuminate\Support\Facades\Route;
 
+// دفعة (و) — D6: سلة محذوفات العقارات والوحدات (قبل مسار /{id}).
+Route::prefix('real-estates')->name('real-estates.')->controller(RealEstateController::class)->middleware(['auth:sanctum', 'permission:real_estates.delete'])->group(function () {
+    Route::get('/trash', 'trash')->name('trash');
+    Route::post('/{id}/restore', 'restore')->whereNumber('id')->name('restore');
+    Route::post('/units/{id}/restore', 'restoreUnit')->whereNumber('id')->name('units.restore');
+});
+
 // Real Estate Management
 Route::prefix('real-estates')->name('real-estates.')->controller(RealEstateController::class)->middleware(['auth:sanctum', 'permission:real_estates.view'])->group(function () {
     Route::get('/', 'index')->name('index');

@@ -41,7 +41,7 @@ class AdminOrderQueryService
 
             $orders = $this->baseOrdersQuery($request)
                 ->where('contract_status_id', $statusId)
-                ->when($isCompleted !== null, fn ($q) => $q->where('is_completed', $isCompleted ? 1 : 0)
+                ->when($isCompleted !== null, fn ($q) => $q->paymentPaid((bool) $isCompleted)
                 )
                 ->latest()
                 ->paginate($this->perPage($request, 120, 200));
@@ -68,7 +68,7 @@ class AdminOrderQueryService
             $statusKeys = $this->resolveStatusKeysFromRequest($request);
 
             $orders = $this->baseOrdersQuery($request)
-                ->where('is_completed', $isCompleted ? 1 : 0)
+                ->paymentPaid((bool) $isCompleted)
                 ->tap(fn ($q) => $this->applyStatusKeysFilter($q, $statusKeys))
                 ->latest()
                 ->paginate($this->perPage($request, 120, 200));
@@ -201,7 +201,7 @@ class AdminOrderQueryService
         // «تم الدفع» افتراضية: صف «جديد» المدفوع (لم ينتقل بعد). by_key.new = غير المدفوع فقط
         // حتى يطابق ?status_key=new، و by_key.paid = المدفوع — والمجموع = عدد صف «جديد».
         $newId = ContractStatus::idFor(ContractStatus::KEY_NEW);
-        $paidNew = $newId !== null ? (clone $listed)->where('contract_status_id', $newId)->where('is_completed', 1)->count() : 0;
+        $paidNew = $newId !== null ? (clone $listed)->where('contract_status_id', $newId)->paymentPaid(true)->count() : 0;
         $byKey[ContractStatus::KEY_PAID] = ($byKey[ContractStatus::KEY_PAID] ?? 0) + $paidNew;
         $byKey[ContractStatus::KEY_NEW] = max(0, ($byKey[ContractStatus::KEY_NEW] ?? 0) - $paidNew);
 
@@ -209,8 +209,8 @@ class AdminOrderQueryService
 
         return [
             'all' => $all,
-            'paid' => (clone $listed)->where('is_completed', 1)->count(),
-            'unpaid' => (clone $listed)->where('is_completed', 0)->count(),
+            'paid' => (clone $listed)->paymentPaid(true)->count(),
+            'unpaid' => (clone $listed)->paymentPaid(false)->count(),
             'incomplete' => $incomplete,
             'no_status' => (int) ($byStatusId[''] ?? $byStatusId[0] ?? 0),
             'by_key' => $byKey,
@@ -274,6 +274,8 @@ class AdminOrderQueryService
 
         $keys = is_array($raw) ? $raw : explode(',', (string) $raw);
         $keys = array_values(array_unique(array_filter(array_map(static fn ($k) => strtolower(trim((string) $k)), $keys))));
+        // دفعة (و) — D1: «received» القديم = «مستلم من الموظف».
+        $keys = array_values(array_unique(array_map(static fn ($k) => ContractStatus::LEGACY_KEY_ALIASES[$k] ?? $k, $keys)));
 
         foreach ($keys as $key) {
             if (! in_array($key, ContractStatus::KEYS, true)) {
@@ -302,9 +304,9 @@ class AdminOrderQueryService
             if ($newId !== null && in_array(ContractStatus::KEY_NEW, $keys, true) && in_array(ContractStatus::KEY_PAID, $keys, true)) {
                 $q->orWhere('contract_status_id', $newId);
             } elseif ($newId !== null && in_array(ContractStatus::KEY_NEW, $keys, true)) {
-                $q->orWhere(fn ($w) => $w->where('contract_status_id', $newId)->where('is_completed', 0));
+                $q->orWhere(fn ($w) => $w->where('contract_status_id', $newId)->paymentPaid(false));
             } elseif ($newId !== null && in_array(ContractStatus::KEY_PAID, $keys, true)) {
-                $q->orWhere(fn ($w) => $w->where('contract_status_id', $newId)->where('is_completed', 1));
+                $q->orWhere(fn ($w) => $w->where('contract_status_id', $newId)->paymentPaid(true));
             }
         });
     }
@@ -490,7 +492,7 @@ class AdminOrderQueryService
             // دفعة (د): المدفوع ينتقل تلقائياً إلى «قيد المراجعة» — يبقى بانتظار الاستلام حتى يستلمه موظف.
             ->whereIn('contract_status_id', $this->awaitingReceiptStatusIds())
             ->whereDoesntHave('receivedContract')
-            ->when($request->has('is_completed'), fn ($q) => $q->where('is_completed', $request->boolean('is_completed') ? 1 : 0)
+            ->when($request->has('is_completed'), fn ($q) => $q->paymentPaid($request->boolean('is_completed'))
             )
             ->when($request->filled('contract_type'), fn ($q) => $q->where('contract_type', $request->contract_type)
             )
@@ -536,7 +538,7 @@ class AdminOrderQueryService
             ->reachedAdminOrderStep()
             ->whereIn('contract_status_id', $this->awaitingReceiptStatusIds())
             ->whereDoesntHave('receivedContract')
-            ->when($isCompleted !== null, fn ($q) => $q->where('is_completed', $isCompleted ? 1 : 0)
+            ->when($isCompleted !== null, fn ($q) => $q->paymentPaid((bool) $isCompleted)
             )
             ->when($request->filled('search'), fn ($q) => $q->adminSearch($request->string('search')->toString())
             )
@@ -786,7 +788,7 @@ class AdminOrderQueryService
         $statusId = $this->resolveContractStatusIdFromRequest($request);
 
         $query
-            ->when($request->has('is_completed'), fn ($q) => $q->where('is_completed', $request->boolean('is_completed') ? 1 : 0)
+            ->when($request->has('is_completed'), fn ($q) => $q->paymentPaid($request->boolean('is_completed'))
             )
             ->when($request->filled('status'), function ($q) use ($status) {
                 if (is_numeric($status)) {
@@ -880,7 +882,7 @@ class AdminOrderQueryService
         } elseif (in_array($attention, ['charge_pending', 'awaiting_charge'], true) && \App\Support\SchemaCache::hasTable('contract_charges')) {
             $query->whereIn('contracts.id', \App\Models\ContractCharge::query()->select('contract_id')->where('status', \App\Models\ContractCharge::STATUS_PENDING));
         } elseif ($attention === 'unpaid') {
-            $query->where('contracts.is_completed', 0);
+            $query->paymentPaid(false);
         }
     }
 }

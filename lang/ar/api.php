@@ -4,7 +4,7 @@ return [
 
     'app' => 'تطبيق العقد الإلكتروني',
 
-    'waitContract' => ' مازال العمل علي توثيق العقد جاري',
+    'waitContract' => 'ما زال العمل على توثيق العقد جارياً',
     'success' => 'نجحت العملية',
     'success_remove' => 'تم حذف الملف الشخصي بنجاح',
     'profile_not_exist' => 'الحساب الشخصي غير متوفر ',
@@ -158,6 +158,7 @@ return [
     'discount_fixed_invalid' => 'قيمة الخصم يجب أن تكون أكبر من صفر',
     'discount_exceeds_contract_total' => 'قيمة الخصم أكبر من إجمالي العقد',
     'discount_coupon_already_applied' => 'يوجد كوبون مطبّق مسبقاً على هذا العقد',
+    'unit_has_contracts' => 'لا يمكن حذف الوحدة لأنها مرتبطة بطلبات',
     'property_has_contracts' => 'لا يمكن حذف العقار لأنه مرتبط بعقود',
     'unit_not_found' => 'الوحدة غير موجودة',
     'unit_has_contracts' => 'لا يمكن حذف الوحدة لأنها مرتبطة بعقود',

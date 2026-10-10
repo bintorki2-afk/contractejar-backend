@@ -66,7 +66,7 @@ class OrderDetailExtrasTest extends BatchETestCase
         $this->assertSame('الرياض · الرياض · النرجس · الأمير', $d['address']['line1']);
         $this->assertNull($d['address']['map_url']);
         $this->assertSame('old_handwritten', $d['document']['type_key']);
-        $this->assertSame('صك يدوي قديم', $d['document']['type_label']);
+        $this->assertSame('صك ملكية ورقي', $d['document']['type_label']);
         $this->assertSame('440123456789', $d['document']['deed_number']);
         $this->assertSame('10/05/1440', $d['document']['deed_date_hijri']);
         $this->assertSame('2019-01-16', $d['document']['deed_date_gregorian']);
@@ -116,7 +116,7 @@ class OrderDetailExtrasTest extends BatchETestCase
         $this->assertSame('باسم المستأجر', $u['meters'][0]['ownership_label']);
         $this->assertTrue($u['meters'][1]['shared']);
         $this->assertEquals(150, $u['meters'][1]['monthly_amount']);
-        $this->assertSame('مشترك · 150 ر.س/شهر', $u['meters'][1]['summary']);
+        $this->assertSame('مشترك · 150 ر.س/شهر × 12 شهر = 1,800 ر.س', $u['meters'][1]['summary']);
         // المصدر الوحيد للعدادات: 2 عداد كهرباء باسم المستأجر × 15.
         $this->assertSame(2, $d['meter_fees']['electricity_meter_count']);
     }

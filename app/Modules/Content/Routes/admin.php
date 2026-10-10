@@ -169,3 +169,17 @@ Route::prefix('ads')->name('admin-ads.')->controller(AdController::class)->middl
     Route::post('/{id}', 'update')->whereNumber('id')->middleware('permission:ads.edit')->name('update');
     Route::post('/{id}/delete', 'destroy')->whereNumber('id')->middleware('permission:ads.delete')->name('destroy');
 });
+
+// دفعة (و) — D7: تقييمات العملاء + ملخص «4.7 من 3000» (قسم «التسويق والمحتوى»).
+Route::prefix('customer-reviews')->name('customer-reviews.')
+    ->controller(\App\Modules\Content\Controllers\Admin\CustomerReviewController::class)
+    ->middleware('auth:sanctum')
+    ->group(function () {
+        Route::get('/', 'index')->middleware('permission:customer_reviews.view')->name('index');
+        Route::post('/', 'store')->middleware('permission:customer_reviews.create')->name('store');
+        Route::get('/settings', 'settings')->middleware('permission:customer_reviews.view')->name('settings');
+        Route::post('/settings', 'updateSettings')->middleware('permission:customer_reviews.edit')->name('settings.update');
+        Route::post('/reorder', 'reorder')->middleware('permission:customer_reviews.edit')->name('reorder');
+        Route::post('/{id}', 'update')->whereNumber('id')->middleware('permission:customer_reviews.edit')->name('update');
+        Route::post('/{id}/delete', 'destroy')->whereNumber('id')->middleware('permission:customer_reviews.delete')->name('destroy');
+    });

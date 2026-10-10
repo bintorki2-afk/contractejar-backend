@@ -396,6 +396,8 @@ class EmployeeKpiService
                         'key' => 'price_difference_count',
                         'label_ar' => 'فروقات سعر',
                         'value' => (int) ($batchE[$employeeId]['price_difference_count'] ?? 0),
+                        // QA-F ORDERS-COM-11: مبلغ فروقات السعر (مثل «رسوم أضافها»).
+                        'amount' => (float) ($batchE[$employeeId]['price_difference_amount'] ?? 0),
                         'tone' => 'default',
                     ],
                     [
@@ -415,6 +417,7 @@ class EmployeeKpiService
                 'fees_added_count' => (int) ($batchE[$employeeId]['fees_added_count'] ?? 0),
                 'fees_added_amount' => (float) ($batchE[$employeeId]['fees_added_amount'] ?? 0),
                 'price_difference_count' => (int) ($batchE[$employeeId]['price_difference_count'] ?? 0),
+                'price_difference_amount' => (float) ($batchE[$employeeId]['price_difference_amount'] ?? 0),
                 'data_requests_count' => (int) ($batchE[$employeeId]['data_requests_count'] ?? 0),
                 'bank_transfers_recorded' => (int) ($batchE[$employeeId]['bank_transfers_recorded'] ?? 0),
                 'bank_transfers_amount' => (float) ($batchE[$employeeId]['bank_transfers_amount'] ?? 0),
@@ -530,7 +533,7 @@ class EmployeeKpiService
     {
         $out = [];
         foreach ($employeeIds as $id) {
-            $out[(int) $id] = ['fees_added_count' => 0, 'fees_added_amount' => 0.0, 'price_difference_count' => 0, 'data_requests_count' => 0, 'bank_transfers_recorded' => 0, 'bank_transfers_amount' => 0.0];
+            $out[(int) $id] = ['fees_added_count' => 0, 'fees_added_amount' => 0.0, 'price_difference_count' => 0, 'price_difference_amount' => 0.0, 'data_requests_count' => 0, 'bank_transfers_recorded' => 0, 'bank_transfers_amount' => 0.0];
         }
         if ($employeeIds === []) {
             return $out;
@@ -553,6 +556,7 @@ class EmployeeKpiService
                     $out[$e]['fees_added_amount'] = round($out[$e]['fees_added_amount'] + (float) $c->amount, 2);
                 } else {
                     $out[$e]['price_difference_count']++;
+                    $out[$e]['price_difference_amount'] = round($out[$e]['price_difference_amount'] + (float) $c->amount, 2);
                 }
             }
         }

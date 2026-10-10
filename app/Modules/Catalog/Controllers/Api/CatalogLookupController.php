@@ -53,9 +53,9 @@ class CatalogLookupController extends Controller
 
     public function bankAccounts()
     {
-        $bankAccounts = $this->rememberCatalog('bank-accounts', fn () => BankAccount::get());
-
-        return $this->apiResponse(BankAccountResource::collection($bankAccounts), trans('api.success'));
+        // QA-F C5 / قرار E2: أرقام حسابات المؤسسة والآيبان لا تظهر للعموم (الموظف يرسلها بنفسه).
+        // النقطة باقية للتوافق مع الإصدارات القديمة من التطبيق لكنها ترجع قائمة فارغة.
+        return $this->apiResponse(BankAccountResource::collection(collect()), trans('api.success'));
     }
 
     public function servicesPricing(FilterByContractTypeRequest $request)

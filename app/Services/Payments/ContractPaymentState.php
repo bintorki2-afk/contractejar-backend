@@ -69,6 +69,11 @@ class ContractPaymentState
         $pending = $charges->where('status', ContractCharge::STATUS_PENDING);
 
         $originalDue = $this->originalDue($contract);
+        // QA-F C2: السعر الحي غير معروف (عقد قديم بلا مدة/رسوم) ⇒ لا نعتبر المستحق صفراً
+        // (كان يُظهر «مستحق للعميل» بكامل المدفوع وزر استرجاع). نأخذ لقطة الدفعة الأصلية.
+        if ($originalDue <= 0.009) {
+            $originalDue = $this->originalPaidSnapshot($payments);
+        }
         $extraDue = round((float) $charges->where('kind', ContractCharge::KIND_EXTRA_FEE)
             ->whereIn('status', [ContractCharge::STATUS_PENDING, ContractCharge::STATUS_PAID])->sum('amount'), 2);
         $dueTotal = round($originalDue + $extraDue, 2);
@@ -79,6 +84,13 @@ class ContractPaymentState
         $outstanding = round(max(0, $dueTotal - $netTotal), 2);
         $refundDue = $pending->isEmpty() ? round(max(0, $netTotal - $dueTotal), 2) : 0.0;
         $pendingTotal = round((float) $pending->sum('amount'), 2);
+
+        // QA-F C12: رسم معلّق = المتبقي على العميل دائماً، بنفس منطق summaryForList (القائمة/التتبّع)
+        // — كانت الصفحة تقول «مدفوع» والقائمة «مدفوع جزئياً» لنفس الطلب.
+        if ($pending->isNotEmpty()) {
+            $outstanding = round(max($outstanding, $pendingTotal), 2);
+        }
+        $labelDue = $pending->isNotEmpty() ? round($netTotal + $outstanding, 2) : $dueTotal;
 
         $status = $this->status($paidTotal, $refundedTotal, $outstanding);
         $method = $this->method($payments);
@@ -105,12 +117,43 @@ class ContractPaymentState
             'refund_due' => $refundDue,
             'pending_charges_count' => $pending->count(),
             'pending_charges_total' => $pendingTotal,
-            'label' => $this->label($status, $method, $paidTotal, $dueTotal, $refundedTotal, $netTotal),
+            'label' => $this->label($status, $method, $paidTotal, $labelDue, $refundedTotal, $netTotal),
             'can_notarize' => $blockReason === null,
             'notarize_block_reason' => $blockReason,
             'notarize_block_message' => $blockReason !== null ? self::BLOCK_MESSAGES[$blockReason] : null,
             'is_paid' => in_array($status, [self::STATUS_PAID, self::STATUS_PARTIALLY_REFUNDED], true),
+            ...$this->refundPending($contract, $refundedTotal),
         ];
+    }
+
+    /**
+     * QA-F WEB-5 / DASH-25: حالة الطلب «مسترجع» بلا أي استرجاع منفّذ فعلاً ⇒ «بانتظار إعادة المبلغ»
+     * (لا نعرض «مدفوع» بجوار «تم الاسترجاع · 0»). لا تغيير في status/الأرقام — الأرقام من الدفعات الفعلية فقط.
+     *
+     * @return array{refund_pending: bool, refund_pending_amount: float|null, refund_pending_label: string|null}
+     */
+    private function refundPending(Contract $contract, float $refundedTotal): array
+    {
+        $none = ['refund_pending' => false, 'refund_pending_amount' => null, 'refund_pending_label' => null];
+        try {
+            $refundedId = \App\Models\ContractStatus::refundedId();
+            if (! $refundedId || (int) $contract->contract_status_id !== (int) $refundedId || $refundedTotal > 0.009) {
+                return $none;
+            }
+            $amount = null;
+            if (SchemaCache::hasTable('refundable_contracts')) {
+                $row = \App\Models\RefundableContract::query()->where('contract_id', $contract->id)->latest('id')->first();
+                $amount = $row && (float) $row->refund_amount > 0 ? round((float) $row->refund_amount, 2) : null;
+            }
+
+            return [
+                'refund_pending' => true,
+                'refund_pending_amount' => $amount,
+                'refund_pending_label' => 'مسترجع — بانتظار إعادة المبلغ'.($amount !== null ? ' · '.rtrim(rtrim(number_format($amount, 2, '.', ''), '0'), '.').' ر.س' : ''),
+            ];
+        } catch (\Throwable) {
+            return $none;
+        }
     }
 
     /**
@@ -186,6 +229,10 @@ class ContractPaymentState
             'charges' => $charges->map(fn (ContractCharge $c) => $this->chargeArray($c, $contract))->values()->all(),
             'invoice_number' => $invoice?->invoice_number,
             'invoice_url' => $withInvoiceUrl ? self::invoiceUrl($contract) : null,
+            // دفعة (و) — D4: ملف PDF حقيقي للفاتورة (فقط بعد الدفع).
+            'has_invoice' => $hasInvoice = ($originalPaid + $extraPaid) > 0.009 || (bool) $contract->is_completed,
+            'invoice_pdf_url' => $pdfUrl = ($withInvoiceUrl ? \App\Services\Invoices\InvoicePdfService::contractUrl($contract, $hasInvoice) : null),
+            'invoice_pdf_download_url' => \App\Services\Invoices\InvoicePdfService::downloadUrl($pdfUrl),
             'totals' => [
                 'original' => round($originalPaid, 2),
                 'extra' => $extraPaid,
@@ -283,7 +330,8 @@ class ContractPaymentState
             'kind_label' => $charge->kindLabel(),
             'amount' => (float) $charge->amount,
             'message' => $charge->message,
-            'internal_reason' => $charge->internal_reason,
+            // QA-F APP-14: السبب الداخلي للموظف لا يخرج أبداً في ردود العميل (الموقع/التطبيق/الفاتورة).
+            'internal_reason' => self::isStaffContext() ? $charge->internal_reason : null,
             'status' => $charge->status,
             'status_label' => $charge->statusLabel(),
             'payment_url' => $pending && $contract !== null ? CustomerLinks::route('v2.contracts.charges.pay', ['uuid' => (string) $contract->uuid, 'cid' => $charge->id]) : null,
@@ -294,6 +342,23 @@ class ContractPaymentState
             'created_at' => $charge->created_at?->toIso8601String(),
             'cancelled_at' => $charge->cancelled_at?->toIso8601String(),
         ];
+    }
+
+    /**
+     * هل الطلب الحالي من اللوحة (أو مهمة خلفية)؟ ردود العميل (/api/v2/*) لا تحمل الحقول الداخلية.
+     */
+    public static function isStaffContext(): bool
+    {
+        try {
+            if (app()->runningInConsole() && ! app()->runningUnitTests()) {
+                return true;
+            }
+            $request = request();
+
+            return $request->is('api/admin/*') || $request->is('admin/*');
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**
@@ -350,6 +415,19 @@ class ContractPaymentState
         } catch (\Throwable) {
             return 0.0;
         }
+    }
+
+    /**
+     * مجموع الدفعات الأصلية الناجحة (غير المرتبطة برسم) — بديل السعر الحي حين يتعذّر حسابه.
+     *
+     * @param  Collection<int, Payment>  $payments
+     */
+    private function originalPaidSnapshot(Collection $payments): float
+    {
+        return round((float) $payments
+            ->filter(fn (Payment $p) => empty($p->charge_id)
+                && in_array($this->paymentKind($p), [Payment::KIND_ORIGINAL, Payment::KIND_BANK_TRANSFER], true))
+            ->sum('amount'), 2);
     }
 
     public function paymentKind(Payment $p): string

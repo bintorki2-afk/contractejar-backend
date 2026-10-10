@@ -10,6 +10,12 @@ Route::get('/lessor-change/{request}/image/{field}', [LessorChangeController::cl
     ->middleware('signed')
     ->name('lessor-change.image');
 
+// دفعة (و) — D4: PDF فاتورة تغيير المؤجر (رابط موقّع مؤقت).
+Route::get('/lessor-change/invoice-pdf/{lessorChange}', [LessorChangeController::class, 'invoicePdf'])
+    ->whereNumber('lessorChange')
+    ->middleware('signed')
+    ->name('v2.lessor-change.invoice-pdf');
+
 Route::get('/payment/lessor-change/{uuid}', [LessorChangeController::class, 'pay'])
     ->middleware('throttle:payment-public')
     ->name('v2.payment.lessor-change');

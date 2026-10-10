@@ -139,7 +139,7 @@ class MoyasarPaymentService extends BasePaymentService implements PaymentGateway
             'enabled' => true,
             'publishable_key' => $publishableKey,
             'merchant_id' => $merchantId,
-            'merchant_display_name' => (string) config('services.moyasar.apple_merchant_display_name', 'عقد إيجار'),
+            'merchant_display_name' => (string) config('services.moyasar.apple_merchant_display_name', 'عقدي'),
             'country' => 'SA',
             'currency' => $this->currency,
             'amount' => $this->toMinorUnits($cartAmount),

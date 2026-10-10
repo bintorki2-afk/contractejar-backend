@@ -27,3 +27,6 @@ Route::prefix('content-pages')->controller(V2ContentPageController::class)->grou
     Route::get('/', 'index');
     Route::get('/{pageKey}', 'show')->where('pageKey', 'home|about|faq|faqs|blogs|services');
 });
+
+// دفعة (و) — D7: التقييمات العامة (ملخص + القائمة الظاهرة).
+Route::get('/reviews', [\App\Modules\Content\Controllers\Api\V2\ReviewController::class, 'index'])->middleware('throttle:120,1');

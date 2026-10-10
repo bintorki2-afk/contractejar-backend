@@ -12,6 +12,8 @@ class ValidateSignature extends Middleware
      * @var array<int, string>
      */
     protected $except = [
+        // دفعة (و) — D4: ?download=1 يغيّر Content-Disposition فقط (لا يمنح وصولاً).
+        'download',
         // 'fbclid',
         // 'utm_campaign',
         // 'utm_content',

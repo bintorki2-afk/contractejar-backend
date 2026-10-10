@@ -3,10 +3,49 @@
 namespace App\Modules\Contracts\Models\Concerns;
 
 use App\Models\Contract;
+use App\Models\ContractStatus;
 use App\Models\Payment;
 
 trait HasContractScopes
 {
+    /**
+     * QA-F C6: فلتر «مدفوع / غير مدفوع» من الدفعات الفعلية (نفس مصدر شارة الدفع)، لا من is_completed.
+     * مدفوع = مجموع الدفعات الناجحة > مجموع الاسترجاعات الناجحة.
+     */
+    public function scopePaymentPaid($query, bool $paid = true)
+    {
+        $payments = Payment::query()
+            ->selectRaw('coalesce(sum(payments.amount), 0)')
+            ->where('payments.status', 'success')
+            ->where(function ($q) {
+                // الأداء على MySQL: contract_id (مفهرس ومُعبّأ منذ دفعة هـ) هو الربط الأساسي؛ مطابقة
+                // contract_uuid الحرفية فقط لصفوف قديمة بلا contract_id. لا LIKE على عمود (يمنع الفهرس).
+                if (\App\Support\SchemaCache::hasColumn('payments', 'contract_id')) {
+                    $q->whereColumn('payments.contract_id', 'contracts.id')
+                        ->orWhere(fn ($w) => $w->whereNull('payments.contract_id')->whereColumn('payments.contract_uuid', 'contracts.uuid'));
+                } else {
+                    $q->whereColumn('payments.contract_uuid', 'contracts.uuid')
+                        ->orWhereRaw(\Illuminate\Support\Facades\DB::getDriverName() === 'sqlite'
+                            ? "payments.contract_uuid LIKE (CAST(contracts.uuid AS TEXT) || '-%')"
+                            : "payments.contract_uuid LIKE CONCAT(CAST(contracts.uuid AS CHAR), '-%')");
+                }
+            });
+
+        $sql = '('.$payments->toSql().')';
+        $bindings = $payments->getBindings();
+
+        if (\App\Support\SchemaCache::hasTable('refunds')) {
+            $refunds = \App\Models\Refund::query()
+                ->selectRaw('coalesce(sum(refunds.amount), 0)')
+                ->whereColumn('refunds.contract_id', 'contracts.id')
+                ->where('refunds.status', \App\Models\Refund::STATUS_SUCCEEDED);
+            $sql .= ' - ('.$refunds->toSql().')';
+            $bindings = array_merge($bindings, $refunds->getBindings());
+        }
+
+        return $query->whereRaw('('.$sql.') '.($paid ? '>' : '<=').' 0.009', $bindings);
+    }
+
     public function scopeNotDeleted($query)
     {
         return $query->where('is_delete', 0);
@@ -152,6 +191,19 @@ trait HasContractScopes
         }
 
         return $query;
+    }
+
+    /**
+     * دفعة (و) — B14: مسودة لم تُرسل بعد (step < 7، غير مدفوعة، حالتها «جديد» أو بلا حالة، ولم يستلمها موظف).
+     */
+    public function scopeNotSubmitted($query)
+    {
+        $newId = ContractStatus::newId();
+
+        return $query->where('step', '<', \App\Support\ContractSubmission::SUBMITTED_STEP)
+            ->where('is_completed', 0)
+            ->where(fn ($q) => $q->whereNull('contract_status_id')->orWhere('contract_status_id', 0)->orWhere('contract_status_id', $newId))
+            ->when(\App\Support\SchemaCache::hasTable('received_contracts'), fn ($q) => $q->whereDoesntHave('receivedContract'));
     }
 
     public function scopeCompleted($query)

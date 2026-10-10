@@ -343,6 +343,13 @@ class OrderDetailExtras
     private function meters(object $u, Contract $contract): array
     {
         $out = [];
+        // QA-F ORDERS-RES-8: العداد المشترك = شهري × أشهر العقد كاملة (قرار دفعة د) — يُعرض البند كاملاً للموظف.
+        try {
+            $months = \App\Support\DocFee::contractMonths($contract);
+        } catch (\Throwable) {
+            $months = 12;
+        }
+        $fmt = static fn (float $v): string => rtrim(rtrim(number_format($v, 2, '.', ','), '0'), '.');
         foreach (['electricity' => ['label' => 'عداد الكهرباء', 'icon' => 'zap'], 'water' => ['label' => 'عداد المياه', 'icon' => 'droplets']] as $kind => $meta) {
             $ownership = $u->{$kind.'_meter_ownership'} ?? null;
             $number = $u->{$kind.'_meter_number'} ?? null;
@@ -366,8 +373,10 @@ class OrderDetailExtras
                 },
                 'shared' => $shared,
                 'monthly_amount' => $shared && $monthly !== null && $monthly !== '' ? (float) $monthly : null,
+                'months' => $shared && $monthly !== null && $monthly !== '' ? $months : null,
+                'total_amount' => $shared && $monthly !== null && $monthly !== '' ? round((float) $monthly * $months, 2) : null,
                 'summary' => $shared
-                    ? 'مشترك'.($monthly !== null && $monthly !== '' ? ' · '.rtrim(rtrim(number_format((float) $monthly, 2, '.', ''), '0'), '.').' ر.س/شهر' : '')
+                    ? 'مشترك'.($monthly !== null && $monthly !== '' ? ' · '.$fmt((float) $monthly).' ر.س/شهر × '.$months.' شهر = '.$fmt((float) $monthly * $months).' ر.س' : '')
                     : (match ($ownership) { 'tenant' => 'باسم المستأجر', 'owner' => 'باسم المالك', default => '' }),
             ];
         }
@@ -406,17 +415,39 @@ class OrderDetailExtras
             if ($url === null) {
                 continue;
             }
-            $row = ['key' => $key, 'label' => $label, 'url' => $url];
+            // QA-F ORDERS-RES-4 / ORDERS-COM-8: نوع الملف من الامتداد المخزّن (PDF لا يُعرض كصورة ولا يوسَم jpg).
+            $row = array_merge(['key' => $key, 'label' => $label, 'url' => $url], self::fileType($raw));
             if ($key === 'image_instrument') {
                 $pages = DeedImage::signedPageUrls($contract);
                 if ($pages !== []) {
                     $row['pages'] = $pages;
+                    $rawPages = array_values(array_filter((array) ($contract->image_instrument_pages ?? []), static fn ($p) => is_string($p) && trim($p) !== ''));
+                    $row['pages_meta'] = array_map(static fn ($url, $rawPage) => array_merge(['url' => $url], self::fileType($rawPage)), $pages, array_slice($rawPages, 0, count($pages)));
                 }
             }
             $out[] = $row;
         }
 
         return $out;
+    }
+
+    /** @return array{mime: string|null, extension: string|null, is_pdf: bool} */
+    public static function fileType(?string $raw): array
+    {
+        $path = strtolower((string) parse_url(trim((string) $raw), PHP_URL_PATH));
+        $ext = pathinfo($path, PATHINFO_EXTENSION);
+        $ext = $ext !== '' ? $ext : null;
+        $mime = match ($ext) {
+            'pdf' => 'application/pdf',
+            'jpg', 'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'webp' => 'image/webp',
+            'gif' => 'image/gif',
+            'heic' => 'image/heic',
+            default => null,
+        };
+
+        return ['mime' => $mime, 'extension' => $ext === 'jpeg' ? 'jpg' : $ext, 'is_pdf' => $ext === 'pdf'];
     }
 
     private function publicUrl(string $raw): ?string
@@ -460,9 +491,10 @@ class OrderDetailExtras
         $t = is_string($type) ? trim($type) : '';
 
         return match (true) {
-            $t === '' || in_array($t, ['1', '0', 'true', 'false'], true) => 'نعم',
-            $t === 'new' => 'نعم — أثاث جديد',
-            $t === 'used' => 'نعم — أثاث مستعمل',
+            // QA-F ORDERS-RES-7: الموقع يرسل type_furnished=true (جديد) / false (مستعمل) فيُخزَّن 1/0.
+            $t === '' => 'نعم',
+            in_array($t, ['new', '1', 'true'], true) => 'نعم — أثاث جديد',
+            in_array($t, ['used', '0', 'false'], true) => 'نعم — أثاث مستعمل',
             default => 'نعم — '.$t,
         };
     }

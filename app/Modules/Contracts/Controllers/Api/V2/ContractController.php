@@ -352,15 +352,66 @@ class ContractController extends Controller
         }
 
         $service = app(\App\Services\DataRequests\ContractDataRequestService::class);
-        $resolved = $before['fix_mode'] ? $service->autoResolve($contract, $changed) : [];
+        $partial = [];
+        $resolved = $before['fix_mode'] ? $service->autoResolve($contract, $changed, $partial) : [];
+
+        // QA-F W-10: تعديل حقول على طلب مدفوع لا يحلّها أي طلب مرفق ⇒ سجل + إشعار الموظف.
+        $handledFields = [];
+        foreach ($resolved as $r) {
+            $handledFields = array_merge($handledFields, (array) ($r->resolved_fields ?? []));
+        }
+        foreach ($partial as $p) {
+            $handledFields = array_merge($handledFields, (array) ($p['request']->resolved_fields ?? []));
+        }
+        $ignored = ['updated_at', 'step', 'created_at', 'is_draft'];
+        $unhandled = array_values(array_diff($changed, $handledFields, $ignored));
+        if ($before['fix_mode'] && $unhandled !== [] && $this->hasAnyPayment($contract)) {
+            // مع حلّ/استيفاء في نفس الإرسال: الموظف أُشعر أصلاً ⇒ سجل فقط بلا إشعار ثانٍ.
+            $service->recordCustomerEdit($contract, $unhandled, $step, notify: $resolved === [] && $partial === []);
+        }
+
+        // QA-F APP-7: رسالة وحالة بحسب نتيجة الخادم (لا «تم الإرسال» ثابتة).
+        $remaining = [];
+        foreach ($partial as $p) {
+            $remaining = array_merge($remaining, $p['remaining']);
+        }
+        if (! $before['fix_mode']) {
+            $result = 'saved';
+            $message = null;
+        } elseif ($resolved !== [] && $remaining === []) {
+            $result = 'resolved';
+            $message = 'تم الإرسال — سيراجعها الموظف.';
+        } elseif ($partial !== []) {
+            $result = 'partial';
+            $message = 'استلمنا جزءاً من المطلوب — بقي: '.implode('، ', array_unique($remaining)).'.';
+        } elseif ($changed !== []) {
+            $result = 'saved';
+            $message = 'تم حفظ تعديلك وإبلاغ الموظف.';
+        } else {
+            $result = 'unchanged';
+            $message = 'لم يتغيّر شيء — عدّل البيانات المطلوبة ثم أرسل.';
+        }
 
         return [
             'fix_mode' => $before['fix_mode'],
             'changed_fields' => $changed,
             'resolved_request_ids' => array_map(static fn ($r) => (int) $r->id, $resolved),
+            'partially_resolved_request_ids' => array_map(static fn ($p) => (int) $p['request']->id, $partial),
+            'remaining_items' => array_values(array_unique($remaining)),
+            'result' => $result,
             'pending_data_requests' => $service->pendingForCustomer($contract),
-            'message' => $resolved !== [] ? 'تم الإرسال — سيراجعها الموظف.' : null,
+            'message' => $message,
         ];
+    }
+
+    private function hasAnyPayment(Contract $contract): bool
+    {
+        try {
+            return (float) (app(\App\Services\Payments\ContractPaymentState::class)->summaryForList($contract)['paid_total'] ?? 0) > 0.009
+                || (bool) $contract->is_completed;
+        } catch (\Throwable) {
+            return (bool) $contract->is_completed;
+        }
     }
 
     public function docFeePreview(DocFeePreviewRequest $request, PreviewDocFeeAction $action)

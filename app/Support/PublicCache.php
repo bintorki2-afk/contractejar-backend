@@ -23,6 +23,9 @@ final class PublicCache
 
     public const KEY_COUPON_AVAILABLE = 'public.coupons.available';
 
+    /** دفعة (و) — D7: التقييمات العامة. */
+    public const KEY_REVIEWS = 'public.reviews';
+
     /** اللغات المدعومة في الـ API (مفتاح الكاش يتضمن اللغة). */
     public const LOCALES = ['ar', 'en'];
 
@@ -53,7 +56,7 @@ final class PublicCache
     /** تفريغ كل مفاتيح النقاط العامة لكل اللغات (يُستدعى من حفظ الإعدادات/المدد/الكوبونات). */
     public static function flush(): void
     {
-        foreach ([self::KEY_PRICING, self::KEY_SETTINGS, self::KEY_CONTRACT_PERIODS, self::KEY_COUPON_AVAILABLE] as $key) {
+        foreach ([self::KEY_PRICING, self::KEY_SETTINGS, self::KEY_CONTRACT_PERIODS, self::KEY_COUPON_AVAILABLE, self::KEY_REVIEWS] as $key) {
             foreach (self::LOCALES as $locale) {
                 try {
                     Cache::forget($key.'.'.$locale);

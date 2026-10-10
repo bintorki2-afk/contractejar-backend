@@ -82,6 +82,9 @@ class CustomerNotificationService
 
     public const KIND_DATA_REQUEST_RESOLVED = 'data_request_resolved';
 
+    /** دفعة (و) — D9: مسودة العقد جاهزة للمراجعة (الدفع بعد مشاهدة المسودة). */
+    public const KIND_DRAFT_READY = 'draft_ready';
+
     /** الأنواع المعروفة (للفلترة في اللوحة). دفعة (هـ): draft_sent أُلغي (يبقى للصفوف القديمة فقط). */
     public const KINDS = [
         self::KIND_NOTARIZED,
@@ -102,12 +105,14 @@ class CustomerNotificationService
         self::KIND_CHARGE_PAYMENT_REQUEST,
         self::KIND_CHARGE_PAID,
         self::KIND_PRICE_DIFFERENCE,
+        self::KIND_DRAFT_READY,
     ];
 
     public const KIND_LABELS = [
         self::KIND_CHARGE_PAYMENT_REQUEST => 'طلب دفع رسوم',
         self::KIND_CHARGE_PAID => 'دفع رسوم (للموظفين)',
         self::KIND_PRICE_DIFFERENCE => 'فرق سعر',
+        self::KIND_DRAFT_READY => 'مسودة العقد جاهزة',
         self::KIND_DATA_REQUEST_RESOLVED => 'رد العميل على طلب مرفق (للموظفين)',
         self::KIND_ASSIGNED => 'إسناد الطلب',
         self::KIND_DATA_MISSING => 'بيانات ناقصة',
@@ -482,6 +487,39 @@ class CustomerNotificationService
         );
     }
 
+    /**
+     * QA-F W-12: إلغاء الرسم من اللوحة ⇒ إشعار «ادفع من الرابط» يُعلَّم ملغى (لا يبقى يطالب العميل بالدفع).
+     */
+    public function chargeCancelled(Contract $contract, \App\Models\ContractCharge $charge): int
+    {
+        try {
+            $order = $this->orderNumber($contract);
+            $amountLabel = rtrim(rtrim(number_format((float) $charge->amount, 2, '.', ''), '0'), '.');
+            $updated = 0;
+            $rows = Offer::query()->where('contract_id', $contract->id)
+                ->whereIn('kind', [self::KIND_CHARGE_PAYMENT_REQUEST, self::KIND_PRICE_DIFFERENCE])->get();
+            foreach ($rows as $offer) {
+                $data = is_array($offer->data) ? $offer->data : [];
+                if ((int) ($data['charge_id'] ?? 0) !== (int) $charge->id) {
+                    continue;
+                }
+                $offer->forceFill([
+                    'title' => 'أُلغيت الرسوم',
+                    'body' => "طلبك رقم {$order}: أُلغيت ".$charge->kindLabel()." ({$amountLabel} ر.س) — لا يلزمك أي دفع لها.",
+                    'url' => SmartLink::for($contract),
+                    'data' => array_merge($data, ['cancelled' => true, 'payment_url' => null, 'charge_status' => 'cancelled']),
+                ])->save();
+                $updated++;
+            }
+
+            return $updated;
+        } catch (\Throwable $e) {
+            Log::warning('charge cancel notification update failed', ['contract_id' => $contract->id, 'error' => $e->getMessage()]);
+
+            return 0;
+        }
+    }
+
     /** دفعة (هـ) — E5: نجاح دفع رسوم (payment_success مع رسالة الرسوم). */
     public function chargePaid(Contract $contract, \App\Models\ContractCharge $charge): ?Offer
     {
@@ -544,6 +582,26 @@ class CustomerNotificationService
         } catch (\Throwable $e) {
             Log::warning('Employee notification log failed', ['contract_id' => $contract->id, 'error' => $e->getMessage()]);
         }
+    }
+
+    /** دفعة (و) — D9: رُفعت مسودة العقد — راجعها وادفع للتوثيق. */
+    public function draftReady(Contract $contract): ?Offer
+    {
+        $user = $this->ownerOf($contract);
+        if ($user === null) {
+            return null;
+        }
+        $order = $this->orderNumber($contract);
+
+        return $this->notify(
+            $user,
+            self::KIND_DRAFT_READY,
+            'مسودة عقدك جاهزة',
+            "مسودة عقدك جاهزة — راجعها وادفع للتوثيق (طلب رقم {$order})",
+            ['type' => 'draft_ready', 'deep_link' => SmartLink::for($contract)],
+            contract: $contract,
+            dedupe: false,
+        );
     }
 
     /** استرجاع المبلغ (كلي/جزئي). */

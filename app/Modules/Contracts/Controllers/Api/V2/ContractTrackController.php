@@ -86,16 +86,65 @@ class ContractTrackController extends Controller
             'journey_side_state' => \App\Support\ContractJourney::sideState($contract),
             'journey_sentence' => \App\Support\ContractJourney::RULE_SENTENCE,
             // دفعة (هـ) — 2.1/2.3/2.4: حالة الدفع + التفاصيل + الرسوم + طلبات المرفق الناقص.
-            'payment_state' => ($paymentState = app(\App\Services\Payments\ContractPaymentState::class))->state($contract),
-            'payment_details' => $paymentState->details($contract),
+            'payment_state' => $trackState = ($paymentState = app(\App\Services\Payments\ContractPaymentState::class))->state($contract),
+            // QA-F W-30: is_paid = الدفعة الأصلية فقط؛ هذا الحقل يقول إن على العميل مبلغاً متبقياً (رسم معلّق/فرق).
+            'has_outstanding' => (float) ($trackState['outstanding'] ?? 0) > 0.009,
+            'outstanding' => (float) ($trackState['outstanding'] ?? 0),
+            'payment_details' => $trackDetails = $paymentState->details($contract),
+            // دفعة (و) — D4/B16: PDF الفاتورة بعد الدفع فقط.
+            'has_invoice' => (bool) ($trackDetails['has_invoice'] ?? false),
+            'invoice_url' => $trackDetails['invoice_url'] ?? null,
+            'invoice_pdf_url' => $trackDetails['invoice_pdf_url'] ?? null,
+            'invoice_pdf_download_url' => $trackDetails['invoice_pdf_download_url'] ?? null,
+            // دفعة (و) — B14 + D9.
+            'is_submitted' => \App\Support\ContractSubmission::isSubmitted($contract),
+            'is_resumable_draft' => \App\Support\ContractSubmission::isResumableDraft($contract),
+            ...\App\Services\Orders\DraftDocumentService::customerFields($contract),
+            'pay_after_draft_enabled' => \App\Models\Setting::payAfterDraftEnabled(),
             'charges' => app(\App\Services\Charges\ChargeService::class)->forCustomer($contract),
             'pending_data_requests' => app(\App\Services\DataRequests\ContractDataRequestService::class)->pendingForCustomer($contract),
             'activities' => app(\App\Services\Orders\ContractActivityLogger::class)->forCustomer($contract),
             'refund' => $refund = \App\Services\Payments\PaymentRefundService::summaryFor($contract),
             'refunded_amount' => $refund['amount'],
             'created_at' => optional($contract->created_at)->format('Y-m-d'),
-            'updated_at' => optional($contract->updated_at)->format('Y-m-d H:i'),
+            // QA-F W-11: «آخر تحديث» يتحرك مع الرسوم وطلبات المرفق الناقص والسجل (لا contracts.updated_at وحده).
+            'updated_at' => optional($lastActivity = $this->lastActivityAt($contract))->format('Y-m-d H:i'),
+            'last_activity_at' => optional($lastActivity)->toIso8601String(),
         ], trans('api.success'));
+    }
+
+    private function lastActivityAt(Contract $contract): ?\Illuminate\Support\Carbon
+    {
+        $candidates = [$contract->updated_at];
+        $sources = [
+            'contract_charges' => ['contract_id', ['created_at', 'updated_at']],
+            'contract_data_requests' => ['contract_id', ['created_at', 'updated_at']],
+            'contract_activities' => ['contract_id', ['created_at']],
+        ];
+        foreach ($sources as $table => [$fk, $columns]) {
+            try {
+                if (! \App\Support\SchemaCache::hasTable($table)) {
+                    continue;
+                }
+                foreach ($columns as $column) {
+                    $value = \Illuminate\Support\Facades\DB::table($table)->where($fk, $contract->id)->max($column);
+                    if ($value !== null) {
+                        $candidates[] = \Illuminate\Support\Carbon::parse($value);
+                    }
+                }
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        $latest = null;
+        foreach ($candidates as $c) {
+            if ($c !== null && ($latest === null || $c->greaterThan($latest))) {
+                $latest = \Illuminate\Support\Carbon::parse($c);
+            }
+        }
+
+        return $latest;
     }
 
     private function findByOrder(string $order): ?Contract

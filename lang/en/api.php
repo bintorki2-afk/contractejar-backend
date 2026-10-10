@@ -169,6 +169,7 @@ return [
     'discount_fixed_invalid' => 'Fixed discount must be greater than 0',
     'discount_exceeds_contract_total' => 'Discount cannot exceed the contract total',
     'discount_coupon_already_applied' => 'A coupon is already applied to this contract',
+    'unit_has_contracts' => 'Cannot delete this unit because it is linked to orders',
     'property_has_contracts' => 'Cannot delete this property because it is linked to contracts',
     'unit_not_found' => 'Unit not found',
     'unit_has_contracts' => 'Cannot delete this unit because it is linked to contracts',

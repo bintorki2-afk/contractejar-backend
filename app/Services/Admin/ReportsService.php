@@ -137,6 +137,8 @@ class ReportsService
                 'original_revenue' => $totals['original_revenue'],
                 'bank_transfers' => $totals['bank_transfers'],
                 'bank_transfers_count' => $totals['bank_transfers_count'],
+                'lessor_change_sales' => $totals['lessor_change_sales'] ?? 0,
+                'lessor_change_count' => $totals['lessor_change_count'] ?? 0,
             ]),
             'by_period' => ReportLabeledValueResource::collection($this->salesByQuickPeriod()),
             'daily' => ReportLabeledValueResource::collection(
@@ -496,7 +498,7 @@ class ReportsService
             'refund_requests_by_status' => ReportLabeledValueResource::collection(
                 $this->refundRequestsByStatus($range)
             ),
-            'refund_requests_total' => $this->moneyValue($this->refundsAmount($range)),
+            'refund_requests_total' => $this->moneyValue($this->refundRequestsAmount($range)),
         ]);
     }
 
@@ -847,7 +849,24 @@ class ReportsService
             'original_revenue' => $this->moneyValue($totalSales - $extraFees['amount'] - $priceDifferences['amount']),
             'bank_transfers' => $bankTransfers['amount'],
             'bank_transfers_count' => $bankTransfers['count'],
+            // QA-F PROPS-24: دفعات «تغيير المؤجر» داخل total_sales — بند مستقل للشفافية.
+            ...$this->lessorChangeSales($paymentsQuery),
         ];
+    }
+
+    /** @return array{lessor_change_sales: int|float, lessor_change_count: int} */
+    private function lessorChangeSales($paymentsQuery): array
+    {
+        try {
+            if (! \App\Support\SchemaCache::hasTable('lessor_change_requests')) {
+                return ['lessor_change_sales' => 0, 'lessor_change_count' => 0];
+            }
+            $q = (clone $paymentsQuery)->whereIn('contract_uuid', \App\Models\LessorChangeRequest::query()->select('uuid'));
+
+            return ['lessor_change_sales' => $this->moneyValue((float) (clone $q)->sum('amount')), 'lessor_change_count' => (clone $q)->count()];
+        } catch (\Throwable) {
+            return ['lessor_change_sales' => 0, 'lessor_change_count' => 0];
+        }
     }
 
     /**
@@ -945,12 +964,41 @@ class ReportsService
     /**
      * @param  array{0: Carbon, 1: Carbon}|null  $range
      */
-    private function refundsAmount(?array $range): float
+    /** مجموع طلبات الاسترجاع المعتمدة (قسم «طلبات الاسترجاع» فقط — ليس مالاً خرج فعلاً). */
+    private function refundRequestsAmount(?array $range): float
     {
         $query = RefundableContract::query()->where('admin_confirmed', true);
         $this->applyDateRange($query, 'created_at', $range);
 
         return $this->moneyValue((float) $query->sum('refund_amount'));
+    }
+
+    private function refundsAmount(?array $range): float
+    {
+        // QA-F C3: المسترجع = ما نُفّذ فعلاً فقط (جدول refunds بحالة «تم الاسترجاع»)،
+        // لا طلبات الاسترجاع «المعتمدة» غير المنفّذة (كانت تطرح 22,516 ر.س وهمية من الإيراد).
+        $total = 0.0;
+        if (Schema::hasTable('refunds')) {
+            $q = \App\Models\Refund::query()->where('status', \App\Models\Refund::STATUS_SUCCEEDED);
+            $this->applyDateRange($q, 'created_at', $range);
+            $total += (float) (clone $q)->sum('amount');
+        }
+
+        // طلبات استرجاع قديمة نُفّذت يدوياً (is_refunded) بلا صف في refunds.
+        if (Schema::hasColumn('refundable_contracts', 'is_refunded')) {
+            $legacy = RefundableContract::query()->where('is_refunded', true);
+            $this->applyDateRange($legacy, 'created_at', $range);
+            // مراجعة: نستبعد أي عقد له استرجاع منفّذ في refunds بأي تاريخ (لا ضمن الفترة فقط)
+            // — وإلا يُحسب الاسترجاع مرتين: مرة بتاريخ الطلب ومرة بتاريخ التنفيذ.
+            if (Schema::hasTable('refunds') && Schema::hasColumn('refundable_contracts', 'contract_id')) {
+                $legacy->whereNotIn('contract_id', \App\Models\Refund::query()
+                    ->where('status', \App\Models\Refund::STATUS_SUCCEEDED)
+                    ->whereNotNull('contract_id')->select('contract_id'));
+            }
+            $total += (float) $legacy->sum('refund_amount');
+        }
+
+        return $this->moneyValue($total);
     }
 
     /**

@@ -438,6 +438,46 @@ class OrderController extends Controller
         );
     }
 
+    /**
+     * دفعة (و) — D9: POST /admin/orders/{id}/draft-document — رفع مسودة العقد للعميل (PDF/صورة)
+     * ⇒ مرفق على الطلب + سجل + إشعار «مسودة عقدك جاهزة — راجعها وادفع للتوثيق». لا حالة جديدة.
+     */
+    public function uploadDraftDocument(Request $request, $id, \App\Services\Orders\DraftDocumentService $drafts)
+    {
+        try {
+            $request->validate([
+                'file' => ['required', 'file', 'mimes:'.implode(',', \App\Services\Orders\DraftDocumentService::MIMES), 'max:'.\App\Services\Orders\DraftDocumentService::MAX_KB],
+                'note' => ['nullable', 'string', 'max:500'],
+            ], [
+                'file.required' => 'اختر ملف المسودة (PDF أو صورة).',
+                'file.mimes' => 'ملف المسودة يجب أن يكون PDF أو صورة (JPG/PNG/WEBP).',
+                'file.max' => 'حجم ملف المسودة يجب ألا يتجاوز 10 ميجابايت.',
+            ]);
+            $contract = $this->orders->findAdminContract((int) $id);
+            $employee = \App\Support\AuthenticatedEmployee::from($request);
+            $contract = $drafts->upload($contract, $request->file('file'), $employee, $request->input('note'));
+
+            return $this->apiResponse($this->details->fullPayload($contract, $request), 'تم رفع المسودة وإشعار العميل.');
+        } catch (ModelNotFoundException $e) {
+            return $this->apiResponse(null, trans('api.contract_not_found'), false, 404);
+        } catch (ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        }
+    }
+
+    /** دفعة (و) — D9: POST /admin/orders/{id}/draft-document/delete */
+    public function deleteDraftDocument(Request $request, $id, \App\Services\Orders\DraftDocumentService $drafts)
+    {
+        try {
+            $contract = $this->orders->findAdminContract((int) $id);
+            $contract = $drafts->remove($contract, \App\Support\AuthenticatedEmployee::from($request));
+
+            return $this->apiResponse($this->details->fullPayload($contract, $request), trans('api.deleted_successfully'));
+        } catch (ModelNotFoundException $e) {
+            return $this->apiResponse(null, trans('api.contract_not_found'), false, 404);
+        }
+    }
+
     public function updateStatus(Request $request, $id)
     {
         return $this->handleStatusOutcome(
@@ -584,6 +624,15 @@ class OrderController extends Controller
             if (! $outcome['ok']) {
                 if (! empty($outcome['errors'])) {
                     return $this->errorResponse($outcome['errors'], $outcome['code'] ?? 422);
+                }
+
+                if (! empty($outcome['error_code'])) {
+                    return $this->jsonResponse([
+                        'success' => false,
+                        'code' => $outcome['error_code'],
+                        'message' => $outcome['message'] ?? trans('api.error_occurred'),
+                        'data' => null,
+                    ], $outcome['code'] ?? 422);
                 }
 
                 return $this->errorMessage($outcome['message'] ?? trans('api.error_occurred'), $outcome['code'] ?? 422);

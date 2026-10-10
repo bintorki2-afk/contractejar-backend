@@ -30,6 +30,9 @@ class AdminOrderDetailService
             ],
             // دفعة (هـ) — 2.1/2.3/2.4/2.6: حالة الدفع، الرسوم، طلبات المرفق، العنوان/المستند/الوحدات المهيكلة، الرحلة.
             app(\App\Services\Orders\OrderDetailExtras::class)->for($contract),
+            // دفعة (و) — D9: مسودة العقد المرفوعة للعميل + اختياره الدفع بعد المسودة.
+            \App\Services\Orders\DraftDocumentService::customerFields($contract, staff: true),
+            ['pay_after_draft_enabled' => \App\Models\Setting::payAfterDraftEnabled()],
         );
     }
 

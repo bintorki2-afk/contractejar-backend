@@ -96,6 +96,9 @@ final class ContractJourney
             'ejar_authenticated' => self::notarizedBy($contract),
         ];
 
+        // QA-F ORDERS-RES-13: قبل الدفع الخطوة ① ليست «قيد المراجعة» فعلاً — تُعلَّم «بانتظار الدفع».
+        $awaitingPayment = ! $reviewed;
+
         $currentAssigned = false;
         $steps = [];
         foreach (self::STEPS as $index => $step) {
@@ -114,6 +117,8 @@ final class ContractJourney
                 'current' => $isCurrent,
                 'at' => $isDone ? ($at[$step['key']] ?? null) : null,
                 'by' => $isDone ? ($by[$step['key']] ?? null) : null,
+                'awaiting_payment' => $isCurrent && $index === 0 && $awaitingPayment,
+                'current_label' => $isCurrent && $index === 0 && $awaitingPayment ? 'بانتظار الدفع' : ($isCurrent ? $step['label'] : null),
             ];
         }
 

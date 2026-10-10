@@ -72,7 +72,7 @@ class PermissionSeeder extends Seeder
                 $this->fill([
                     'coupons', 'blogs', 'ads', 'faqs', 'paperworks',
                     'popup_contracts', 'instruction_sections', 'message_alerts',
-                    'app_content', 'payment_messages',
+                    'app_content', 'payment_messages', 'customer_reviews',
                 ], $FULL),
                 $this->fill(['settings'], $VIEW),
             ),

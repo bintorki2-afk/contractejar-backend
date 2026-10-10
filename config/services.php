@@ -91,7 +91,7 @@ return [
         // Apple Pay inside the mobile app (Moyasar SDK): Apple merchant identifier
         // (merchant.com.contractejar.app) registered in Apple Developer + Moyasar.
         'apple_merchant_id' => env('MOYASAR_APPLE_MERCHANT_ID'),
-        'apple_merchant_display_name' => env('MOYASAR_APPLE_MERCHANT_DISPLAY_NAME', 'عقد إيجار'),
+        'apple_merchant_display_name' => env('MOYASAR_APPLE_MERCHANT_DISPLAY_NAME', 'عقدي'),
         'currency' => env('MOYASAR_CURRENCY', 'SAR'),
         // Hosted invoice / payment page language. Arabic by default.
         'locale' => env('MOYASAR_LOCALE', 'ar'),
@@ -103,7 +103,15 @@ return [
         'test_mode' => env('MOYASAR_TEST_MODE'),
         // الحد الأعلى لمبلغ «رابط الدفع من الموظف» (ر.س) — حماية من خطأ إدخال/إساءة. (CROSS-7)
         'employee_link_max_amount' => (float) env('EMPLOYEE_PAYMENT_LINK_MAX_AMOUNT', 10000),
-        'payment_frontend_url' => rtrim((string) env('PAYMENT_FRONTEND_URL', 'http://localhost:3000'), '/'),
+        // QA-F ORDERS-RES-17: بلا PAYMENT_FRONTEND_URL (أو بقيمة المثال your-domain) نرجع إلى FRONTEND_URL
+        // بدل نطاق غير موجود بعد الدفع.
+        'payment_frontend_url' => rtrim((string) (
+            (filled(env('PAYMENT_FRONTEND_URL')) && ! str_contains((string) env('PAYMENT_FRONTEND_URL'), 'your-domain'))
+                ? env('PAYMENT_FRONTEND_URL')
+                : ((filled(env('FRONTEND_URL')) && ! str_contains((string) env('FRONTEND_URL'), 'your-domain'))
+                    ? env('FRONTEND_URL')
+                    : 'http://localhost:3000')
+        ), '/'),
         'payment_success_url_template' => env('PAYMENT_SUCCESS_URL_TEMPLATE'),
         'payment_error_url_template' => env('PAYMENT_ERROR_URL_TEMPLATE'),
         // Optional deep-link / universal-link templates for the mobile app only.

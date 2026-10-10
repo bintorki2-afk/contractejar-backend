@@ -104,7 +104,7 @@ class FixBatchBInvoiceTest extends TestCase
         $this->assertSame('339 ريال', $data['total_amount_label']);
         $this->assertFalse($data['amount_mismatch']);
         $this->assertSame('#'.$contract->uuid, $data['order_number']);
-        $this->assertSame('عقد إيجار', $data['platform_name']);
+        $this->assertSame('عقدي', $data['platform_name']);
 
         // الصف المحفوظ يحمل لقطة البنود ولا يتغيّر عند تعديل الأسعار لاحقاً.
         $invoice = Invoice::query()->where('contract_id', $contract->id)->first();

@@ -16,6 +16,10 @@ use Illuminate\Database\Eloquent\Model;
 class RealEstate extends Model
 {
     use MapsRealEstateOwnerAttributes;
+    /** دفعة (و) — D6: الحذف ينقل للمحذوفات (30 يوماً) — العمود trashed_at، والمحذوف لا يظهر في أي استعلام. */
+    use \App\Models\Concerns\SoftTrashes;
+
+    public const DELETED_AT = 'trashed_at';
     /** صك ملكية ومالك العقار وقف — requires deed + endowment registration + trusteeship deed uploads */
     public const INSTRUMENT_TYPE_OWNER_ENDOWMENT = 'property_ownership_owner_is_endowment';
 
@@ -156,6 +160,32 @@ class RealEstate extends Model
     public function contracts()
     {
         return $this->hasMany(Contract::class, 'real_id');
+    }
+
+    /** QA-F PROPS-1/22: هل لأي وحدة من وحدات العقار طلب مرتبط؟ (حذفها يمحو وحدات الطلب) */
+    public function unitsHaveContracts(): bool
+    {
+        foreach ($this->units()->get() as $unit) {
+            if ($unit->contracts()->exists() || $unit->linkedContracts()->exists()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * QA-F PROPS-13: بعد حذف وحدة — إن كان «عدد الوحدات» مشتقاً تلقائياً (= العدد قبل الحذف) يُحدَّث للعدد الفعلي.
+     * القيمة التي أدخلها العميل لعدد وحدات المبنى (مختلفة عن العدد المضاف) لا تُمس.
+     */
+    public function syncUnitsCountAfterRemoval(int $countBefore): void
+    {
+        $stored = $this->number_of_units_in_realestate;
+        if ($stored === null || $stored === '' || (int) $stored !== $countBefore) {
+            return;
+        }
+        $now = $this->units()->count();
+        $this->forceFill(['number_of_units_in_realestate' => $now > 0 ? (string) $now : null])->save();
     }
     
  

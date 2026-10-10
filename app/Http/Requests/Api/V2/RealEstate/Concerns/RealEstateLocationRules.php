@@ -85,6 +85,15 @@ trait RealEstateLocationRules
             $payload['longitude'] = $this->input('longitude');
         }
 
+        // QA-F PROPS-6: الإحداثي من رابط قوقل ماب إن وُجد؛ والقيمة المبدئية (وسط الرياض) لا تُحفظ كموقع للعقار.
+        $fromUrl = \App\Support\MapUrlCoordinates::fromUrl($this->input('address_url'));
+        if ($fromUrl !== null) {
+            [$payload['latitude'], $payload['longitude']] = $fromUrl;
+        } elseif (\App\Support\MapUrlCoordinates::isPlaceholder($payload['latitude'] ?? null, $payload['longitude'] ?? null)) {
+            $payload['latitude'] = null;
+            $payload['longitude'] = null;
+        }
+
         return $payload;
     }
 }

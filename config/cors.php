@@ -23,7 +23,7 @@ return [
     */
     'allowed_origins' => array_values(array_unique(array_filter(array_merge(
         [
-            // منتج «عقد إيجار» (الموقع ينادي الـ API من خادمه غالباً؛ هذا للنداءات من المتصفح).
+            // منتج «عقدي» (الموقع ينادي الـ API من خادمه غالباً؛ هذا للنداءات من المتصفح).
             'https://contractejar.com',
             'https://www.contractejar.com',
             // aqdi.sa مشروع منفصل للمالك (مدونة SEO تستخدم /api/blogs) — أُبقي كما كان حتى لا ينكسر.

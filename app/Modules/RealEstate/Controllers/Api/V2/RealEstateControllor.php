@@ -280,17 +280,46 @@ class RealEstateControllor extends ApiRealEstateControllor
                 ->where('user_id', $user->id)
                 ->findOrFail($id);
 
-            if ($realEstate->units->isNotEmpty()) {
-                foreach ($realEstate->units as $unit) {
-                    $unit->delete();
-                }
+            // QA-F PROPS-1/22: عقار له وحدة مرتبطة بطلب لا يُحذف (كان يمحو وحدات الطلبات بلا تحذير).
+            if ($realEstate->unitsHaveContracts()) {
+                return $this->errorMessage(trans('api.property_has_contracts'), 422);
             }
 
-            $realEstate->delete();
+            // دفعة (و) — D6: نقل للمحذوفات (استرجاع خلال 30 يوماً) — العقار ووحداته معاً.
+            $trash = app(\App\Services\RealEstate\PropertyTrashService::class);
+            $trash->trashRealEstate($realEstate);
 
-            return $this->successMessage(trans('api.success'), 200);
+            return $this->apiResponse(array_merge(
+                ['id' => $realEstate->id, 'message' => 'نُقل العقار إلى المحذوفات — يمكنك استرجاعه خلال 30 يوماً.'],
+                $trash->meta($realEstate->trashed_at)
+            ), trans('api.success'));
         } catch (ModelNotFoundException $e) {
             return $this->errorMessage(trans('api.not_found'), 404);
         }
+    }
+
+    /** دفعة (و) — D6: GET /realstate/trash — محذوفات العميل (عقارات + وحدات) خلال 30 يوماً. */
+    public function trash()
+    {
+        return $this->apiResponse(
+            app(\App\Services\RealEstate\PropertyTrashService::class)->listing((int) Auth::id()),
+            trans('api.success')
+        );
+    }
+
+    /** دفعة (و) — D6: POST /realstate/{id}/restore */
+    public function restore($id)
+    {
+        $realEstate = RealEstate::onlyTrashed()->where('user_id', Auth::id())->find($id);
+        if ($realEstate === null) {
+            return $this->errorMessage(trans('api.not_found'), 404);
+        }
+        try {
+            $realEstate = app(\App\Services\RealEstate\PropertyTrashService::class)->restoreRealEstate($realEstate);
+        } catch (\InvalidArgumentException $e) {
+            return $this->errorMessage($e->getMessage(), 422);
+        }
+
+        return $this->apiResponse(['id' => $realEstate->id, 'restored' => true, 'message' => 'تم استرجاع العقار.'], trans('api.success'));
     }
 }

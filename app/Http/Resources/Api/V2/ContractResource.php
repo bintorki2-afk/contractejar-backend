@@ -70,7 +70,21 @@ class ContractResource extends JsonResource
             'status_timeline' => ContractFrontendStatus::statusTimeline($this->resource),
             // دفعة (هـ) — 2.1/2.3/2.4: حالة الدفع والتفاصيل والرسوم وطلبات المرفق الناقص.
             'payment_state' => ($paymentState = app(\App\Services\Payments\ContractPaymentState::class))->state($this->resource),
-            'payment_details' => $paymentState->details($this->resource),
+            'payment_details' => $paymentDetails = $paymentState->details($this->resource),
+            // QA-F APP-29: رابط الفاتورة في جذر الرد أيضاً (التطبيق يقرأه من الجذر).
+            'invoice_url' => $paymentDetails['invoice_url'] ?? null,
+            // دفعة (و) — D4/B16: PDF الفاتورة + هل صدرت فاتورة (لا رابط فاتورة قبل الدفع في الواجهات).
+            'invoice_pdf_url' => $paymentDetails['invoice_pdf_url'] ?? null,
+            'invoice_pdf_download_url' => $paymentDetails['invoice_pdf_download_url'] ?? null,
+            'has_invoice' => (bool) ($paymentDetails['has_invoice'] ?? false),
+            'is_paid' => (bool) ($paymentDetails['state']['is_paid'] ?? false),
+            // دفعة (و) — B14: المسودة القابلة للاستئناف = لم يُرسل بعد.
+            'is_submitted' => \App\Support\ContractSubmission::isSubmitted($this->resource),
+            'is_resumable_draft' => \App\Support\ContractSubmission::isResumableDraft($this->resource),
+            // دفعة (و) — D9: الدفع بعد مشاهدة المسودة.
+            ...\App\Services\Orders\DraftDocumentService::customerFields($this->resource),
+            // QA-F APP-8/APP-21: البيانات المالية التي أدخلها العميل + الإجمالي من الخادم.
+            ...$this->customerFinancialFields($paymentDetails),
             'charges' => app(\App\Services\Charges\ChargeService::class)->forCustomer($this->resource),
             'pending_data_requests' => app(\App\Services\DataRequests\ContractDataRequestService::class)->pendingForCustomer($this->resource),
             // دفعة (د) — ب9: ما تم على طلبك (نسخة آمنة: بلا أسماء موظفين أو ملاحظات داخلية).
@@ -91,6 +105,52 @@ class ContractResource extends JsonResource
             ),
             'created_at' => optional($this->created_at)->format('Y-m-d'),
         ]);
+    }
+
+    /**
+     * QA-F APP-8: البيانات المالية (الخطوة 6) كما أدخلها العميل — كانت لا تعود إليه أبداً.
+     * total_price = المستحق الحالي من الخادم (لا تحسبه الواجهات).
+     *
+     * @param  array<string, mixed>  $paymentDetails
+     * @return array<string, mixed>
+     */
+    private function customerFinancialFields(array $paymentDetails): array
+    {
+        $c = $this->resource;
+        $starting = \App\Support\HijriDobParts::split($c->contract_starting_date);
+        try {
+            $months = \App\Support\DocFee::contractMonths($c, 0);
+        } catch (\Throwable) {
+            $months = (int) ($c->total_months ?? 0);
+        }
+        $paymentType = $c->payment_type_id ? \App\Models\PaymentType::query()->find($c->payment_type_id) : null;
+        $due = (float) ($paymentDetails['totals']['due'] ?? 0);
+        $dueValue = abs($due - round($due)) < 0.005 ? (int) round($due) : round($due, 2);
+        $otherConditions = is_array($c->other_conditions_list) && $c->other_conditions_list !== []
+            ? array_values($c->other_conditions_list)
+            : (filled($c->other_conditions) ? [(string) $c->other_conditions] : []);
+
+        return [
+            'annual_rent_amount_for_the_unit' => $c->annual_rent_amount_for_the_unit,
+            'payment_type_id' => $c->payment_type_id,
+            'payment_type_name' => $paymentType ? ($paymentType->name_ar ?: $paymentType->name_en) : null,
+            'contract_starting_date' => $c->contract_starting_date,
+            'contract_starting_date_day' => $starting['day'] ?? null,
+            'contract_starting_date_month' => $starting['month'] ?? null,
+            'contract_starting_date_year' => $starting['year'] ?? null,
+            'type_contract_starting_date' => $c->type_contract_starting_date,
+            'contract_period' => $months > 0 ? \App\Services\ContractInvoiceService::durationLabel($months) : null,
+            'contract_period_months' => $months > 0 ? $months : null,
+            'deposit' => $c->deposit,
+            'Guarantee_amount' => $c->Guarantee_amount,
+            'daily_fine' => $c->daily_fine,
+            'other_conditions_list' => $otherConditions,
+            'other_conditions' => $c->other_conditions,
+            // APP-17: معرّف المدة المختارة (contract_periods.id) لإعادة تعبئة الخطوة 6 — ليس عدد سنوات؛ للعرض استخدم contract_period.
+            'contract_term_in_years' => $c->contract_term_in_years,
+            'total_price' => $due > 0 ? $dueValue : null,
+            'total_price_label' => $due > 0 ? rtrim(rtrim(number_format($due, 2, '.', ''), '0'), '.').' ر.س' : null,
+        ];
     }
 
     /**

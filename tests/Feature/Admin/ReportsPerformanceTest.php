@@ -99,8 +99,9 @@ class ReportsPerformanceTest extends TestCase
             // دفعة (هـ) — 2.7
             'extra_fees' => 0,
             'price_differences' => 0,
-            'refunds' => 149.0,
-            'net_revenue' => self::HOUSING_PAYMENT + self::COMMERCIAL_PAYMENT - 149,
+            // QA-F C3: المسترجع = المنفّذ فعلاً (49) لا المعتمد غير المنفّذ (100).
+            'refunds' => 49.0,
+            'net_revenue' => self::HOUSING_PAYMENT + self::COMMERCIAL_PAYMENT - 49,
             'paid' => 2,
             'delayed_count' => 0,
         ], $result['kpis']);
@@ -134,7 +135,7 @@ class ReportsPerformanceTest extends TestCase
         ], $result['by_employee']);
 
         $this->assertSame([
-            ['label' => 'صك إلكتروني', 'value' => 2, 'revenue' => self::HOUSING_PAYMENT],
+            ['label' => 'صك ملكية إلكتروني من وزارة العدل', 'value' => 2, 'revenue' => self::HOUSING_PAYMENT],
             ['label' => 'تجديد عقد إيجار', 'value' => 1, 'revenue' => self::COMMERCIAL_PAYMENT],
         ], $result['by_document_type']);
 
@@ -160,14 +161,14 @@ class ReportsPerformanceTest extends TestCase
 
         $pnlByLabel = collect($result['pnl'])->keyBy('label');
         $this->assertSame(598, $pnlByLabel['دخل العملاء (المحصّل)']['value']);
-        $this->assertSame(-149, $pnlByLabel['مبالغ مسترجعة']['value']);
-        $this->assertSame(449, $pnlByLabel['صافي الإيراد']['value']);
+        $this->assertSame(-49, $pnlByLabel['مبالغ مسترجعة']['value']);
+        $this->assertSame(549, $pnlByLabel['صافي الإيراد']['value']);
         $this->assertSame(-325, $pnlByLabel['رسوم منصة إيجار']['value']);
 
         $summary = collect($result['financial_summary'])->pluck('value', 'label');
         $this->assertSame(self::HOUSING_PAYMENT, $summary['توثيق سكني - سنة أولى']);
         $this->assertSame(self::COMMERCIAL_PAYMENT, $summary['توثيق تجاري - سنة أولى']);
-        $this->assertSame(449, $summary['الإجمالي']);
+        $this->assertSame(549, $summary['الإجمالي']);
         $this->assertTrue(collect($result['financial_summary'])->last()['is_total']);
 
         $housingUnit = collect($result['unit_economics'])->firstWhere('label', 'توثيق سكني - سنة أولى');
@@ -193,7 +194,7 @@ class ReportsPerformanceTest extends TestCase
             ['label' => 'سكني', 'value' => 3, 'revenue' => self::HOUSING_PAYMENT],
         ], $housing['by_contract_type']);
         $this->assertSame([
-            ['label' => 'صك إلكتروني', 'value' => 2, 'revenue' => self::HOUSING_PAYMENT],
+            ['label' => 'صك ملكية إلكتروني من وزارة العدل', 'value' => 2, 'revenue' => self::HOUSING_PAYMENT],
         ], $housing['by_document_type']);
 
         $employee = $this->performance(employeeId: 2);

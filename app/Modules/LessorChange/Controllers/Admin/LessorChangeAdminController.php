@@ -69,6 +69,17 @@ class LessorChangeAdminController extends Controller
         ]);
 
         $row = LessorChangeRequest::query()->findOrFail($id);
+
+        // QA-F PROPS-15: طلب في السلة لا تُغيَّر حالته (كان يُرسل للعميل إشعاراً عن طلب لا يراه).
+        if ((bool) $row->is_delete) {
+            return $this->errorMessage('هذا الطلب في السلة — استعده أولاً ثم غيّر حالته.', 422);
+        }
+
+        // QA-F C8: طلب مدفوع لا يُعاد إلى «بانتظار الدفع» (كان يعيد رابط الدفع ⇒ دفع مكرر).
+        if ($data['status'] === 'pending_payment' && $row->paid_at !== null) {
+            return $this->errorMessage('لا يمكن إعادة طلب مدفوع إلى «بانتظار الدفع».', 422);
+        }
+
         $payload = [
             'status' => $data['status'],
             'status_note' => $data['status_note'] ?? $row->status_note,
@@ -141,7 +152,14 @@ class LessorChangeAdminController extends Controller
         if ($withImages) {
             $base['old_deed_image_url'] = $r->signedImageUrl('old_deed_image');
             $base['new_deed_image_url'] = $r->signedImageUrl('new_deed_image');
+            // QA-F PROPS-16: الصك PDF لا يُعرض كـ <img>.
+            $base['old_deed_is_pdf'] = str_ends_with(strtolower((string) ($r->getAttributes()['old_deed_image'] ?? '')), '.pdf');
+            $base['new_deed_is_pdf'] = str_ends_with(strtolower((string) ($r->getAttributes()['new_deed_image'] ?? '')), '.pdf');
         }
+        // PROPS-4: الانتقالات التي يقبلها الخادم (مدفوع لا يعود «بانتظار الدفع»؛ طلب في السلة لا يتغيّر).
+        $base['allowed_statuses'] = (bool) $r->is_delete
+            ? []
+            : array_values(array_filter(LessorChangeRequest::STATUSES, static fn (string $s) => ! ($s === 'pending_payment' && $r->paid_at !== null)));
 
         return $base;
     }

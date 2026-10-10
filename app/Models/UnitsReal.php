@@ -14,6 +14,10 @@ use Illuminate\Database\Eloquent\Model;
 class UnitsReal extends Model
 {
     use HasFactory;
+    /** دفعة (و) — D6: الحذف ينقل للمحذوفات (30 يوماً) — العمود trashed_at. */
+    use \App\Models\Concerns\SoftTrashes;
+
+    public const DELETED_AT = 'trashed_at';
     protected $table='real_units';
     protected $fillable = [
             'user_id','sub_delay',
@@ -99,7 +103,7 @@ class UnitsReal extends Model
 
     public function realEstate()
     {
-      return $this->belongsTo(RealEstate::class,'real_estates_units_id');        
+      return $this->belongsTo(RealEstate::class,'real_estates_units_id')->withTrashed();
     }
 
     public function contracts()

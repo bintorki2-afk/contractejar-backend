@@ -39,6 +39,12 @@ class OrdersExportService
     /** الأعمدة الرقمية الوحيدة في xlsx — ما عداها نص (رقم الطلب والجوال تبقى بأصفارها البادئة). */
     public const NUMERIC_COLUMNS = ['paid_original', 'paid_extra', 'refunded', 'net', 'outstanding'];
 
+    /** QA-F DASH-21: أعمدة المال لا تُصدَّر إلا لمن يملك payments.view. */
+    public const MONEY_COLUMNS = ['paid_original', 'paid_extra', 'refunded', 'net', 'payment_method', 'outstanding'];
+
+    /** @var array<string, string> */
+    private array $columns = self::COLUMNS;
+
     public function __construct(
         private readonly AdminOrderQueryService $orders,
         private readonly ContractPaymentState $paymentState,
@@ -53,12 +59,18 @@ class OrdersExportService
             throw new InvalidArgumentException('صيغة التصدير غير مدعومة: xlsx | csv');
         }
 
+        $employee = \App\Support\AuthenticatedEmployee::from($request);
+        $withMoney = $employee === null || $employee->hasPermission('payments.view');
+        $this->columns = $withMoney
+            ? self::COLUMNS
+            : array_diff_key(self::COLUMNS, array_flip(self::MONEY_COLUMNS));
+
         $request->merge(['per_page' => self::MAX_ROWS, 'page' => 1]);
         $request->attributes->set('export_max', self::MAX_ROWS);
         $result = $this->orders->paginateOrders($request);
         $rows = [];
         foreach ($result['paginator']->items() as $contract) {
-            $rows[] = $this->row($contract);
+            $rows[] = array_intersect_key($this->row($contract), $this->columns);
         }
 
         $stamp = now()->format('Y-m-d_Hi');
@@ -103,9 +115,9 @@ class OrdersExportService
     {
         $out = fopen('php://temp', 'r+');
         fwrite($out, "\xEF\xBB\xBF"); // BOM حتى يفتحه Excel بالعربية
-        fputcsv($out, array_values(self::COLUMNS));
+        fputcsv($out, array_values($this->columns));
         foreach ($rows as $row) {
-            fputcsv($out, array_map(static fn ($v) => $v === null ? '' : (string) $v, array_values(array_merge(array_fill_keys(array_keys(self::COLUMNS), null), $row))));
+            fputcsv($out, array_map(static fn ($v) => $v === null ? '' : (string) $v, array_values(array_merge(array_fill_keys(array_keys($this->columns), null), $row))));
         }
         rewind($out);
         $csv = (string) stream_get_contents($out);
@@ -117,9 +129,9 @@ class OrdersExportService
     /** @param list<array<string, mixed>> $rows */
     private function toXlsx(array $rows): string
     {
-        $sheetRows = [array_values(self::COLUMNS)];
+        $sheetRows = [array_values($this->columns)];
         foreach ($rows as $row) {
-            $sheetRows[] = array_values(array_map(static fn ($v) => $v === null ? '' : (string) $v, array_merge(array_fill_keys(array_keys(self::COLUMNS), null), $row)));
+            $sheetRows[] = array_values(array_map(static fn ($v) => $v === null ? '' : (string) $v, array_merge(array_fill_keys(array_keys($this->columns), null), $row)));
         }
 
         // B-1: `rightToLeft` سمة لـ sheetView فقط (CT_SheetView) — وضعها على workbookView يخالف مخطط OOXML
@@ -149,7 +161,7 @@ class OrdersExportService
     private function sheetXml(array $rows): string
     {
         $xml = '<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView rightToLeft="1" workbookViewId="0"/></sheetViews><sheetData>';
-        $columnKeys = array_keys(self::COLUMNS);
+        $columnKeys = array_keys($this->columns);
         foreach ($rows as $r => $cols) {
             $xml .= '<row r="'.($r + 1).'">';
             foreach ($cols as $c => $value) {

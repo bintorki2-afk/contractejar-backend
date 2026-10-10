@@ -189,13 +189,18 @@ class ContractDataRequestService
     }
 
     /**
-     * الحل التلقائي: عند تغيّر أي حقل من حقول البنود المعلّقة من طرف العميل.
+     * الحل التلقائي: عند تغيّر حقول البنود المعلّقة من طرف العميل.
+     *
+     * QA-F APP-6: طلب بعدة بنود (قد تكون في خطوات مختلفة) لا يُحلّ كاملاً بتغيّر حقل واحد —
+     * يُحلّ فقط حين يُستوفى **كل** بند (تغيّر أي حقل من حقوله، تراكمياً عبر عدة إرسالات).
+     * الاستيفاء الجزئي يُحفظ في resolved_fields ويُسجَّل ويُشعَر الموظف به، والطلب يبقى معلّقاً.
      *
      * @param  list<string>  $changedFields
-     * @return list<ContractDataRequest> الطلبات التي حُلّت
+     * @return list<ContractDataRequest> الطلبات التي حُلّت كاملاً
      */
-    public function autoResolve(Contract $contract, array $changedFields): array
+    public function autoResolve(Contract $contract, array $changedFields, ?array &$partial = null): array
     {
+        $partial = [];
         if ($changedFields === [] || ! SchemaCache::hasTable('contract_data_requests')) {
             return [];
         }
@@ -206,21 +211,111 @@ class ContractDataRequestService
             if ($hit === []) {
                 continue;
             }
+            $accumulated = array_values(array_unique(array_merge((array) ($request->resolved_fields ?? []), $hit)));
+            $remaining = $this->remainingItems($request, $accumulated);
+
+            if ($remaining !== []) {
+                $request->forceFill(['resolved_fields' => $accumulated])->save();
+                $remainingLabels = array_values(array_map(static fn ($i) => (string) ($i['label'] ?? ''), $remaining));
+                $doneLabels = array_values(array_diff($request->itemLabels(), $remainingLabels));
+                $this->flow->activity($contract, 'data_request_progress', null, null, [
+                    'request_id' => $request->id, 'items' => $doneLabels, 'remaining' => $remainingLabels, 'fields' => $hit, 'by' => 'customer',
+                ], 'customer', 'العميل أرسل: '.implode('، ', $doneLabels).' — بقي: '.implode('، ', $remainingLabels));
+                $this->notifyEmployees(
+                    $contract,
+                    $request->requested_by,
+                    'data_request_progress',
+                    'العميل أرسل جزءاً من المطلوب',
+                    'الطلب #'.$contract->uuid.': أرسل العميل '.implode('، ', $doneLabels).' — بقي: '.implode('، ', $remainingLabels).'.',
+                    ['request_id' => (string) $request->id]
+                );
+                $partial[] = ['request' => $request, 'done' => $doneLabels, 'remaining' => $remainingLabels];
+
+                continue;
+            }
+
             $request->forceFill([
                 'status' => ContractDataRequest::STATUS_RESOLVED,
                 'resolved_at' => now(),
                 'resolved_by' => 'customer',
-                'resolved_fields' => $hit,
+                'resolved_fields' => $accumulated,
             ])->save();
             $labels = $request->itemLabels();
             $this->flow->activity($contract, 'data_request_resolved', null, null, [
-                'request_id' => $request->id, 'items' => $labels, 'fields' => $hit, 'by' => 'customer',
+                'request_id' => $request->id, 'items' => $labels, 'fields' => $accumulated, 'by' => 'customer',
             ], 'customer', 'العميل أرسل: '.implode('، ', $labels));
             $this->notifyEmployeesResolved($contract, $request);
             $resolved[] = $request;
         }
 
         return $resolved;
+    }
+
+    /**
+     * البنود التي لم تُستوفَ بعد (بند بلا حقول يُعتبر مستوفى مع أول إرسال يمسّ الطلب).
+     *
+     * @param  list<string>  $accumulated
+     * @return list<array<string, mixed>>
+     */
+    public function remainingItems(ContractDataRequest $request, ?array $accumulated = null): array
+    {
+        $accumulated ??= (array) ($request->resolved_fields ?? []);
+        $remaining = [];
+        foreach ($request->items ?? [] as $item) {
+            $fields = array_map('strval', (array) ($item['fields'] ?? []));
+            if ($fields === []) {
+                continue;
+            }
+            if (array_intersect($fields, $accumulated) === []) {
+                $remaining[] = $item;
+            }
+        }
+
+        return $remaining;
+    }
+
+    /**
+     * QA-F W-10: تعديل العميل لطلب مدفوع (وضع التصحيح) بحقول لا يحلّها أي طلب مرفق — يُسجَّل ويُشعَر الموظف
+     * (قد يكون أدخل القيمة القديمة في إيجار).
+     *
+     * @param  list<string>  $fields
+     */
+    public function recordCustomerEdit(Contract $contract, array $fields, int $step, bool $notify = true): void
+    {
+        if ($fields === []) {
+            return;
+        }
+        $labels = array_values(array_unique(array_map(static fn ($f) => \App\Services\DataRequests\ContractDataRequestService::fieldLabel($f), $fields)));
+        $this->flow->activity($contract, 'customer_edited', null, null, [
+            'fields' => array_values($fields), 'labels' => $labels, 'step' => $step, 'by' => 'customer',
+        ], 'customer', 'العميل عدّل: '.implode('، ', $labels));
+        if (! $notify) {
+            return;
+        }
+        $this->notifyEmployees(
+            $contract,
+            null,
+            'customer_edited',
+            'العميل عدّل بيانات الطلب',
+            'الطلب #'.$contract->uuid.': عدّل العميل '.implode('، ', $labels).' — راجع ما أدخلته في إيجار.',
+            ['step' => (string) $step]
+        );
+    }
+
+    /** اسم عربي مختصر لحقل (للسجل والإشعار)؛ الحقل غير المعروف يُعرض باسمه. */
+    public static function fieldLabel(string $field): string
+    {
+        $map = [
+            'property_owner_mobile' => 'جوال المالك', 'property_owner_id_num' => 'هوية المالك', 'property_owner_dob' => 'تاريخ ميلاد المالك',
+            'property_owner_iban' => 'آيبان المالك', 'tenant_id_num' => 'هوية المستأجر', 'tenant_mobile' => 'جوال المستأجر',
+            'tenant_dob' => 'تاريخ ميلاد المستأجر', 'instrument_number' => 'رقم الصك', 'instrument_history' => 'تاريخ الصك',
+            'image_instrument' => 'صورة الصك', 'image_address' => 'صورة العنوان', 'annual_rent_amount_for_the_unit' => 'قيمة الإيجار',
+            'contract_starting_date' => 'تاريخ بداية العقد', 'payment_type_id' => 'طريقة الدفع', 'neighborhood' => 'الحي',
+            'street' => 'الشارع', 'building_number' => 'رقم المبنى', 'postal_code' => 'الرمز البريدي', 'extra_figure' => 'الرقم الإضافي',
+            'id_num_of_property_owner_agent' => 'هوية الوكيل', 'mobile_of_property_owner_agent' => 'جوال الوكيل',
+        ];
+
+        return $map[$field] ?? $field;
     }
 
     /** هل يُسمح للعميل بتعديل هذه الخطوة رغم أن الطلب مدفوع (وجود طلب مرفق معلّق لها)؟ */
@@ -269,18 +364,30 @@ class ContractDataRequestService
     /** @return list<array<string, mixed>> */
     public function pendingForCustomer(Contract $contract): array
     {
-        return $this->pending($contract)->map(fn (ContractDataRequest $r) => [
+        return $this->pending($contract)->map(function (ContractDataRequest $r) use ($contract) {
+            // QA-F APP-6: البنود المتبقية فقط تحدد الخطوة التالية (بعد استيفاء جزئي).
+            $remaining = $this->remainingItems($r);
+            $remainingKeys = array_map(static fn ($i) => (string) ($i['key'] ?? ''), $remaining);
+            $remainingSteps = array_values(array_unique(array_filter(array_map(static fn ($i) => (int) ($i['step'] ?? 0), $remaining))));
+            $hasProgress = ! empty($r->resolved_fields);
+            $steps = $hasProgress && $remainingSteps !== [] ? $remainingSteps : $r->steps();
+            sort($steps);
+
+            return [
             'id' => $r->id,
             'section' => $r->section,
             'section_label' => $this->sectionLabel($r->section),
-            'items' => array_values(array_map(static fn ($i) => ['key' => $i['key'], 'label' => $i['label'], 'step' => (int) ($i['step'] ?? 1), 'fields' => array_values((array) ($i['fields'] ?? []))], $r->items ?? [])),
+            'items' => array_values(array_map(static fn ($i) => ['key' => $i['key'], 'label' => $i['label'], 'step' => (int) ($i['step'] ?? 1), 'fields' => array_values((array) ($i['fields'] ?? [])), 'done' => (array) ($i['fields'] ?? []) !== [] && ! in_array((string) $i['key'], $remainingKeys, true)], $r->items ?? [])),
+            'remaining_items' => array_values(array_map(static fn ($i) => ['key' => $i['key'], 'label' => $i['label'], 'step' => (int) ($i['step'] ?? 1)], $remaining)),
             'note' => $r->note,
             'requested_at' => $r->requested_at?->toIso8601String(),
-            'step' => $r->step(),
-            'steps' => $r->steps(),
+            'step' => $steps !== [] ? min($steps) : $r->step(),
+            'steps' => $steps,
+            'remaining_steps' => $remainingSteps === [] ? $r->steps() : array_values(array_unique($remainingSteps)),
             'deep_link' => $this->deepLink($contract, $r),
-            'banner' => 'مطلوب منك: '.implode('، ', $r->itemLabels()).(filled($r->note) ? ' — '.$r->note : ''),
-        ])->values()->all();
+            'banner' => 'مطلوب منك: '.implode('، ', $hasProgress && $remaining !== [] ? array_map(static fn ($i) => (string) $i['label'], $remaining) : $r->itemLabels()).(filled($r->note) ? ' — '.$r->note : ''),
+            ];
+        })->values()->all();
     }
 
     /**
@@ -518,6 +625,44 @@ class ContractDataRequestService
                 ->exists();
         } catch (\Throwable) {
             return false;
+        }
+    }
+
+    /**
+     * إشعار الموظف المستلم (أو صاحب الطلب) + قناة الموظفين — صندوق اللوحة + Push.
+     *
+     * @param  array<string, string>  $extra
+     */
+    private function notifyEmployees(Contract $contract, $fallbackEmployeeId, string $kind, string $title, string $body, array $extra = []): void
+    {
+        $contract->loadMissing('receivedContract.employee');
+        $employeeId = $contract->receivedContract?->employee_id ?: $fallbackEmployeeId;
+        $data = array_merge(['type' => $kind, 'contract_id' => (string) $contract->id, 'contract_uuid' => (string) $contract->uuid], $extra);
+
+        try {
+            if (SchemaCache::hasTable('employee_notifications')) {
+                EmployeeNotification::query()->create([
+                    'employee_id' => $employeeId ?: null,
+                    'contract_id' => $contract->id,
+                    'kind' => $kind,
+                    'title' => $title,
+                    'body' => $body,
+                    'url' => '/home/orders/'.$contract->id,
+                    'data' => $data,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('employee notification store failed', ['error' => $e->getMessage()]);
+        }
+
+        try {
+            $firebase = app(FirebaseNotificationService::class);
+            if ($employeeId) {
+                $firebase->sendToEmployee((int) $employeeId, $title, $body, $data);
+            }
+            $firebase->sendToTopic((string) config('services.firebase.employees_topic', 'employees'), $title, $body, $data);
+        } catch (\Throwable $e) {
+            Log::warning('employee push failed', ['error' => $e->getMessage()]);
         }
     }
 

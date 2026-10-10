@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\Log;
  */
 class ContractInvoiceService
 {
-    public const PLATFORM_NAME = 'عقد إيجار';
+    public const PLATFORM_NAME = 'عقدي';
 
     public const PLATFORM_SUBTITLE = 'منصة توثيق عقود الإيجار';
 
@@ -58,7 +58,7 @@ class ContractInvoiceService
             invoice: $invoice,
             orderNumber: (string) ($contract->uuid ?: $contract->id),
             legacyOrderNo: (string) $contract->id,
-            customerName: (string) ($contract->user?->name ?? ''),
+            customerName: self::customerDisplayName($contract->user),
             issuedAt: $issuedAt,
             reference: $this->resolveReferenceNumber($contract, $payment, $invoice),
             breakdown: $breakdown,
@@ -72,6 +72,11 @@ class ContractInvoiceService
             'contract_type_label' => Contract::contractTypeLabel((string) $contract->contract_type),
             'total_amount' => $total,
             'total_amount_label' => $this->formatAmountLabel($total),
+            // QA-F ORDERS-COM-9: جوال العميل (زائر الموقع: contact_mobile).
+            'customer_phone' => $contract->user?->mobile ?: ($contract->user?->contact_mobile ?: ($invoice?->customer_phone ?: null)),
+            // QA-F ORDERS-RES-5: هل صدرت فاتورة فعلاً (بعد دفع)؟ قبل الدفع الرد «معاينة» فقط.
+            'has_invoice' => $invoice !== null && ($payment !== null || (bool) $contract->is_completed),
+            'is_preview' => ! ($payment !== null || (bool) $contract->is_completed),
         ]);
 
         return $this->applyCumulative($contract, $payload);
@@ -127,6 +132,15 @@ class ContractInvoiceService
         }
 
         $net = round($originalTotal + $extra - $refunded, 2);
+        // QA-F ORDERS-COM-3: «المجموع الفرعي» = مجموع البنود الموجبة (الأصل + الرسوم المدفوعة)،
+        // كان يبقى على الأصل فقط (349) بينما البنود 349 + 450.
+        $originalSubtotal = round((float) ($payload['subtotal'] ?? 0), 2);
+        $payload['original_subtotal'] = $originalSubtotal;
+        $payload['original_subtotal_label'] = $this->formatAmountLabel($originalSubtotal);
+        if ($extra > 0) {
+            $payload['subtotal'] = round($originalSubtotal + $extra, 2);
+            $payload['subtotal_label'] = $this->formatAmountLabel($payload['subtotal']);
+        }
         $payload['items'] = $items;
         $payload['original_total'] = round($originalTotal, 2);
         $payload['original_total_label'] = $this->formatAmountLabel($originalTotal);
@@ -141,9 +155,27 @@ class ContractInvoiceService
         $payload['charges'] = $details['charges'];
         $payload['transactions'] = $details['transactions'];
         $payload['totals'] = $details['totals'];
+        // QA-F APP-15/WEB-26: المستحق والمتبقي (يشمل الرسوم المعلّقة) — total_amount يبقى «الصافي المدفوع/المفوتر».
+        $dueTotal = round((float) ($details['totals']['due'] ?? $net), 2);
+        $outstandingTotal = round((float) ($details['totals']['outstanding'] ?? 0), 2);
+        $pendingTotal = round((float) ($details['state']['pending_charges_total'] ?? 0), 2);
+        $payload['due_total'] = $dueTotal;
+        $payload['due_total_label'] = $this->formatAmountLabel($dueTotal);
+        $payload['outstanding'] = $outstandingTotal;
+        $payload['outstanding_label'] = $this->formatAmountLabel($outstandingTotal);
+        $payload['pending_charges_total'] = $pendingTotal;
+        $payload['pending_charges_total_label'] = $this->formatAmountLabel($pendingTotal);
+        $payload['has_outstanding'] = $outstandingTotal > 0.009;
         $payload['payment_state'] = $details['state'];
         $payload['invoice_url'] = $details['invoice_url'];
         $payload['print_url'] = $details['invoice_url'];
+        // دفعة (و) — D4: PDF حقيقي (بعد الدفع فقط) + العنوان «فاتورة» (المؤسسة غير مسجّلة في الضريبة).
+        $pdfUrl = ($payload['has_invoice'] ?? false) || ! ($payload['is_preview'] ?? true)
+            ? \App\Services\Invoices\InvoicePdfService::contractUrl($contract)
+            : null;
+        $payload['invoice_pdf_url'] = $pdfUrl;
+        $payload['invoice_pdf_download_url'] = \App\Services\Invoices\InvoicePdfService::downloadUrl($pdfUrl);
+        $payload['pdf_url'] = $pdfUrl;
 
         // دفعة (هـ): حالة الفاتورة تتبع حالة الدفع (حوالة/جزئي).
         $stateStatus = (string) $details['state']['status'];
@@ -206,7 +238,7 @@ class ContractInvoiceService
             invoice: $invoice,
             orderNumber: (string) $request->uuid,
             legacyOrderNo: (string) $request->uuid,
-            customerName: (string) ($request->user?->name ?? ''),
+            customerName: self::customerDisplayName($request->user),
             issuedAt: $issuedAt,
             reference: $payment ? $this->paymentReference($payment) : '71'.str_pad((string) $request->id, 8, '0', STR_PAD_LEFT),
             breakdown: $breakdown,
@@ -220,6 +252,12 @@ class ContractInvoiceService
             'contract_type_label' => 'تغيير المؤجر',
             'total_amount' => $total,
             'total_amount_label' => $this->formatAmountLabel($total),
+            // دفعة (و) — D4/B16
+            'has_invoice' => $paid,
+            'is_preview' => ! $paid,
+            'invoice_pdf_url' => $pdfUrl = \App\Services\Invoices\InvoicePdfService::lessorChangeUrl($request),
+            'pdf_url' => $pdfUrl,
+            'invoice_pdf_download_url' => \App\Services\Invoices\InvoicePdfService::downloadUrl($pdfUrl),
         ]);
     }
 
@@ -513,7 +551,7 @@ class ContractInvoiceService
         ?Invoice $invoice,
         string $orderNumber,
         string $legacyOrderNo,
-        string $customerName,
+        ?string $customerName,
         Carbon $issuedAt,
         string $reference,
         array $breakdown,
@@ -545,6 +583,8 @@ class ContractInvoiceService
             'platform_name' => self::PLATFORM_NAME,
             'platform_subtitle' => self::PLATFORM_SUBTITLE,
             'title' => 'الفاتورة',
+            // دفعة (و) — B16: «فاتورة» لا «فاتورة ضريبية» (المؤسسة غير مسجّلة في ضريبة القيمة المضافة).
+            'invoice_title' => 'فاتورة',
             'invoice_number' => $invoice?->invoice_number,
             'invoice_no' => $invoice?->invoice_number,
             'date' => $issuedAt->format('Y/m/d'),
@@ -766,6 +806,17 @@ class ContractInvoiceService
         }
 
         return (string) $payment->id;
+    }
+
+    /** QA-F ORDERS-COM-9/APP-23: اسم العميل بلا مسافة فارغة (" ") — null إن لم يُدخل اسم. */
+    public static function customerDisplayName($user): ?string
+    {
+        if ($user === null) {
+            return null;
+        }
+        $name = trim(preg_replace('/\s+/u', ' ', (string) ($user->name ?? '')) ?? '');
+
+        return $name !== '' ? $name : null;
     }
 
     private function formatAmountLabel(float $amount): string
