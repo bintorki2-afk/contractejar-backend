@@ -274,6 +274,8 @@ class AdminOrderQueryService
 
         $keys = is_array($raw) ? $raw : explode(',', (string) $raw);
         $keys = array_values(array_unique(array_filter(array_map(static fn ($k) => strtolower(trim((string) $k)), $keys))));
+        // دفعة (و) — D1: «received» القديم = «مستلم من الموظف».
+        $keys = array_values(array_unique(array_map(static fn ($k) => ContractStatus::LEGACY_KEY_ALIASES[$k] ?? $k, $keys)));
 
         foreach ($keys as $key) {
             if (! in_array($key, ContractStatus::KEYS, true)) {

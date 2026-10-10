@@ -70,8 +70,19 @@ class ContractStatus extends Model
         self::KEY_COMPLETED,
     ];
 
-    /** مفاتيح قديمة تبقى بيانات تاريخية فقط (لا تظهر في التبويبات ولا المسار). */
-    public const LEGACY_KEYS = [self::KEY_WHATSAPP_DRAFT];
+    /**
+     * مفاتيح قديمة تبقى بيانات تاريخية فقط (لا تظهر في التبويبات ولا المسار ولا قوائم الاختيار).
+     * دفعة (و) — D1: «مستلم» (received) دُمجت في «مستلم من الموظف» (received_by_employee).
+     */
+    public const LEGACY_KEYS = [self::KEY_WHATSAPP_DRAFT, self::KEY_RECEIVED];
+
+    /** مفاتيح قديمة ⇒ المفتاح الحالي البديل (للفلاتر القادمة من واجهات قديمة). */
+    public const LEGACY_KEY_ALIASES = [self::KEY_RECEIVED => self::KEY_RECEIVED_BY_EMPLOYEE];
+
+    /** دفعة (و) — D2: حالات لا تُوضع يدوياً من اللوحة (يضعها الخادم تلقائياً). */
+    public const AUTO_ONLY_KEYS = [self::KEY_REFUNDED];
+
+    public const REFUND_AUTO_ONLY_MESSAGE = 'يتحوّل الطلب إلى مسترجع تلقائياً بعد تنفيذ الاسترجاع من ميسر';
 
     /** الحالات الجانبية. */
     public const SIDE_STATES = [self::KEY_CANCELLED, self::KEY_ON_HOLD, self::KEY_REFUNDED];
@@ -108,7 +119,7 @@ class ContractStatus extends Model
         'order' => 'integer',
     ];
 
-    protected $appends = ['created_at_label', 'status_case'];
+    protected $appends = ['created_at_label', 'status_case', 'manual_selectable', 'manual_hint'];
 
     /** @var array<string, int|null>|null */
     private static ?array $idsByKey = null;
@@ -212,7 +223,7 @@ class ContractStatus extends Model
         return self::idFor(self::KEY_REFUNDED);
     }
 
-    /** الحالة التي يضعها استلام الموظف للطلب: «مستلم من الموظف» ثم «مستلم» احتياطاً. */
+    /** الحالة التي يضعها استلام الموظف للطلب: «مستلم من الموظف» (D1: «مستلم» قديم — احتياط فقط لقواعد بيانات بلا الصف الجديد). */
     public static function receivedId(): int
     {
         return self::idFor(self::KEY_RECEIVED_BY_EMPLOYEE)
@@ -232,6 +243,17 @@ class ContractStatus extends Model
         } catch (\Throwable) {
             return false;
         }
+    }
+
+    /** دفعة (و) — D2: هل يمكن للموظف اختيار هذه الحالة يدوياً من قوائم تغيير الحالة؟ */
+    public function getManualSelectableAttribute(): bool
+    {
+        return ! in_array($this->attributes['status_key'] ?? null, self::AUTO_ONLY_KEYS, true);
+    }
+
+    public function getManualHintAttribute(): ?string
+    {
+        return ($this->attributes['status_key'] ?? null) === self::KEY_REFUNDED ? self::REFUND_AUTO_ONLY_MESSAGE : null;
     }
 
     /**

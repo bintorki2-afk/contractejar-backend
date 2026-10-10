@@ -78,7 +78,9 @@ class ContractStatusController extends Controller
 
             // QA-F C13: الحالة الملغاة بيانات تاريخية فقط — لا تُعدّل ولا يُعاد تفعيلها.
             if (in_array($contractStatus->status_key, ContractStatus::LEGACY_KEYS, true)) {
-                return $this->errorMessage('هذه الحالة ملغاة (مرحلة «إرسال المسودة») ولا يمكن تعديلها.', 422);
+                return $this->errorMessage($contractStatus->status_key === ContractStatus::KEY_RECEIVED
+                    ? 'هذه الحالة قديمة (دُمجت في «مستلم من الموظف») ولا يمكن تعديلها.'
+                    : 'هذه الحالة ملغاة (مرحلة «إرسال المسودة») ولا يمكن تعديلها.', 422);
             }
 
             $contractStatus->update($request->validated());

@@ -98,22 +98,26 @@ class StatusFlowTest extends BatchDTestCase
         $this->assertSame(2, (int) $contract->fresh()->contract_status_id);
     }
 
-    public function test_moving_to_refunded_requires_a_refund_request(): void
+    /** دفعة (و) — D2: «مسترجع» لا يُوضع يدوياً أبداً (حتى مع طلب استرجاع) — يضعه الخادم بعد استرجاع ميسر الكامل. */
+    public function test_moving_to_refunded_manually_is_always_rejected(): void
     {
         $this->employee('manager');
         $contract = $this->paidContract(['contract_status_id' => $this->statusId('received_by_employee')]);
         $refunded = (int) ContractStatus::refundedId();
 
-        $this->postJson('/api/admin/orders/'.$contract->id.'/status', ['status_id' => $refunded])->assertStatus(422);
+        $this->postJson('/api/admin/orders/'.$contract->id.'/status', ['status_id' => $refunded])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'refund_auto_only')
+            ->assertJsonPath('message', ContractStatus::REFUND_AUTO_ONLY_MESSAGE);
 
         RefundableContract::query()->create([
             'contract_id' => $contract->id, 'user_id' => $contract->user_id, 'refund_amount' => 100, 'employee_id' => 1,
             'admin_confirmed' => null, 'is_refunded' => false,
         ]);
 
-        $this->postJson('/api/admin/orders/'.$contract->id.'/status', ['status_id' => $refunded])->assertOk();
-        $this->assertSame($refunded, (int) $contract->fresh()->contract_status_id);
-        $this->assertSame('refunded', ContractFrontendStatus::for($contract->fresh())['status']);
+        $this->postJson('/api/admin/orders/'.$contract->id.'/contract-status', ['contract_status_id' => $refunded])
+            ->assertStatus(422)->assertJsonPath('code', 'refund_auto_only');
+        $this->assertSame($this->statusId('received_by_employee'), (int) $contract->fresh()->contract_status_id);
     }
 
     public function test_migration_backfills_keys_adds_refunded_and_moves_real_refunds(): void

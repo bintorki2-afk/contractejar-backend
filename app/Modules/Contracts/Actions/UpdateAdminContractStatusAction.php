@@ -81,10 +81,15 @@ class UpdateAdminContractStatusAction
         $statusId = (int) $request->contract_status_id;
         $status = ContractStatus::query()->find($statusId);
 
-        // دفعة (د): «مسترجع» تُحدَّد بالمفتاح refunded؛ «قيد المراجعة» لم تعد تتطلب طلب استرجاع.
+        // دفعة (و) — D2: «مسترجع» لا يُوضع يدوياً — يضعه الخادم تلقائياً بعد نجاح استرجاع كامل من ميسر.
         $refundedId = ContractStatus::refundedId();
         if ($refundedId !== null && $statusId === $refundedId && (int) $contract->contract_status_id !== $refundedId) {
-            $this->refundable->assertRefundableRequestExists($contract);
+            return ['ok' => false, 'message' => ContractStatus::REFUND_AUTO_ONLY_MESSAGE, 'code' => 422, 'error_code' => 'refund_auto_only'];
+        }
+        // دفعة (و) — D1: الحالات القديمة (مستلم/إرسال المسودة) لا تُختار.
+        $targetKey = ContractStatus::keyForId($statusId);
+        if ($targetKey !== null && in_array($targetKey, ContractStatus::LEGACY_KEYS, true) && (int) $contract->contract_status_id !== $statusId) {
+            return ['ok' => false, 'message' => 'هذه الحالة قديمة ولم تعد تُستخدم — اختر «مستلم من الموظف».', 'code' => 422, 'error_code' => 'legacy_status'];
         }
 
         $this->assertStatusCase($request, $contract, $statusId, $status?->name);
