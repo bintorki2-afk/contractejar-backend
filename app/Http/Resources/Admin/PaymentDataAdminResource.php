@@ -49,6 +49,35 @@ class PaymentDataAdminResource extends JsonResource
                 'email' => $user->email,
             ] : null,
             'user_mobile' => $user?->mobile,
+            // دفعة (و) — D4: PDF الفاتورة (صفحة «الفواتير» في اللوحة) — للدفعات الناجحة فقط.
+            ...$this->invoicePdfFields($contract),
+        ];
+    }
+
+    /** @return array{invoice_pdf_url: string|null, invoice_pdf_download_url: string|null, invoice_source: string|null} */
+    private function invoicePdfFields(?\App\Models\Contract $contract): array
+    {
+        $none = ['invoice_pdf_url' => null, 'invoice_pdf_download_url' => null, 'invoice_source' => null];
+        if ($this->status !== 'success') {
+            return $none;
+        }
+        $url = null;
+        $source = null;
+        if ($contract !== null) {
+            $url = \App\Services\Invoices\InvoicePdfService::contractUrl($contract);
+            $source = 'contract';
+        } elseif (filled($this->contract_uuid)) {
+            $lessor = \App\Models\LessorChangeRequest::query()->where('uuid', (string) $this->contract_uuid)->first();
+            if ($lessor !== null) {
+                $url = \App\Services\Invoices\InvoicePdfService::lessorChangeUrl($lessor);
+                $source = $url !== null ? 'lessor_change' : null;
+            }
+        }
+
+        return [
+            'invoice_pdf_url' => $url,
+            'invoice_pdf_download_url' => \App\Services\Invoices\InvoicePdfService::downloadUrl($url),
+            'invoice_source' => $source,
         ];
     }
 }

@@ -64,6 +64,7 @@ class Setting extends Model
         'auto_assign_employee_ids',
         // دفعة (و) — D9/D7
         'pay_after_draft_enabled',
+        'working_hours_en',
         'reviews_enabled',
         'reviews_average',
         'reviews_count',
@@ -91,6 +92,14 @@ class Setting extends Model
         $text = trim((string) ($setting?->working_hours ?? ''));
 
         return $text !== '' ? $text : self::DEFAULT_WORKING_HOURS;
+    }
+
+    public static function workingHoursTextEn(?self $setting = null): string
+    {
+        $setting ??= static::query()->first();
+        $text = trim((string) ($setting?->working_hours_en ?? ''));
+
+        return $text !== '' ? $text : \App\Support\WorkingHoursText::EN;
     }
 
     /** دفعة (و) — D9. */

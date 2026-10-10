@@ -95,6 +95,7 @@ class ContractTrackController extends Controller
             'has_invoice' => (bool) ($trackDetails['has_invoice'] ?? false),
             'invoice_url' => $trackDetails['invoice_url'] ?? null,
             'invoice_pdf_url' => $trackDetails['invoice_pdf_url'] ?? null,
+            'invoice_pdf_download_url' => $trackDetails['invoice_pdf_download_url'] ?? null,
             // دفعة (و) — B14 + D9.
             'is_submitted' => \App\Support\ContractSubmission::isSubmitted($contract),
             'is_resumable_draft' => \App\Support\ContractSubmission::isResumableDraft($contract),

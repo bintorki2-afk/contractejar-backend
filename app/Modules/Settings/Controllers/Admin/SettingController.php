@@ -78,6 +78,7 @@ class SettingController extends Controller
                 'vat_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
                 'is_open' => ['nullable', 'boolean'],
                 'working_hours' => ['nullable', 'string', 'max:500'],
+                'working_hours_en' => ['nullable', 'string', 'max:500'],
                 // دفعة (و) — D9/D7
                 'pay_after_draft_enabled' => ['nullable', 'boolean'],
                 'reviews_enabled' => ['nullable', 'boolean'],
@@ -283,6 +284,7 @@ class SettingController extends Controller
                     : null,
                 'is_open' => isset($setting->is_open) ? (bool) $setting->is_open : null,
                 'working_hours' => \App\Models\Setting::workingHoursText($setting),
+                'working_hours_en' => \App\Models\Setting::workingHoursTextEn($setting),
                 'opening_hours' => \App\Models\Setting::openingHours(),
                 // دفعة (و) — D9
                 'pay_after_draft_enabled' => (bool) ($setting->pay_after_draft_enabled ?? false),

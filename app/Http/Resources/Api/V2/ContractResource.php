@@ -75,6 +75,7 @@ class ContractResource extends JsonResource
             'invoice_url' => $paymentDetails['invoice_url'] ?? null,
             // دفعة (و) — D4/B16: PDF الفاتورة + هل صدرت فاتورة (لا رابط فاتورة قبل الدفع في الواجهات).
             'invoice_pdf_url' => $paymentDetails['invoice_pdf_url'] ?? null,
+            'invoice_pdf_download_url' => $paymentDetails['invoice_pdf_download_url'] ?? null,
             'has_invoice' => (bool) ($paymentDetails['has_invoice'] ?? false),
             'is_paid' => (bool) ($paymentDetails['state']['is_paid'] ?? false),
             // دفعة (و) — B14: المسودة القابلة للاستئناف = لم يُرسل بعد.

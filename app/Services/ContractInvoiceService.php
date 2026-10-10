@@ -174,6 +174,7 @@ class ContractInvoiceService
             ? \App\Services\Invoices\InvoicePdfService::contractUrl($contract)
             : null;
         $payload['invoice_pdf_url'] = $pdfUrl;
+        $payload['invoice_pdf_download_url'] = \App\Services\Invoices\InvoicePdfService::downloadUrl($pdfUrl);
         $payload['pdf_url'] = $pdfUrl;
 
         // دفعة (هـ): حالة الفاتورة تتبع حالة الدفع (حوالة/جزئي).
@@ -256,6 +257,7 @@ class ContractInvoiceService
             'is_preview' => ! $paid,
             'invoice_pdf_url' => $pdfUrl = \App\Services\Invoices\InvoicePdfService::lessorChangeUrl($request),
             'pdf_url' => $pdfUrl,
+            'invoice_pdf_download_url' => \App\Services\Invoices\InvoicePdfService::downloadUrl($pdfUrl),
         ]);
     }
 

@@ -231,7 +231,8 @@ class ContractPaymentState
             'invoice_url' => $withInvoiceUrl ? self::invoiceUrl($contract) : null,
             // دفعة (و) — D4: ملف PDF حقيقي للفاتورة (فقط بعد الدفع).
             'has_invoice' => $hasInvoice = ($originalPaid + $extraPaid) > 0.009 || (bool) $contract->is_completed,
-            'invoice_pdf_url' => $withInvoiceUrl ? \App\Services\Invoices\InvoicePdfService::contractUrl($contract, $hasInvoice) : null,
+            'invoice_pdf_url' => $pdfUrl = ($withInvoiceUrl ? \App\Services\Invoices\InvoicePdfService::contractUrl($contract, $hasInvoice) : null),
+            'invoice_pdf_download_url' => \App\Services\Invoices\InvoicePdfService::downloadUrl($pdfUrl),
             'totals' => [
                 'original' => round($originalPaid, 2),
                 'extra' => $extraPaid,

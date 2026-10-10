@@ -76,6 +76,19 @@ class InvoicePdfService
         return $mpdf->Output('', 'S');
     }
 
+    /**
+     * رابط التنزيل (attachment) = الرابط الموقّع + download=1 — المعامل مستثنى من التحقق في
+     * {@see \App\Http\Middleware\ValidateSignature} (لا يمنح وصولاً، يغيّر Content-Disposition فقط).
+     */
+    public static function downloadUrl(?string $signedUrl): ?string
+    {
+        if ($signedUrl === null || $signedUrl === '') {
+            return null;
+        }
+
+        return $signedUrl.(str_contains($signedUrl, '?') ? '&' : '?').'download=1';
+    }
+
     /** رابط موقّع مؤقت لملف PDF فاتورة الطلب (null قبل الدفع). */
     public static function contractUrl(Contract $contract, bool $hasInvoice = true): ?string
     {

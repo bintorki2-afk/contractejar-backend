@@ -170,7 +170,8 @@ class LessorChangeRequest extends Model
             'paid_at' => optional($this->paid_at)->format('Y-m-d H:i'),
             // دفعة (و) — D4: PDF الفاتورة بعد الدفع.
             'has_invoice' => $this->isPaid(),
-            'invoice_pdf_url' => \App\Services\Invoices\InvoicePdfService::lessorChangeUrl($this),
+            'invoice_pdf_url' => $pdfUrl = \App\Services\Invoices\InvoicePdfService::lessorChangeUrl($this),
+            'invoice_pdf_download_url' => \App\Services\Invoices\InvoicePdfService::downloadUrl($pdfUrl),
         ];
     }
 }

@@ -177,6 +177,7 @@ class GeneralController extends Controller
             // دفعة (و) — D8: ساعات العمل (نص من الإعدادات بافتراضي قرار المالك) + صيغة منظّمة لـ Schema.org.
             'working_hours' => Setting::workingHoursText($setting),
             'working_hours_text' => Setting::workingHoursText($setting),
+            'working_hours_en' => Setting::workingHoursTextEn($setting),
             'opening_hours' => Setting::openingHours(),
             // دفعة (و) — D9: زر «إرسال الطلب والدفع بعد مشاهدة المسودة».
             'pay_after_draft_enabled' => Setting::payAfterDraftEnabled($setting),

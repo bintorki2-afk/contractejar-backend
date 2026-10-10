@@ -425,6 +425,80 @@ class OwnerDecisionsTest extends BatchETestCase
         $this->assertStringNotContainsString('ضريبية', json_encode($payload, JSON_UNESCAPED_UNICODE));
     }
 
+    // ───────────────────────── متابعات المنسّق ─────────────────────────
+
+    public function test_followup_pdf_download_url_and_admin_payments_rows(): void
+    {
+        $user = $this->customer('0551110010');
+        $contract = $this->paidContract(['contract_status_id' => $this->statusId('under_review')], $user);
+        $this->payFull($contract);
+
+        Sanctum::actingAs($user);
+        $json = $this->getJson('/api/v2/contracts/'.$contract->id)->assertOk()->json('data');
+        $this->assertNotNull($json['invoice_pdf_download_url']);
+        $this->assertStringContainsString('download=1', $json['invoice_pdf_download_url']);
+        $res = $this->get($this->relative($json['invoice_pdf_download_url']))->assertOk();
+        $this->assertStringContainsString('attachment', (string) $res->headers->get('Content-Disposition'));
+        $this->assertStringStartsWith('%PDF', $res->getContent());
+        $this->assertNotNull($json['payment_details']['invoice_pdf_download_url']);
+
+        $unpaid = $this->contract([], $user);
+        $this->assertNull($this->getJson('/api/v2/contracts/'.$unpaid->id)->json('data.invoice_pdf_download_url'));
+
+        $this->employee('admin');
+        $rows = collect($this->getJson('/api/admin/payments')->assertOk()->json('data.items'));
+        $row = $rows->firstWhere('contract_uuid', (string) $contract->uuid);
+        $this->assertNotNull($row);
+        $this->assertNotNull($row['invoice_pdf_url']);
+        $this->assertSame('contract', $row['invoice_source']);
+        $this->get($this->relative($row['invoice_pdf_url']))->assertOk();
+    }
+
+    public function test_followup_old_working_hours_and_faq_are_replaced(): void
+    {
+        DB::table('settings')->update(['working_hours' => 'الإثنين – الجمعة: 9:00 ص – 6:00 م']);
+        $faq = \App\Models\Question::query()->create([
+            'title_ar' => 'متى أستلم العقد؟', 'title_en' => 'When?',
+            'answer_ar' => 'المدة المتوقعة أقل من 30 دقيقة خلال أوقات العمل، من الساعة 9:00 صباحًا حتى الساعة 1:00 بعد منتصف الليل. (يوميًا)',
+            'answer_en' => 'x',
+        ]);
+        $other = \App\Models\Question::query()->create([
+            'title_ar' => 'مدة التوثيق', 'title_en' => 'y', 'answer_ar' => 'عادةً تتم عملية التوثيق خلال 3-5 أيام عمل.', 'answer_en' => 'y',
+        ]);
+        DB::table('settings')->update(['working_hours_en' => null]);
+
+        (require database_path('migrations/2026_10_11_160000_batch_f_working_hours_and_faq.php'))->up();
+
+        $this->assertSame(Setting::DEFAULT_WORKING_HOURS, DB::table('settings')->value('working_hours'));
+        $this->assertSame(\App\Support\WorkingHoursText::EN, DB::table('settings')->value('working_hours_en'));
+        $answer = $faq->fresh()->answer_ar;
+        $this->assertStringContainsString('يومياً من 12 ظهراً حتى 12 منتصف الليل، والجمعة من 3 عصراً', $answer);
+        $this->assertStringStartsWith('المدة المتوقعة أقل من 30 دقيقة', $answer);
+        $this->assertStringNotContainsString('9:00', $answer);
+        $this->assertSame('عادةً تتم عملية التوثيق خلال 3-5 أيام عمل.', $other->fresh()->answer_ar);
+
+        // نص مخصص من المالك لا يُمس.
+        DB::table('settings')->update(['working_hours' => 'نص المالك']);
+        (require database_path('migrations/2026_10_11_160000_batch_f_working_hours_and_faq.php'))->up();
+        $this->assertSame('نص المالك', DB::table('settings')->value('working_hours'));
+        PublicCache::flush();
+        $this->assertSame(\App\Support\WorkingHoursText::EN, $this->getJson('/api/v2/settings')->json('data.working_hours_en'));
+    }
+
+    public function test_followup_customer_reviews_permissions_exist_for_role_editor(): void
+    {
+        foreach (['view', 'create', 'edit', 'delete'] as $action) {
+            $this->assertTrue(\App\Models\Permission::query()->where('name', 'customer_reviews.'.$action)->exists(), $action);
+        }
+        $this->employee('admin');
+        $form = $this->getJson('/api/admin/roles/create')->assertOk()->json('data');
+        $this->assertContains('customer_reviews', array_column($form['permission_sections'], 'section_key'));
+        $this->assertStringContainsString('customer_reviews.edit', json_encode($form['permission_modules'], JSON_UNESCAPED_UNICODE));
+        // موظف بدور يملك customer_reviews.view يصل للقائمة.
+        $this->limitedEmployee(['customer_reviews.view']);
+        $this->getJson('/api/admin/customer-reviews')->assertOk();
+    }
+
     // ───────────────────────── helpers ─────────────────────────
 
     private function relative(string $url): string
