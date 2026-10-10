@@ -78,6 +78,11 @@ class SettingController extends Controller
                 'vat_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
                 'is_open' => ['nullable', 'boolean'],
                 'working_hours' => ['nullable', 'string', 'max:500'],
+                // دفعة (و) — D9/D7
+                'pay_after_draft_enabled' => ['nullable', 'boolean'],
+                'reviews_enabled' => ['nullable', 'boolean'],
+                'reviews_average' => ['nullable', 'numeric', 'min:0', 'max:5'],
+                'reviews_count' => ['nullable', 'integer', 'min:0'],
                 'image_banner' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
                 'cover' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
                 // إصدارات التطبيق / التحديث الإجباري (تُحفظ في app_versions — نفس مصدر /app-status و /app/version)
@@ -116,6 +121,13 @@ class SettingController extends Controller
             foreach (['whatsapp', 'whatsapp_contact', 'whatsapp_contract'] as $column) {
                 if (array_key_exists($column, $validated) && is_string($validated[$column]) && $validated[$column] !== '') {
                     $validated[$column] = \App\Support\SupportContact::normalize($validated[$column]) ?? $validated[$column];
+                }
+            }
+
+            // دفعة (و): أعمدة غير قابلة للفراغ — القيمة الفارغة تعني «بلا تغيير».
+            foreach (['pay_after_draft_enabled', 'reviews_enabled', 'reviews_average', 'reviews_count'] as $notNullable) {
+                if (array_key_exists($notNullable, $validated) && $validated[$notNullable] === null) {
+                    unset($validated[$notNullable]);
                 }
             }
 
@@ -270,7 +282,14 @@ class SettingController extends Controller
                     ? (float) $setting->water_meter_fee_housing_tenant
                     : null,
                 'is_open' => isset($setting->is_open) ? (bool) $setting->is_open : null,
-                'working_hours' => $setting->working_hours,
+                'working_hours' => \App\Models\Setting::workingHoursText($setting),
+                'opening_hours' => \App\Models\Setting::openingHours(),
+                // دفعة (و) — D9
+                'pay_after_draft_enabled' => (bool) ($setting->pay_after_draft_enabled ?? false),
+                // دفعة (و) — D7
+                'reviews_enabled' => (bool) ($setting->reviews_enabled ?? true),
+                'reviews_average' => (float) ($setting->reviews_average ?? 4.7),
+                'reviews_count' => (int) ($setting->reviews_count ?? 3000),
             ],
             'auto_assign' => [
                 'enabled' => (bool) ($setting->auto_assign_orders ?? false),

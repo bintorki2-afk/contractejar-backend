@@ -62,9 +62,77 @@ class Setting extends Model
         'auto_assign_orders',
         'auto_assign_strategy',
         'auto_assign_employee_ids',
+        // دفعة (و) — D9/D7
+        'pay_after_draft_enabled',
+        'reviews_enabled',
+        'reviews_average',
+        'reviews_count',
     ];
 
+    /** دفعة (و) — D8: ساعات العمل الافتراضية (قرار المالك 2026-10-10). */
+    public const DEFAULT_WORKING_HOURS = 'يومياً من 12 ظهراً حتى 12 منتصف الليل، والجمعة من 3 عصراً حتى 12 منتصف الليل';
+
+    /**
+     * ساعات العمل المنظّمة (Schema.org OpeningHoursSpecification) — تتبع النص الافتراضي.
+     *
+     * @return list<array{days: list<string>, opens: string, closes: string}>
+     */
+    public static function openingHours(): array
+    {
+        return [
+            ['days' => ['Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday'], 'opens' => '12:00', 'closes' => '23:59'],
+            ['days' => ['Friday'], 'opens' => '15:00', 'closes' => '23:59'],
+        ];
+    }
+
+    public static function workingHoursText(?self $setting = null): string
+    {
+        $setting ??= static::query()->first();
+        $text = trim((string) ($setting?->working_hours ?? ''));
+
+        return $text !== '' ? $text : self::DEFAULT_WORKING_HOURS;
+    }
+
+    /** دفعة (و) — D9. */
+    public static function payAfterDraftEnabled(?self $setting = null): bool
+    {
+        try {
+            $setting ??= static::query()->first();
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return (bool) ($setting?->pay_after_draft_enabled ?? false);
+    }
+
+    /**
+     * دفعة (و) — D7: ملخص التقييمات المعروض («4.7 من 3000»).
+     *
+     * @return array{enabled: bool, average: float, count: int, label: string}
+     */
+    public static function reviewsSummary(?self $setting = null): array
+    {
+        try {
+            $setting ??= static::query()->first();
+        } catch (\Throwable) {
+            $setting = null;
+        }
+        $average = $setting !== null && is_numeric($setting->reviews_average ?? null) ? round((float) $setting->reviews_average, 1) : 4.7;
+        $count = $setting !== null && is_numeric($setting->reviews_count ?? null) ? (int) $setting->reviews_count : 3000;
+        $enabled = $setting !== null && $setting->reviews_enabled !== null ? (bool) $setting->reviews_enabled : true;
+        $avgLabel = rtrim(rtrim(number_format($average, 1, '.', ''), '0'), '.');
+
+        return [
+            'enabled' => $enabled,
+            'average' => $average,
+            'count' => $count,
+            'label' => $avgLabel.' من 5 · أكثر من '.$count.' تقييم',
+        ];
+    }
+
     protected $casts = [
+        'pay_after_draft_enabled' => 'boolean',
+        'reviews_enabled' => 'boolean',
         'auto_assign_orders' => 'boolean',
         'auto_assign_employee_ids' => 'array',
     ];

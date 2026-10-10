@@ -174,7 +174,14 @@ class GeneralController extends Controller
             'time_to_documentation_contract' => $setting->time_to_documentation_contract ?? null,
             'open_payment' => $setting->open_payment ?? null,
             'is_open' => $setting->is_open ?? null,
-            'working_hours' => $setting->working_hours ?? null,
+            // دفعة (و) — D8: ساعات العمل (نص من الإعدادات بافتراضي قرار المالك) + صيغة منظّمة لـ Schema.org.
+            'working_hours' => Setting::workingHoursText($setting),
+            'working_hours_text' => Setting::workingHoursText($setting),
+            'opening_hours' => Setting::openingHours(),
+            // دفعة (و) — D9: زر «إرسال الطلب والدفع بعد مشاهدة المسودة».
+            'pay_after_draft_enabled' => Setting::payAfterDraftEnabled($setting),
+            // دفعة (و) — D7: ملخص التقييمات («4.7 من 3000»).
+            'reviews_summary' => Setting::reviewsSummary($setting),
             'sms_user' => $setting?->sms_user,
             'sms_owner' => $setting?->sms_owner,
             'sms_employee' => $setting?->sms_employee,

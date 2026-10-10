@@ -70,6 +70,8 @@ return [
         'sms' => ['ar' => 'الرسائل النصية', 'en' => 'SMS'],
         'seo_crawl' => ['ar' => 'SEO (زحف وترتيب الكلمات)', 'en' => 'SEO crawl & keywords'],
         'website_images' => ['ar' => 'صور الموقع (SEO)', 'en' => 'Website images (SEO)'],
+        // دفعة (و) — D7
+        'customer_reviews' => ['ar' => 'تقييمات العملاء', 'en' => 'Customer reviews'],
     ],
 
     /**
@@ -112,6 +114,7 @@ return [
         'marketing-pixels' => 'analytics',
         'marketing-content-articles' => 'blogs',
         'marketing-content-pages' => 'analytics',
+        'marketing-content-reviews' => 'customer_reviews',
 
         'contract-statuses' => 'contract_statuses',
         'draft-contract-statuses' => 'draft_contract_statuses',
