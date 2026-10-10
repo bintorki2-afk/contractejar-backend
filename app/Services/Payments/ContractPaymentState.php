@@ -295,7 +295,8 @@ class ContractPaymentState
             'kind_label' => $charge->kindLabel(),
             'amount' => (float) $charge->amount,
             'message' => $charge->message,
-            'internal_reason' => $charge->internal_reason,
+            // QA-F APP-14: السبب الداخلي للموظف لا يخرج أبداً في ردود العميل (الموقع/التطبيق/الفاتورة).
+            'internal_reason' => self::isStaffContext() ? $charge->internal_reason : null,
             'status' => $charge->status,
             'status_label' => $charge->statusLabel(),
             'payment_url' => $pending && $contract !== null ? CustomerLinks::route('v2.contracts.charges.pay', ['uuid' => (string) $contract->uuid, 'cid' => $charge->id]) : null,
@@ -306,6 +307,23 @@ class ContractPaymentState
             'created_at' => $charge->created_at?->toIso8601String(),
             'cancelled_at' => $charge->cancelled_at?->toIso8601String(),
         ];
+    }
+
+    /**
+     * هل الطلب الحالي من اللوحة (أو مهمة خلفية)؟ ردود العميل (/api/v2/*) لا تحمل الحقول الداخلية.
+     */
+    public static function isStaffContext(): bool
+    {
+        try {
+            if (app()->runningInConsole() && ! app()->runningUnitTests()) {
+                return true;
+            }
+            $request = request();
+
+            return $request->is('api/admin/*') || $request->is('admin/*');
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**

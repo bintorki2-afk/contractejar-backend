@@ -19,33 +19,49 @@ trait ResolvesContractPaymentForAdmin
     protected function contractPaymentFields(): array
     {
         // QA-F C6: «مدفوع» من حالة الدفع الفعلية (نفس مصدر شارة الدفع payment_state) لا من is_completed.
-        $isPaid = $this->resolveIsPaidFromPaymentState();
-        $successPayment = $this->resolveSuccessfulPayment();
+        // QA-F ORDERS-COM-4: الحقول القديمة تتبع الرسوم والاسترجاعات أيضاً — amount_payment = الصافي
+        // (المدفوع − المسترجع) لا مبلغ آخر دفعة، والمسترجع كلياً «مسترجع» لا «تم الدفع».
+        $summary = $this->resolvePaymentSummary();
+        $status = $summary['status'] ?? null;
+        $isPaid = $summary !== null
+            ? in_array($status, [
+                \App\Services\Payments\ContractPaymentState::STATUS_PAID,
+                \App\Services\Payments\ContractPaymentState::STATUS_PARTIALLY_PAID,
+                \App\Services\Payments\ContractPaymentState::STATUS_PARTIALLY_REFUNDED,
+            ], true)
+            : (bool) $this->is_completed;
+        $isRefunded = $status === \App\Services\Payments\ContractPaymentState::STATUS_REFUNDED;
 
-        $amount = $this->resolvePaymentAmountFromPayments($successPayment);
+        if ($summary !== null) {
+            $amount = round((float) ($summary['net_total'] ?? 0), 2);
+        } else {
+            $amount = $this->resolvePaymentAmountFromPayments($this->resolveSuccessfulPayment());
+            $amount = $amount !== null && $amount !== '' ? round((float) $amount, 2) : null;
+        }
 
         return [
             'is_paid' => $isPaid,
             'payment_status' => $isPaid ? 'paid' : 'unpaid',
-            'payment_label_ar' => $isPaid ? 'تم الدفع' : 'لم يتم الدفع',
+            'payment_status_detail' => $status,
+            'payment_label_ar' => $isRefunded ? 'مسترجع' : ($isPaid ? 'تم الدفع' : 'لم يتم الدفع'),
             'amount_payment' => $isPaid
-                ? ($amount !== null && $amount !== '' ? round((float) $amount, 2) : 'تم الدفع')
-                : 'لم يتم الدفع',
+                ? ($amount !== null ? $amount : 'تم الدفع')
+                : ($isRefunded ? 0.0 : 'لم يتم الدفع'),
         ];
     }
 
-    private function resolveIsPaidFromPaymentState(): bool
+    /** @return array<string, mixed>|null */
+    private function resolvePaymentSummary(): ?array
     {
         try {
-            $summary = app(\App\Services\Payments\ContractPaymentState::class)->summaryForList($this->resource);
+            // صفحة التفاصيل تحمّل contractPayments (بالـ uuid) فقط — دفعات الرسوم (chg-…) مربوطة بـ contract_id.
+            if ($this->resource->relationLoaded('contractPayments') && ! $this->resource->relationLoaded('paymentRows')) {
+                $this->resource->load(['paymentRows' => fn ($q) => $q->where('status', 'success')]);
+            }
 
-            return in_array($summary['status'] ?? null, [
-                \App\Services\Payments\ContractPaymentState::STATUS_PAID,
-                \App\Services\Payments\ContractPaymentState::STATUS_PARTIALLY_PAID,
-                \App\Services\Payments\ContractPaymentState::STATUS_PARTIALLY_REFUNDED,
-            ], true);
+            return app(\App\Services\Payments\ContractPaymentState::class)->summaryForList($this->resource);
         } catch (\Throwable) {
-            return (bool) $this->is_completed;
+            return null;
         }
     }
 

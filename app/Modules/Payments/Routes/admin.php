@@ -14,7 +14,8 @@ Route::prefix('payments')->name('payments.')->controller(\App\Modules\Payments\C
 // دفعة (هـ) — 2.2/2.3: الحوالة البنكية والرسوم على الطلب.
 Route::prefix('orders')->name('orders.')->controller(\App\Modules\Payments\Controllers\Admin\OrderPaymentController::class)->middleware('auth:sanctum')->group(function () {
     Route::get('/{id}/payment-state', 'state')->whereNumber('id')->middleware('permission:all_requests.view')->name('payment-state');
-    Route::get('/{id}/bank-transfer-message', 'bankTransferMessage')->whereNumber('id')->middleware('permission:all_requests.view')->name('bank-transfer-message');
+    // QA-F DASH-19: قالب الحوالة يحمل الآيبان/الحساب — للمخوّل بتسجيل الحوالات فقط (قرار E2).
+    Route::get('/{id}/bank-transfer-message', 'bankTransferMessage')->whereNumber('id')->middleware('permission:payments.record_transfer')->name('bank-transfer-message');
     Route::post('/{id}/payments/bank-transfer', 'bankTransfer')->whereNumber('id')->middleware('permission:payments.record_transfer')->name('payments.bank-transfer');
     Route::get('/{id}/charges', 'index')->whereNumber('id')->middleware('permission:all_requests.view')->name('charges.index');
     Route::post('/{id}/charges', 'store')->whereNumber('id')->middleware('permission:payments.add_fee')->name('charges.store');
