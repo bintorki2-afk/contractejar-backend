@@ -28,7 +28,7 @@ final class MessageTemplateDefaults
     public const ROWS = [
         // مراحل الطلب — واتساب (ترجعها نقاط المراحل ب14 لتفتحها اللوحة في wa.me)
         ['key' => 'stage_received', 'channel' => 'whatsapp', 'title' => null, 'description' => 'عند استلام الموظف للطلب',
-            'body' => "مرحباً {name} 👋\nاستلمنا طلبك رقم {order} في «عقد إيجار» ونعمل عليه الآن.\nتابع طلبك: {link}"],
+            'body' => "مرحباً {name} 👋\nاستلمنا طلبك رقم {order} في «عقدي» ونعمل عليه الآن.\nتابع طلبك: {link}"],
         ['key' => 'stage_notarized', 'channel' => 'whatsapp', 'title' => null, 'description' => 'عند توثيق العقد',
             'body' => "🎉 مبروك {name}!\nتم توثيق عقدك لطلب رقم {order} في منصة إيجار.\nنسعد بتقييمك للخدمة: {link}"],
         ['key' => 'data_missing', 'channel' => 'whatsapp', 'title' => null, 'description' => 'طلب بيانات ناقصة',
@@ -40,7 +40,7 @@ final class MessageTemplateDefaults
 
         // دفعة (هـ) — E4: طلب مرفق ناقص/تصحيح (البنود تُدرج في {items})
         ['key' => 'data_request', 'channel' => 'whatsapp', 'title' => null, 'description' => 'طلب مرفق ناقص أو تصحيح بيانات',
-            'body' => "مرحباً {name}\nبخصوص طلبك رقم {order} في «عقد إيجار»، نحتاج منك:\n{items}\nأرسلها من هذا الرابط مباشرة (بدون إعادة تعبئة الطلب): {link}"],
+            'body' => "مرحباً {name}\nبخصوص طلبك رقم {order} في «عقدي»، نحتاج منك:\n{items}\nأرسلها من هذا الرابط مباشرة (بدون إعادة تعبئة الطلب): {link}"],
         ['key' => 'data_request_reminder', 'channel' => 'whatsapp', 'title' => null, 'description' => 'تذكير العميل بطلب المرفق الناقص',
             'body' => "تذكير 🔔 {name}\nما زلنا بانتظار:\n{items}\nلطلبك رقم {order}. أرسلها من هنا لنكمل التوثيق: {link}"],
         // دفعة (هـ) — E5: طلب دفع رسوم (فرق سعر / رسوم إضافية)
@@ -66,6 +66,6 @@ final class MessageTemplateDefaults
 
         // SMS
         ['key' => 'stage_notarized', 'channel' => 'sms', 'title' => null, 'description' => 'رسالة نصية عند التوثيق',
-            'body' => 'عقد إيجار: تم توثيق عقدك لطلب {order}. تفاصيل: {link}'],
+            'body' => 'عقدي: تم توثيق عقدك لطلب {order}. تفاصيل: {link}'],
     ];
 }

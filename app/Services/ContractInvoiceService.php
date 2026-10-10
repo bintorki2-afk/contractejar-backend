@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\Log;
  */
 class ContractInvoiceService
 {
-    public const PLATFORM_NAME = 'عقد إيجار';
+    public const PLATFORM_NAME = 'عقدي';
 
     public const PLATFORM_SUBTITLE = 'منصة توثيق عقود الإيجار';
 

@@ -255,7 +255,7 @@ class AppStatusService
     /** الحد الأدنى الافتراضي للإصدار عندما لا يضبط المالك قيمة (ف ١٠ / #34-10). */
     public const DEFAULT_MIN_VERSION = '2.1.0';
 
-    public const DEFAULT_FORCE_UPDATE_MESSAGE = 'يتوفر إصدار جديد من تطبيق عقد إيجار — يرجى التحديث للمتابعة.';
+    public const DEFAULT_FORCE_UPDATE_MESSAGE = 'يتوفر إصدار جديد من تطبيق عقدي — يرجى التحديث للمتابعة.';
 
     /** الحقول المسطّحة المقبولة في إعدادات اللوحة (GET/POST /api/admin/settings). */
     public const FLAT_FIELDS = [

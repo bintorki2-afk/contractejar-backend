@@ -12,7 +12,7 @@ class HtmlPageParserTest extends TestCase
         $html = <<<'HTML'
         <html>
           <head>
-            <title>  عقد إيجار  </title>
+            <title>  عقدي  </title>
             <meta name="description" content="منصة توثيق">
             <meta name="robots" content="noindex, follow">
             <link rel="canonical" href="/about-us">
@@ -32,7 +32,7 @@ class HtmlPageParserTest extends TestCase
 
         $parsed = (new HtmlPageParser)->parse($html, 'https://aqdi.sa/');
 
-        $this->assertSame('عقد إيجار', $parsed['title']);
+        $this->assertSame('عقدي', $parsed['title']);
         $this->assertSame('منصة توثيق', $parsed['description']);
         $this->assertSame(['مرحبا'], $parsed['h1s']);
         $this->assertSame(3, $parsed['image_count']);
