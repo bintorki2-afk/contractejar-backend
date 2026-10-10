@@ -137,6 +137,8 @@ class ReportsService
                 'original_revenue' => $totals['original_revenue'],
                 'bank_transfers' => $totals['bank_transfers'],
                 'bank_transfers_count' => $totals['bank_transfers_count'],
+                'lessor_change_sales' => $totals['lessor_change_sales'] ?? 0,
+                'lessor_change_count' => $totals['lessor_change_count'] ?? 0,
             ]),
             'by_period' => ReportLabeledValueResource::collection($this->salesByQuickPeriod()),
             'daily' => ReportLabeledValueResource::collection(
@@ -847,7 +849,24 @@ class ReportsService
             'original_revenue' => $this->moneyValue($totalSales - $extraFees['amount'] - $priceDifferences['amount']),
             'bank_transfers' => $bankTransfers['amount'],
             'bank_transfers_count' => $bankTransfers['count'],
+            // QA-F PROPS-24: دفعات «تغيير المؤجر» داخل total_sales — بند مستقل للشفافية.
+            ...$this->lessorChangeSales($paymentsQuery),
         ];
+    }
+
+    /** @return array{lessor_change_sales: int|float, lessor_change_count: int} */
+    private function lessorChangeSales($paymentsQuery): array
+    {
+        try {
+            if (! \App\Support\SchemaCache::hasTable('lessor_change_requests')) {
+                return ['lessor_change_sales' => 0, 'lessor_change_count' => 0];
+            }
+            $q = (clone $paymentsQuery)->whereIn('contract_uuid', \App\Models\LessorChangeRequest::query()->select('uuid'));
+
+            return ['lessor_change_sales' => $this->moneyValue((float) (clone $q)->sum('amount')), 'lessor_change_count' => (clone $q)->count()];
+        } catch (\Throwable) {
+            return ['lessor_change_sales' => 0, 'lessor_change_count' => 0];
+        }
     }
 
     /**

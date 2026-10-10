@@ -116,7 +116,7 @@ class OrderDetailExtrasTest extends BatchETestCase
         $this->assertSame('باسم المستأجر', $u['meters'][0]['ownership_label']);
         $this->assertTrue($u['meters'][1]['shared']);
         $this->assertEquals(150, $u['meters'][1]['monthly_amount']);
-        $this->assertSame('مشترك · 150 ر.س/شهر', $u['meters'][1]['summary']);
+        $this->assertSame('مشترك · 150 ر.س/شهر × 12 شهر = 1,800 ر.س', $u['meters'][1]['summary']);
         // المصدر الوحيد للعدادات: 2 عداد كهرباء باسم المستأجر × 15.
         $this->assertSame(2, $d['meter_fees']['electricity_meter_count']);
     }

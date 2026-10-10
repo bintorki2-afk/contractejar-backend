@@ -241,6 +241,15 @@ class PaymentController extends Controller
         ]);
 
         if ($this->wantsJsonPaymentResponse($request)) {
+            // QA-F ORDERS-RES-14: رقم طلب غير موجود ⇒ 404 (exists:false) لا «فشلت عملية الدفع» مع زر إعادة المحاولة.
+            if (! $paid && ! $this->paymentUuidExists($uuid)) {
+                return response()->json([
+                    'message' => trans('api.not_found'),
+                    'code' => 404,
+                    'success' => false,
+                    'data' => ['exists' => false, 'paid' => false],
+                ], 404);
+            }
             $payload = $this->paymentService->paymentStatusPayload($uuid, $result, $gatewayId, $invoiceId);
             if (! $this->requesterOwnsPaymentUuid($request, $uuid) && ! $this->gatewayReturnVerified($request, $payload)) {
                 $payload = $this->minimalPaymentStatus($payload);
@@ -254,6 +263,19 @@ class PaymentController extends Controller
         }
 
         return redirect()->away($frontendUrl);
+    }
+
+    private function paymentUuidExists(string $uuid): bool
+    {
+        if ($uuid === '' || \App\Models\Payment::parseChargeKey($uuid) !== null) {
+            return true;
+        }
+        try {
+            return \App\Models\Contract::query()->where('uuid', $uuid)->exists()
+                || \App\Models\LessorChangeRequest::query()->where('uuid', $uuid)->exists();
+        } catch (\Throwable) {
+            return true;
+        }
     }
 
     /**

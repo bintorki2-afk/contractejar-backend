@@ -343,6 +343,13 @@ class OrderDetailExtras
     private function meters(object $u, Contract $contract): array
     {
         $out = [];
+        // QA-F ORDERS-RES-8: العداد المشترك = شهري × أشهر العقد كاملة (قرار دفعة د) — يُعرض البند كاملاً للموظف.
+        try {
+            $months = \App\Support\DocFee::contractMonths($contract);
+        } catch (\Throwable) {
+            $months = 12;
+        }
+        $fmt = static fn (float $v): string => rtrim(rtrim(number_format($v, 2, '.', ','), '0'), '.');
         foreach (['electricity' => ['label' => 'عداد الكهرباء', 'icon' => 'zap'], 'water' => ['label' => 'عداد المياه', 'icon' => 'droplets']] as $kind => $meta) {
             $ownership = $u->{$kind.'_meter_ownership'} ?? null;
             $number = $u->{$kind.'_meter_number'} ?? null;
@@ -366,8 +373,10 @@ class OrderDetailExtras
                 },
                 'shared' => $shared,
                 'monthly_amount' => $shared && $monthly !== null && $monthly !== '' ? (float) $monthly : null,
+                'months' => $shared && $monthly !== null && $monthly !== '' ? $months : null,
+                'total_amount' => $shared && $monthly !== null && $monthly !== '' ? round((float) $monthly * $months, 2) : null,
                 'summary' => $shared
-                    ? 'مشترك'.($monthly !== null && $monthly !== '' ? ' · '.rtrim(rtrim(number_format((float) $monthly, 2, '.', ''), '0'), '.').' ر.س/شهر' : '')
+                    ? 'مشترك'.($monthly !== null && $monthly !== '' ? ' · '.$fmt((float) $monthly).' ر.س/شهر × '.$months.' شهر = '.$fmt((float) $monthly * $months).' ر.س' : '')
                     : (match ($ownership) { 'tenant' => 'باسم المستأجر', 'owner' => 'باسم المالك', default => '' }),
             ];
         }

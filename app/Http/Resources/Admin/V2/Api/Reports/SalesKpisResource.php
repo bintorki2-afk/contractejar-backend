@@ -29,6 +29,8 @@ class SalesKpisResource extends JsonResource
             'original_revenue' => $this->resource['original_revenue'] ?? ($this->resource['total_sales'] ?? 0),
             'bank_transfers' => $this->resource['bank_transfers'] ?? 0,
             'bank_transfers_count' => (int) ($this->resource['bank_transfers_count'] ?? 0),
+            'lessor_change_sales' => $this->resource['lessor_change_sales'] ?? 0,
+            'lessor_change_count' => (int) ($this->resource['lessor_change_count'] ?? 0),
         ];
     }
 }
